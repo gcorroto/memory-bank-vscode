@@ -1,17 +1,17 @@
-# Grec0AI For Developers (K4D)
+# Grec0AI For Developers
 
 ## Visión General
 
-Grec0AI For Developers (K4D) es una extensión avanzada para Visual Studio Code que integra capacidades de inteligencia artificial para automatizar y mejorar el desarrollo de software, enfocándose en:
+Grec0AI For Developers es una extensión avanzada para Visual Studio Code que integra capacidades de inteligencia artificial para automatizar y mejorar el desarrollo de software, enfocándose en:
 
 * **Generación automática de tests unitarios**
 * **Resolución inteligente de errores**
-* **Análisis de seguridad y calidad de código**
+* **Análisis de calidad de código**
 * **Mejora de cobertura de código**
 
-La extensión se conecta con los servicios de Kiuwan y Jenkins para proporcionar un flujo completo de desarrollo seguro y de alta calidad.
+La extensión trabaja directamente con el sistema de archivos local para proporcionar un flujo completo de desarrollo de alta calidad.
 
-![Screenshot de la extensión](https://github.com/Grec0AI/k4d-vscode/raw/master/resources/k4d-vscode-screenshot.png)
+![Screenshot de la extensión](https://github.com/Grec0AI/grec0ai-vscode/raw/master/resources/grec0ai-vscode-screenshot.png)
 
 ## Características Principales
 
@@ -48,45 +48,31 @@ La extensión puede analizar errores en tu código y sugerir soluciones:
 
 ## Requisitos
 
-* Una cuenta válida de Grec0AI/Kiuwan con permisos adecuados.
 * Visual Studio Code v1.40.0 o superior.
 * Nodejs v12.0.0 o superior para ejecutar tests generados.
-* Acceso a internet para comunicación con la API de Grec0AI.
 
 ## Configuración Rápida
 
-### 1. Configuración de Conexión
+### 1. Configuración del Proyecto
 
 Abre la configuración de VS Code (`Ctrl+,`) y navega a `Extensiones > Grec0AI`:
 
-* Completa tu nombre de usuario y contraseña.
-* Para instalaciones on-premise, marca la casilla `Customize Grec0AI server` y modifica la URL.
+* Configura la carpeta raíz del proyecto si es diferente de la raíz del workspace.
+* Personaliza los patrones de exclusión si necesitas ignorar carpetas adicionales.
 
-> **Consejo**: Usa el comando `K4D: Enter and Encrypt Password` para almacenar tu contraseña de manera segura.
-
-### 2. Configuración de la Aplicación
-
-Vincula tu carpeta/workspace local con una aplicación de Grec0AI:
-
-* Completa el campo `Remote Application Name` o usa el comando `K4D: Pick Remote Application`.
-* Configura la fuente de análisis de defectos (análisis de línea base, plan de acción, entrega de auditoría, etc.).
-
-### 3. Configuración de Jenkins y Tests
+### 2. Configuración de Tests
 
 Para aprovechar la generación automática de tests, configura:
 
-* Ubicación del proyecto (`PROJECT_FOLDER`)
-* Lenguaje de programación (`LANG_CODE`)
-* Framework principal (`FRAMEWORK_NAME` y `FRAMEWORK_VER`)
-* Framework de tests (`FRAMEWORK_TEST`)
-* URL y JWT para la API de Grec0AI
+* Framework de tests (`grec0ai.test.framework`): jasmine, jest o mocha
+* Umbral mínimo de cobertura (`grec0ai.test.coverage.minimumThreshold`)
 
 ## Uso de Generación de Tests con IA
 
 ### Método 1: Generación Individual
 
 1. Abre un archivo fuente (por ejemplo, un archivo .ts).
-2. Haz clic derecho y selecciona "Inicializar tests con Grec0AI" o usa el atajo de teclado.
+2. Haz clic derecho y selecciona "Automatic Test" en el menú contextual.
 3. Selecciona el modo (Rápido o Razonamiento).
 4. Si eliges Razonamiento, selecciona el nivel de computación (bajo, medio, alto).
 5. Opcionalmente, añade instrucciones específicas para la IA.
@@ -94,7 +80,7 @@ Para aprovechar la generación automática de tests, configura:
 
 ### Método 2: Automatización Masiva
 
-1. Ejecuta el comando `K4D: Automatic Test`.
+1. Ejecuta el comando `Grec0AI: Automatic Test`.
 2. Selecciona el modelo (Rápido o Razonamiento).
 3. Elige la carpeta raíz del proyecto.
 4. La extensión identificará todos los archivos que necesitan tests y los generará automáticamente.
@@ -115,13 +101,13 @@ La extensión implementa un ciclo de retroalimentación para mejorar constanteme
 
 La extensión añade un nuevo icono en la barra de actividades con tres secciones:
 
-### Análisis de Código
+### Archivos del Proyecto
 
-Muestra una visión general de la configuración de tu aplicación y estadísticas globales de defectos.
+Muestra una estructura jerárquica de los archivos en tu proyecto, permitiéndote navegar fácilmente y seleccionar archivos para análisis o generación de tests.
 
-### Lista de Defectos
+### Resumen de Cobertura
 
-Estructura jerárquica de defectos detectados, organizados por regla, defecto y ruta de propagación.
+Muestra información detallada sobre la cobertura de código de los archivos seleccionados, incluyendo líneas cubiertas/no cubiertas y funciones testeadas.
 
 ### Detalles
 
@@ -129,14 +115,13 @@ Información detallada sobre el elemento seleccionado y opciones para resolverlo
 
 ## Comandos Útiles
 
-* `K4D: Automatic Test`: Inicia la generación automática de tests para una carpeta.
-* `K4D: Check Connection`: Verifica la conexión con el servidor de Grec0AI.
-* `K4D: Refresh Grec0AI Defects`: Actualiza la lista de defectos.
-* `K4D: Enter and Encrypt Password`: Configura tu contraseña de forma segura.
-* `K4D: Fix with Grec0AI`: Solicita a la IA que corrija un defecto seleccionado.
+* `Grec0AI: Automatic Test`: Inicia la generación automática de tests para una carpeta.
+* `Grec0AI: Refresh File Tree`: Actualiza el árbol de archivos del proyecto.
+* `Grec0AI: Fix with Grec0AI`: Solicita a la IA que corrija un defecto o mejore el código seleccionado.
+* `Grec0AI: Explain Code`: Solicita a la IA que explique el código seleccionado.
 
 ## Soporte y Licencia
 
-Si encuentras problemas al utilizar la extensión, utiliza los canales oficiales de soporte de Grec0AI.
+Si encuentras problemas al utilizar la extensión, visita nuestro repositorio en GitHub para reportar issues o contribuir al proyecto.
 
-Para términos de uso, consulta [Términos de Uso de Grec0AI](https://www.grecoai.com/terms-of-use).
+Esta extensión está licenciada bajo los términos de licencia MIT.

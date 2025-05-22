@@ -1,0 +1,471 @@
+{
+  "name": "k4d-vscode",
+  "version": "2.8.200715015658",
+  "icon": "resources/icons/logo_transparent.png",
+  "private": true,
+  "displayName": "Grec0AI for Developers",
+  "description": "The Grec0AI for Developers extension allows you to visualize in Visual Studio Code the results of the analyses performed in kiuwan, jenkins git and jira.",
+  "license": "https://www.kiuwan.com/terms-of-use/",
+  "publisher": "kiuwan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gcorroto.git"
+  },
+  "engines": {
+    "vscode": "^1.26.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kiuwan-defects",
+          "title": "%activitybar.kiuwan.title%",
+          "icon": "resources/icons/mutuaLogo.png"
+        },
+        {
+          "id": "coverage-defects",
+          "title": "%activitybar.coverage.title%",
+          "icon": "resources/icons/mutuaLogo.png"
+        }
+      ]
+    },
+    "views": {
+      "kiuwan-defects": [
+        {
+          "id": "kiuwan-defects-source",
+          "name": "%view.kiuwanDefects.source%"
+        },
+        {
+          "id": "kiuwan-defects-list",
+          "name": "%view.kiuwanDefects.list%"
+        },
+        {
+          "id": "kiuwan-defects-details",
+          "name": "%view.kiuwanDefects.details%"
+        }
+      ],
+      "coverage-defects": [
+        {
+          "id": "coverage-defects-source",
+          "name": "%view.coverageDefects.source%"
+        },
+        {
+          "id": "coverage-defects-list",
+          "name": "%view.coverageDefects.list%"
+        },
+        {
+          "id": "coverage-defects-details",
+          "name": "%view.coverageDefects.details%"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "git.connectionSettings.initializeGitRepository",
+        "title": "Inicializar Repositorio Git",
+        "category": "Git"
+      },
+      {
+        "command": "k4d.coverage-source.refresh",
+        "title": "%command.kiuwanDefects.refresh%",
+        "icon": {
+          "dark": "resources/icons/dark/refresh.svg",
+          "light": "resources/icons/light/refresh.svg"
+        }
+      },
+      {
+        "command": "k4d.automaticTest",
+        "title": "%command.kiuwanDefects.auto%",
+        "icon": {
+          "dark": "resources/icons/dark/frame_sink.png",
+          "light": "resources/icons/light/frame_sink.png"
+        }
+      },
+      {
+        "command": "k4d.coverage-list.refresh",
+        "title": "%command.kiuwanDefects.refresh%",
+        "icon": {
+          "dark": "resources/icons/dark/refresh.svg",
+          "light": "resources/icons/light/refresh.svg"
+        }
+      },
+      {
+        "command": "k4d.coverage-details.refresh",
+        "title": "%command.kiuwanDefects.refresh%",
+        "icon": {
+          "dark": "resources/icons/dark/refresh.svg",
+          "light": "resources/icons/light/refresh.svg"
+        }
+      },
+      {
+        "command": "k4d.enterPassword",
+        "title": "%command.enterPassword%"
+      },
+      {
+        "command": "k4d.checkConnection",
+        "title": "%command.checkConnection%"
+      },
+      {
+        "command": "k4d.getApplications",
+        "title": "%command.getApplications%"
+      },
+      {
+        "command": "k4d.getActionPlans",
+        "title": "%command.getActionPlans%"
+      },
+      {
+        "command": "k4d.getAuditDeliveries",
+        "title": "%command.getAuditDeliveries%"
+      },
+      {
+        "command": "k4d.getDeliveries",
+        "title": "%command.getDeliveries%"
+      },
+      {
+        "command": "k4d.browseToDocumentation",
+        "title": "%command.browseToDocumentation%",
+        "icon": {
+          "dark": "resources/icons/dark/ruledoc.svg",
+          "light": "resources/icons/light/ruledoc.svg"
+        }
+      },
+      {
+        "command": "k4d.muteDefect",
+        "title": "%command.muteDefect%",
+        "icon": "resources/icons/muted_12.png"
+      },
+      {
+        "command": "k4d.changeDefectStatus",
+        "title": "%command.changeDefectStatus%"
+      },
+      {
+        "command": "k4d.fixGrec0Ai",
+        "title": "%command.fixGrec0Ai%"
+      },
+      {
+        "command": "k4d.coverage-defects.refresh",
+        "title": "%view.coverageDefects.refresh%",
+        "icon": {
+          "dark": "resources/icons/dark/refresh.svg",
+          "light": "resources/icons/light/refresh.svg"
+        }
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "k4d.coverage-source.refresh",
+          "when": "view == coverage-defects-source",
+          "group": "navigation"
+        },
+        {
+          "command": "k4d.automaticTest",
+          "when": "view == coverage-defects-source",
+          "group": "navigation",
+          "icon": "$(rocket)"
+        },
+        {
+          "command": "k4d.coverage-list.refresh",
+          "when": "view == coverage-defects-list",
+          "group": "navigation"
+        },
+        {
+          "command": "k4d.coverage-details.refresh",
+          "when": "view == coverage-defects-details",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "k4d.browseToDocumentation",
+          "when": "view == kiuwan-defects-list && viewItem == k4d-item-rule"
+        },
+        {
+          "command": "k4d.muteDefect",
+          "when": "view == kiuwan-defects-list && viewItem == k4d-item-defect"
+        },
+        {
+          "command": "k4d.changeDefectStatus",
+          "when": "view == kiuwan-defects-list && viewItem == k4d-item-defect"
+        },
+        {
+          "command": "k4d.fixGrec0Ai",
+          "when": "view == kiuwan-defects-list && viewItem == k4d-item-defect"
+        },
+        {
+          "command": "git.connectionSettings.initializeGitRepository",
+          "when": "view == coverage-defects-source",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Kiuwan",
+      "properties": {
+        "kiuwan.connectionSettings.baseServerUrl.active": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.connectionSettings.baseServerUrl.active%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.baseServerUrl.URL": {
+          "type": "string",
+          "default": "https://www.kiuwan.com/saas",
+          "description": "%configuration.connectionSettings.baseServerUrl.URL%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.credentials.kiuwanUser": {
+          "type": "string",
+          "default": "userprofile",
+          "description": "%configuration.connectionSettings.credentials.kiuwanUser%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.credentials.password": {
+          "type": "string",
+          "default": "Profile2017",
+          "description": "%configuration.connectionSettings.credentials.password%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.baseGrecoApiUrl.URL": {
+          "type": "string",
+          "default": "https://goyo.sytes.net/grecoai",
+          "description": "%configuration.connectionSettings.baseGrecoApiUrl.URL%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.baseGrecoApiUrl.PROJECT_FOLDER": {
+          "type": "string",
+          "default": "front-tasaciones-mobile",
+          "description": "%configuration.connectionSettings.baseGrecoApiUrl.PROJECT_FOLDER%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.opts.FRAMEWORK_NAME": {
+          "type": "string",
+          "default": "Angular",
+          "description": "%configuration.connectionSettings.opts.FRAMEWORK_NAME%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.opts.FRAMEWORK_TEST": {
+          "type": "string",
+          "default": "jasmine",
+          "description": "%configuration.connectionSettings.opts.FRAMEWORK_TEST%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.opts.FRAMEWORK_VER": {
+          "type": "string",
+          "default": "13.3.12",
+          "description": "%configuration.connectionSettings.opts.FRAMEWORK_VER%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.opts.LANG_CODE": {
+          "type": "string",
+          "default": "typescript",
+          "description": "%configuration.connectionSettings.opts.LANG_CODE%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.baseGrecoApiUrl.JWT": {
+          "type": "string",
+          "default": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlhzZmYxbTR0Ri04TzF4TDU0NUVGVSJ9.eyJpc3MiOiJodHRwczovL2Rldi1zNmtiampoNWRnNHlqbHNsLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJhdXRoMHw2NjIzOGFlN2QxNDRkMGNiYWEwOWU1NDIiLCJhdWQiOlsiYXBpLWdyZWNvYWkiLCJodHRwczovL2Rldi1zNmtiampoNWRnNHlqbHNsLnVzLmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3NDAxMzg2OTAsImV4cCI6MTc0MDIyNTA5MCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCByZWFkOmluY2lkZW5jaWFzIHJlYWQ6Y29uZmlnIHJlYWQ6dXN1YXJpb3MgcmVhZDphc2lzdGVudGVzIHJlYWQ6c2NoZW1hcyByZWFkOmVtYmVkZGluZ3MgcmVhZDpmaWxlcyByZWFkOmFsZXhhIHdyaXRlOmluY2lkZW5jaWFzIHdyaXRlOmNvbmZpZyB3cml0ZTp1c3VhcmlvcyB3cml0ZTphc2lzdGVudGVzIHdyaXRlOnNjaGVtYXMgd3JpdGU6ZW1iZWRkaW5ncyB3cml0ZTpmaWxlcyB3cml0ZTphbGV4YSIsImF6cCI6IlhPS2FwZDF2cVJrdm1ObGloWHdnSEdQUXJ4YTBRd0dRIiwicGVybWlzc2lvbnMiOlsicmVhZDphbGV4YSIsInJlYWQ6YXNpc3RlbnRlcyIsInJlYWQ6Y29uZmlnIiwicmVhZDplbWJlZGRpbmdzIiwicmVhZDpmaWxlcyIsInJlYWQ6aW5jaWRlbmNpYXMiLCJyZWFkOnNjaGVtYXMiLCJyZWFkOnVzdWFyaW9zIiwid3JpdGU6YWxleGEiLCJ3cml0ZTphc2lzdGVudGVzIiwid3JpdGU6Y29uZmlnIiwid3JpdGU6ZW1iZWRkaW5ncyIsIndyaXRlOmZpbGVzIiwid3JpdGU6aW5jaWRlbmNpYXMiLCJ3cml0ZTpzY2hlbWFzIiwid3JpdGU6dXN1YXJpb3MiXX0.ZyqTcSuLH3GSvcs-PWHNIogB0SPUfZj0Vne9Rv_mw1IQVp9klxGWtE4D6LNNfjPsZZeKQxFjWpZr76eNBQIr6xBhiRdR3sOfEgKPUUWJZBQhRTn0OzB7izFoAtFQj2SMToi9uK64TgD2PzC3M81dC6J8PnKlNLZ-Muw0c7_-ktDo7Zzc3FzvK7R39f-wdxoaE8fZVblwX45uIQjlu2XyMjgjnVfsU-HnKJrC8iHKHFa3d25PdvNdkP3T35NL3Wv189o_q9rMY6UFQy9LKp7qMPvHIPVkI1JDVuzk2F5cgk9HTgQvMnGkzfHjJ7E2aqsuaT2P03QBOxsh6eNpyx_vvQ",
+          "description": "%configuration.connectionSettings.baseGrecoApiUrl.JWT%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.credentials.sso.domain": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.connectionSettings.credentials.sso.domain%",
+          "scope": "application"
+        },
+        "kiuwan.connectionSettings.remoteApplication.name": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.connectionSettings.remoteApplication.name%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSource": {
+          "type": "string",
+          "enum": [
+            "Last baseline analysis",
+            "Action plan",
+            "Audit delivery",
+            "Delivery"
+          ],
+          "enumDescriptions": [
+            "%configuration.defectsList.analysisSource.lastBaseline%",
+            "%configuration.defectsList.analysisSource.actionPlan%",
+            "%configuration.defectsList.analysisSource.auditDelivery%",
+            "%configuration.defectsList.analysisSource.delivery%"
+          ],
+          "default": "Last baseline analysis",
+          "description": "%configuration.defectsList.analysisSource%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSourceActionPlan.name": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.analysisSourceActionPlan.name%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSourceAuditDelivery.code": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.analysisSourceAuditDelivery.code%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSourceAuditDelivery.pickRange": {
+          "type": "string",
+          "enum": [
+            "Last 10",
+            "Today",
+            "Last 7 days",
+            "Last 30 days"
+          ],
+          "default": "Last 10",
+          "description": "%configuration.defectsList.analysisSourceAuditDelivery.pickRange%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSourceDelivery.code": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.analysisSourceDelivery.code%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.analysisSourceDelivery.pickRange": {
+          "type": "string",
+          "enum": [
+            "Last 10",
+            "Today",
+            "Last 7 days",
+            "Last 30 days"
+          ],
+          "default": "Last 10",
+          "description": "%configuration.defectsList.analysisSourceDelivery.pickRange%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.defectsLimit": {
+          "type": "number",
+          "default": 100,
+          "description": "%configuration.defectsList.defectsLimit%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.filters.byCharacteristic": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.filters.byCharacteristic%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.filters.byLanguage": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.filters.byLanguage%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.filters.byPriority": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.filters.byPriority%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.filters.byFilePattern": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.defectsList.filters.byFilePattern%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.order.by": {
+          "type": "string",
+          "enum": [
+            "Priority",
+            "Effort"
+          ],
+          "default": "Priority",
+          "description": "%configuration.defectsList.order.by%",
+          "scope": "window"
+        },
+        "kiuwan.defectsList.order.direction": {
+          "type": "string",
+          "enum": [
+            "Ascending",
+            "Descending"
+          ],
+          "default": "Descending",
+          "description": "%configuration.defectsList.order.direction%",
+          "scope": "window"
+        },
+        "jenkins.connectionSettings.area": {
+          "type": "string",
+          "default": "autospres",
+          "description": "%configuration.connectionSettings.area%",
+          "scope": "window"
+        },
+        "jenkins.connectionSettings.jobName": {
+          "type": "string",
+          "default": "front-tasaciones-mobile",
+          "description": "%configuration.connectionSettings.jobName%",
+          "scope": "window"
+        },
+        "jenkins.connectionSettings.buildNumber": {
+          "type": "number",
+          "default": 929,
+          "description": "%configuration.connectionSettings.buildNumber%",
+          "scope": "window"
+        },
+        "git.connectionSettings.jira": {
+          "type": "string",
+          "default": "",
+          "description": "Nombre de la tarjeta de jira asociada."
+        },
+        "git.connectionSettings.gitRepoUrl": {
+          "type": "string",
+          "default": "https://git.mutua.es",
+          "description": "URL del repositorio Git remoto."
+        },
+        "git.connectionSettings.gitUsername": {
+          "type": "string",
+          "default": "gcobe1f",
+          "description": "Nombre de usuario para conectarse al repositorio Git."
+        },
+        "git.connectionSettings.gitToken": {
+          "type": "string",
+          "default": "",
+          "description": "Token de acceso personal (PAT) para conectarse al repositorio Git."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+  },
+  "dependencies": {
+    "@types/async-lock": "^1.1.1",
+    "@types/bluebird": "*",
+    "@types/node-rsa": "^1.0.0",
+    "@types/request": "*",
+    "acorn": "^8.14.0",
+    "async-lock": "^1.1.4",
+    "bluebird": "^3.5.0",
+    "immutable": "^4.0.0-rc.12",
+    "java-parser": "^2.3.2",
+    "k4d-vscode": "file:",
+    "node-rsa": "^1.0.3",
+    "request": "^2.81.0",
+    "ts-log-debug": "^4.0.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^5.2.5",
+    "@types/node": "^10.12.0",
+    "typescript": "^2.9.2",
+    "vscode": "^1.1.21"
+  }
+}

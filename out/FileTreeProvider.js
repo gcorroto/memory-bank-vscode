@@ -16,14 +16,13 @@ const { FileTreeService } = require('./utils/FileTreeService');
 
 /**
  * Provider for the file tree view that shows project structure
- * This is the renamed and refactored version of the original CoverageDefectsProvider
- * that now works with the local file system instead of Kiuwan/Jenkins
  */
 class CoverageDefectsProvider {
 	_onDidChangeTreeData = new vscode.EventEmitter();
 	_onFileSelected = new vscode.EventEmitter();
 	onFileSelected = this._onFileSelected.event;
 	onDidChangeTreeData = this._onDidChangeTreeData.event;
+	coverageTreeItems = new Map();
 	logger;
 	fileTreeService;
 
