@@ -22,7 +22,7 @@
   "activationEvents": [
     "*"
   ],
-  "main": "./out/new-extension",
+  "main": "./out/extension",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
