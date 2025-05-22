@@ -22,6 +22,13 @@ const CoverageDetailsProvider_1 = require("./CoverageDetailsProvider");
 const Utils = require("./utils/utils");
 const { FileTreeService } = require('./utils/FileTreeService');
 
+// Import our new services
+const openaiService = require('./services/openaiService');
+const vectraService = require('./services/vectraService');
+const ragService = require('./services/ragService');
+const configManager = require('./utils/configManager');
+const commands = require('./services/commands');
+
 // Create logger
 const logger = vscode.window.createOutputChannel('Grec0AI For Developers');
 
@@ -61,13 +68,16 @@ function activate(context) {
 	disposable = vscode.commands.registerCommand('grec0ai.automaticTest', automaticTest);
 	context.subscriptions.push(disposable);
 	
-	// Explanation command
-	disposable = vscode.commands.registerCommand('grec0ai.explain', explainCode);
-	context.subscriptions.push(disposable);
+	// Register our new commands for OpenAI and Vectra integration
+	commands.registerCommands(context);
 	
-	// Fix command
-	disposable = vscode.commands.registerCommand('grec0ai.fix', fixWithAI);
-	context.subscriptions.push(disposable);
+	// Initialize OpenAI service if API key is configured
+	if (configManager.isConfigComplete()) {
+		openaiService.initialize();
+		logger.appendLine('OpenAI service initialized.');
+	} else {
+		logger.appendLine('OpenAI API key not configured. Use "Configure OpenAI API Key" command to set it up.');
+	}
 }
 exports.activate = activate;
 
@@ -128,6 +138,20 @@ function openFileAtLine(element) {
 // Automatic test generation
 async function automaticTest(reasoning) {
 	try {
+		// Check if OpenAI API key is configured
+		if (!configManager.isConfigComplete()) {
+			const configureNow = await vscode.window.showInformationMessage(
+				'OpenAI API key is required for test generation. Configure it now?',
+				'Yes', 'No'
+			);
+			
+			if (configureNow === 'Yes') {
+				await commands.configureOpenAIApiKey();
+			} else {
+				return;
+			}
+		}
+		
 		// Ask user for model type if not specified
 		if (!reasoning) {
 			const model = await vscode.window.showInformationMessage(
@@ -194,6 +218,12 @@ async function automaticTest(reasoning) {
 			const testFilePath = file.path.replace(/\.([jt]s)$/, '.spec.$1');
 			
 			try {
+				// Initialize Vectra for RAG if not already initialized
+				if (!await vectraService.initialize()) {
+					vscode.window.showInformationMessage('Initializing RAG service...');
+					await vectraService.initialize();
+				}
+				
 				// Generate and process test using our helper functions
 				await openTestContainers(file.path, testFilePath, null, true, reasoning);
 			} catch (error) {
@@ -205,210 +235,6 @@ async function automaticTest(reasoning) {
 		vscode.window.showInformationMessage(`Automatic test completed for ${files.length} files.`);
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error in automaticTest: ${error.message}`);
-		logger.appendLine(`Error: ${error.message}`);
-	}
-}
-
-// Explain code using AI
-async function explainCode() {
-	try {
-		// Get active editor
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			vscode.window.showInformationMessage("No file is currently open to explain.");
-			return;
-		}
-		
-		// Get selected text or entire document
-		const selection = editor.selection;
-		const text = selection.isEmpty ? 
-			editor.document.getText() : 
-			editor.document.getText(selection);
-		
-		if (!text) {
-			vscode.window.showInformationMessage("Nothing to explain. Please select some code or open a file.");
-			return;
-		}
-		
-		vscode.window.showInformationMessage("Generating explanation...");
-		
-		// Get additional instructions
-		const instructions = await vscode.window.showInputBox({
-			placeHolder: 'Enter any additional instructions for the explanation',
-			prompt: 'Additional Instructions',
-		});
-		
-		// Call API to explain
-		const filePath = editor.document.uri.fsPath;
-		const fileName = path.basename(filePath);
-		
-		// Prepare data for the API
-		let bodyToIa = {
-			"file": {
-				"name": fileName,
-				"content": text
-			},
-			"explanation": {
-				"instructions": instructions || "Explain this code clearly"
-			}
-		};
-		
-		// Show progress indicator during API call
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: "Generating explanation with AI...",
-			cancellable: true
-		}, async (progress, token) => {
-			token.onCancellationRequested(() => {
-				vscode.window.showWarningMessage("Operation was cancelled.");
-			});
-			
-			try {
-				// This is a placeholder - in a real implementation, 
-				// you would make an API call to an AI service
-				// For now, we'll just create a simple explanation
-				
-				// Simulate API delay
-				await new Promise(resolve => setTimeout(resolve, 2000));
-				
-				// Generate a simple explanation (would be from AI in real implementation)
-				const explanation = generateSimpleExplanation(text);
-				
-				// Update details view with explanation
-				coverageDetailsProvider.updateDetails(explanation);
-				
-				// Show success message
-				vscode.window.showInformationMessage("Explanation generated successfully.");
-			} catch (error) {
-				vscode.window.showErrorMessage(`Error generating explanation: ${error.message}`);
-				logger.appendLine(`Error: ${error.message}`);
-			}
-		});
-	} catch (error) {
-		vscode.window.showErrorMessage(`Error explaining code: ${error.message}`);
-		logger.appendLine(`Error: ${error.message}`);
-	}
-}
-
-// Helper function to generate a simple code explanation
-function generateSimpleExplanation(code) {
-	// Count lines, variables, and functions as a simple analysis
-	const lines = code.split('\n');
-	const varMatches = code.match(/let|const|var/g) || [];
-	const funcMatches = code.match(/function|=>/g) || [];
-	
-	return `
-# Code Analysis 
-
-This code consists of ${lines.length} lines, with approximately ${varMatches.length} variables and ${funcMatches.length} function-related elements.
-
-## Overview
-
-This appears to be a JavaScript/TypeScript module that handles some functionality within the codebase.
-
-## Structure
-
-The code is structured with several functions and variables that work together to implement its functionality.
-
-## Key Components
-
-- Variables: The code defines various variables to store state and data
-- Functions: Several functions handle different aspects of the code's behavior
-- Logic: The main logic appears to revolve around processing data and handling user interactions
-
-## Recommendations
-
-- Consider adding more comments to clarify complex sections
-- Look for opportunities to break down large functions into smaller ones
-- Ensure proper error handling throughout the code
-`;
-}
-
-// Fix code with AI
-async function fixWithAI() {
-	try {
-		// Get active editor
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			vscode.window.showInformationMessage("No file is currently open to fix.");
-			return;
-		}
-		
-		// Get selected text or entire document
-		const selection = editor.selection;
-		const text = selection.isEmpty ? 
-			editor.document.getText() : 
-			editor.document.getText(selection);
-		
-		if (!text) {
-			vscode.window.showInformationMessage("Nothing to fix. Please select some code or open a file.");
-			return;
-		}
-		
-		vscode.window.showInformationMessage("Analyzing code for issues...");
-		
-		// Get user's description of the issue
-		const userDescription = await vscode.window.showInputBox({
-			placeHolder: 'Describe the issue to fix (e.g., "Fix performance issue in the loop")',
-			prompt: 'Issue Description',
-		});
-		
-		if (!userDescription) {
-			vscode.window.showInformationMessage("Operation cancelled. Please provide an issue description.");
-			return;
-		}
-		
-		// Show progress indicator during analysis and fix
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: "Analyzing and fixing code with AI...",
-			cancellable: true
-		}, async (progress, token) => {
-			token.onCancellationRequested(() => {
-				vscode.window.showWarningMessage("Operation was cancelled.");
-			});
-			
-			try {
-				// This is a placeholder - in a real implementation, 
-				// you would make an API call to an AI service
-				// For now, we'll simulate a fix
-				
-				// Simulate API delay
-				await new Promise(resolve => setTimeout(resolve, 2500));
-				
-				// Generate explanation of the fix
-				const fixExplanation = `
-# Code Fix Applied
-
-## Issue Description
-${userDescription}
-
-## Analysis
-After analyzing the code, I've identified potential areas for improvement related to your issue.
-
-## Changes Made
-- Identified problematic code patterns
-- Applied best practices to address the issue
-- Optimized the relevant code sections
-
-## Recommendations
-- Review the changes to ensure they fully address your needs
-- Consider adding tests to verify the fix
-- Monitor performance to confirm improvement
-`;
-				
-				// Update details view with explanation
-				coverageDetailsProvider.updateDetails(fixExplanation);
-				
-				// Show success message
-				vscode.window.showInformationMessage("Code fix analysis completed. See the details panel for more information.");
-			} catch (error) {
-				vscode.window.showErrorMessage(`Error fixing code: ${error.message}`);
-				logger.appendLine(`Error: ${error.message}`);
-			}
-		});
-	} catch (error) {
-		vscode.window.showErrorMessage(`Error in fixWithAI: ${error.message}`);
 		logger.appendLine(`Error: ${error.message}`);
 	}
 }
@@ -495,17 +321,14 @@ function testWithGrec0AI(pathFinal, pathTestFinal, reasoning, error, auto = fals
 function callGrec0AI(pathFinal, pathTestFinal, instructions, error, reasoning, auto = false) {
 	return new Promise((resolve, reject) => {
 		try {
-			// In a real implementation, this would call an AI API
-			// For now, we'll simulate test generation
-			
 			// Show progress indicator during test generation
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-				title: "Generating tests with AI...",
+				title: "Generando tests con IA...",
 				cancellable: true
 			}, async (progress, token) => {
 				token.onCancellationRequested(() => {
-					vscode.window.showWarningMessage("Operation was cancelled.");
+					vscode.window.showWarningMessage("Operación cancelada.");
 				});
 				
 				try {
@@ -516,11 +339,105 @@ function callGrec0AI(pathFinal, pathTestFinal, instructions, error, reasoning, a
 					const testContent = fs.existsSync(pathTestFinal) ? 
 						await fs.promises.readFile(pathTestFinal, 'utf8') : '';
 					
-					// Simulate API delay
-					await new Promise(resolve => setTimeout(resolve, 3000));
+					// Get file extension and determine language
+					const extension = path.extname(pathFinal).substring(1);
+					const language = extension === 'ts' ? 'typescript' : 'javascript';
 					
-					// Generate simple test (in real implementation, this would come from AI)
-					const generatedTest = generateSimpleTest(pathFinal, sourceContent, reasoning);
+					// Determine test framework from configuration
+					const config = vscode.workspace.getConfiguration('grec0ai');
+					const framework = config.get('test.framework') || 'jasmine';
+					
+					progress.report({ message: 'Inicializando servicios de IA...' });
+					
+					// Ensure RAG service is initialized
+					if (!await ragService.initialize()) {
+						// If RAG initialization fails, try to use OpenAI directly
+						if (!openaiService.initialize()) {
+							throw new Error('No se pudo inicializar los servicios de IA. Por favor, configure la clave API de OpenAI.');
+						}
+					}
+					
+					progress.report({ message: 'Generando tests...' });
+					
+					let generatedTest;
+					
+					// If error is provided, use it for context in regeneration
+					if (error) {
+						const errorContext = `
+El test anterior falló con el error: ${error}
+Contenido del test anterior: 
+\`\`\`${language}
+${testContent}
+\`\`\`
+
+Por favor, regenera el test corrigiendo el error mencionado.
+`;
+						
+						// Try to use RAG service first
+						try {
+							generatedTest = await ragService.generateTests(
+								sourceContent, 
+								pathFinal, 
+								language, 
+								framework, 
+								5, // contextCount
+								configManager.getOpenAIModel()
+							);
+						} catch (ragError) {
+							logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
+							
+							// Fallback to direct OpenAI if RAG fails
+							generatedTest = await openaiService.generateTests(
+								sourceContent,
+								language,
+								framework,
+								configManager.getOpenAIModel()
+							);
+						}
+					} else {
+						// Generate tests with custom instructions if provided
+						let additionalInstructions = '';
+						if (instructions) {
+							additionalInstructions = `\nInstrucciones adicionales: ${instructions}`;
+						}
+						
+						// Adjust based on reasoning level
+						let reasoningContext = '';
+						if (reasoning) {
+							if (reasoning === 'high') {
+								reasoningContext = 'Utiliza un enfoque muy detallado y exhaustivo, con pruebas para todos los casos posibles.';
+							} else if (reasoning === 'medium') {
+								reasoningContext = 'Utiliza un enfoque equilibrado con buena cobertura de los casos más importantes.';
+							} else if (reasoning === 'low') {
+								reasoningContext = 'Utiliza un enfoque simple que cubra la funcionalidad básica.';
+							}
+						}
+						
+						// Try to use RAG service first
+						try {
+							generatedTest = await ragService.generateTests(
+								sourceContent, 
+								pathFinal, 
+								language, 
+								framework, 
+								5, // contextCount
+								configManager.getOpenAIModel()
+							);
+						} catch (ragError) {
+							logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
+							
+							// Fallback to direct OpenAI if RAG fails
+							generatedTest = await openaiService.generateTests(
+								sourceContent,
+								language,
+								framework,
+								configManager.getOpenAIModel(),
+								{
+									instructions: `Genera tests unitarios completos para este código. ${reasoningContext} ${additionalInstructions}`
+								}
+							);
+						}
+					}
 					
 					// Create directories if needed
 					const dir = path.dirname(pathTestFinal);
@@ -542,20 +459,20 @@ function callGrec0AI(pathFinal, pathTestFinal, instructions, error, reasoning, a
 					const execResult = await simulateTestExecution(pathFinal, pathTestFinal);
 					
 					if (execResult.success) {
-						vscode.window.showInformationMessage(`Test executed successfully with ${execResult.coverage}% coverage.`);
-						resolve(`Test executed successfully with ${execResult.coverage}% coverage.`);
+						vscode.window.showInformationMessage(`Test ejecutado correctamente con ${execResult.coverage}% de cobertura.`);
+						resolve(`Test ejecutado correctamente con ${execResult.coverage}% de cobertura.`);
 					} else {
 						// Handle test failure
-						vscode.window.showInformationMessage(`Test failed: ${execResult.error}`);
+						vscode.window.showInformationMessage(`Test fallido: ${execResult.error}`);
 						
 						if (!auto) {
 							// For interactive mode, ask to regenerate
 							const regenerate = await vscode.window.showInformationMessage(
-								`Test execution failed. Regenerate?`, 
-								'Yes', 'No'
+								`La ejecución del test falló. ¿Regenerar?`, 
+								'Sí', 'No'
 							);
 							
-							if (regenerate === 'Yes') {
+							if (regenerate === 'Sí') {
 								openTestContainers(pathFinal, pathTestFinal, execResult.error, auto, reasoning)
 								.then((response) => {
 									resolve(response);
@@ -564,11 +481,11 @@ function callGrec0AI(pathFinal, pathTestFinal, instructions, error, reasoning, a
 									reject(error);
 								});
 							} else {
-								reject(`Test execution failed: ${execResult.error}`);
+								reject(`Ejecución del test fallida: ${execResult.error}`);
 							}
 						} else {
 							// For automatic mode, retry once
-							vscode.window.showInformationMessage("Retrying test generation with error feedback...");
+							vscode.window.showInformationMessage("Reintentando la generación de test con retroalimentación del error...");
 							openTestContainers(pathFinal, pathTestFinal, execResult.error, auto, reasoning)
 							.then((response) => {
 								resolve(response);
@@ -579,16 +496,16 @@ function callGrec0AI(pathFinal, pathTestFinal, instructions, error, reasoning, a
 						}
 					}
 				} catch (error) {
-					logger.appendLine(`[Error] Test generation failed: ${error.message}`);
+					logger.appendLine(`[Error] La generación de test falló: ${error.message}`);
 					if (!auto) {
 						await openTestFile(pathTestFinal);
 					}
-					reject(`Test generation failed: ${error.message}`);
+					reject(`La generación de test falló: ${error.message}`);
 				}
 			});
 		} catch (error) {
-			logger.appendLine(`[Error] Test generation failed: ${error.message}`);
-			reject(`Test generation failed: ${error.message}`);
+			logger.appendLine(`[Error] La generación de test falló: ${error.message}`);
+			reject(`La generación de test falló: ${error.message}`);
 		}
 	});
 }

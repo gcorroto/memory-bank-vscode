@@ -100,6 +100,16 @@
         "command": "grec0ai.fix",
         "title": "Fix with Grec0AI",
         "category": "Grec0AI"
+      },
+      {
+        "command": "grec0ai.openai.configure",
+        "title": "Configure OpenAI API Key",
+        "category": "Grec0AI"
+      },
+      {
+        "command": "grec0ai.vectra.indexProject",
+        "title": "Index Project for RAG",
+        "category": "Grec0AI"
       }
     ],
     "menus": {
@@ -189,6 +199,41 @@
           "description": "Minimum coverage threshold (percentage)",
           "scope": "application"
         },
+        "grec0ai.openai.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API Key para acceder a los servicios de IA",
+          "scope": "application"
+        },
+        "grec0ai.openai.model": {
+          "type": "string",
+          "enum": [
+            "gpt-4o",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo"
+          ],
+          "default": "gpt-4o",
+          "description": "Modelo de OpenAI a utilizar para las consultas",
+          "scope": "application"
+        },
+        "grec0ai.vectra.indexPath": {
+          "type": "string",
+          "default": "",
+          "description": "Ruta personalizada para el índice Vectra (por defecto: .grec0ai/vectra-index)",
+          "scope": "application"
+        },
+        "grec0ai.rag.similarityThreshold": {
+          "type": "number",
+          "default": 0.7,
+          "description": "Umbral de similitud para consultas RAG (entre 0 y 1)",
+          "scope": "application"
+        },
+        "grec0ai.rag.contextCount": {
+          "type": "number",
+          "default": 3,
+          "description": "Número de fragmentos de contexto a recuperar para RAG",
+          "scope": "application"
+        },
         "git.connectionSettings.jira": {
           "type": "string",
           "default": "",
@@ -225,10 +270,13 @@
     "acorn": "^8.14.0",
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
+    "grec0ai-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",
+    "openai": "^4.103.0",
     "request": "^2.81.0",
     "ts-log-debug": "^4.0.4",
+    "vectra": "^0.11.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
