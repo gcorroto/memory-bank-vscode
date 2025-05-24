@@ -19,7 +19,7 @@ Esa *prompt* se forma combinando varias "piezas" (bloques) y respetando priorida
 └───────────┘
      ↓ concat
 ┌───────────┐
-│Rules      │  ←  .cursor/rules completas (si existen)
+│Rules      │  ←  .cursor/rules completas o reglas de @rules.mdc que apliquen
 └───────────┘
      ↓ concat
 ┌───────────┐
@@ -35,7 +35,7 @@ Prioridad de interpretación dentro del LLM: **Rules > System > Herramientas > D
 |-------|------------|------------------|
 | **Bloque‑1** (system) | `/resources/system_prompt.md` | Siempre, al principio. |
 | **Bloque‑2** (tools)  | `/resources/tools_prompt.md`  | Siempre, tras el system. |
-| **Rules**             | `.cursor/rules` (o `@rules.mdc`) | Siempre que exista ese fichero en el workspace. |
+| **Rules**             | `.cursor/rules` (legacy) o `@rules.mdc` o `.cursor/rules.d/*.mdc` | Reglas que apliquen según su metadata y el archivo actual. |
 | **Documentación adjunta** | Archivos que el usuario pegue o suba en la sesión | **Sólo** los fragmentos que el motor RAG devuelva como relevantes pa' la pregunta actual. |
 
 ## 3. Especificación del **PromptComposer**
@@ -47,6 +47,7 @@ export interface PromptComposerInput {
   userQuery: string;          // mensaje del usuario
   workspacePath: string;      // raíz del proyecto abierto
   attachedDocs: DocChunk[];   // output del motor RAG (puede ir vacío)
+  currentFilePath?: string;   // ruta del archivo actual (opcional, para matching de globs)
 }
 
 export function buildPrompt(input: PromptComposerInput): string;
