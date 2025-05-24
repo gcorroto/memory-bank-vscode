@@ -8,8 +8,9 @@ Grec0AI For Developers es una extensión avanzada para Visual Studio Code que in
 * **Resolución inteligente de errores**
 * **Análisis de calidad de código**
 * **Mejora de cobertura de código**
+* **Arquitectura basada en agentes inteligentes**
 
-La extensión trabaja directamente con el sistema de archivos local para proporcionar un flujo completo de desarrollo de alta calidad.
+La extensión trabaja directamente con el sistema de archivos local para proporcionar un flujo completo de desarrollo de alta calidad, utilizando una arquitectura avanzada de agentes IA para descomponer y resolver tareas complejas.
 
 ![Screenshot de la extensión](https://github.com/Grec0AI/grec0ai-vscode/raw/master/resources/grec0ai-vscode-screenshot.png)
 
@@ -113,6 +114,37 @@ Muestra información detallada sobre la cobertura de código de los archivos sel
 
 Información detallada sobre el elemento seleccionado y opciones para resolverlo automáticamente.
 
+## Arquitectura Basada en Agentes (II-Agent)
+
+Grec0AI For Developers implementa una arquitectura avanzada basada en agentes siguiendo los principios de II-Agent, que permite al sistema planificar, razonar y descomponer tareas complejas manteniendo conciencia del contexto.
+
+### Componentes Principales
+
+#### Núcleo del Agente
+* **Agent Core**: Orquesta la planificación, razonamiento y ejecución de herramientas
+* **Context Manager**: Gestiona tokens y mantiene el historial de conversaciones
+* **Tool Manager**: Selecciona y ejecuta herramientas basadas en la tarea
+* **Workspace Manager**: Proporciona espacios de trabajo aislados para cada sesión
+* **Database Manager**: Persiste eventos e historiales para trazabilidad
+
+#### Sistema de Herramientas Modulares
+* **Herramientas de Sistema de Archivos**: `ReadFileTool` y `WriteFileTool` para operaciones de archivos
+* **Herramientas de Terminal**: `ExecuteCommandTool` para ejecución de comandos
+* **Herramientas de IA**: `GenerateTestTool`, `FixErrorTool`, `AnalyzeCodeTool`
+
+#### Observabilidad
+* **AgentLogsView**: Visualización del razonamiento del agente
+* **Logs del Agente**: Comando `grec0ai.agent.showLogs` para ver los logs detallados
+* **Registro de Planes**: Documentación de pasos de planificación, ejecución y reflexión
+
+### Cómo Funciona
+1. El usuario emite una solicitud a través de un comando
+2. El agente planifica la ejecución dividiéndola en pasos
+3. Cada paso selecciona la herramienta apropiada con los parámetros necesarios
+4. Las herramientas se ejecutan y los resultados se añaden al contexto
+5. El agente reflexiona sobre la ejecución y proporciona retroalimentación
+6. Los logs y el estado se mantienen para su inspección
+
 ## Comandos Útiles
 
 * `Grec0AI: Automatic Test`: Inicia la generación automática de tests para una carpeta.
@@ -120,6 +152,8 @@ Información detallada sobre el elemento seleccionado y opciones para resolverlo
 * `Grec0AI: Fix with Grec0AI`: Solicita a la IA que corrija un defecto o mejore el código seleccionado.
 * `Grec0AI: Explain Code`: Solicita a la IA que explique el código seleccionado.
 * `Grec0AI: Preguntar a MacGyver`: Realiza consultas al asistente "MacGyver" con estilo andaluz para resolver dudas de programación.
+* `Grec0AI: Agent Show Logs`: Muestra los logs detallados del agente y su razonamiento.
+* `Grec0AI: Agent Execute Task`: Ejecuta una tarea compleja a través del agente inteligente.
 
 ## Soporte y Licencia
 
