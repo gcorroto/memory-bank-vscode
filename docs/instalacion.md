@@ -65,7 +65,7 @@ cd autofixer_extension
 npm install
 ```
 
-Este paso es **crucial** ya que instala todos los módulos necesarios como 'ws' (WebSocket) que son requeridos para el funcionamiento de la extensión.
+Este paso es **crucial** ya que instala todos los módulos necesarios como 'ws' (WebSocket), 'openai', 'vectra' y otras bibliotecas que son requeridas para el funcionamiento de la extensión. Sin estas dependencias, la extensión mostrará errores "Cannot find module" al activarse.
 
 5. Genera el archivo VSIX:
 
@@ -215,16 +215,29 @@ Si encuentras problemas durante la instalación:
 3. Revisa los logs de VS Code para identificar posibles errores
 4. Intenta reinstalar la extensión
 
-### Error "Cannot find module 'ws'"
+### Error "Cannot find module 'ws'", 'openai', o otros módulos
 
-Si encuentras un error que menciona "Cannot find module 'ws'" al activar la extensión:
+Si encuentras errores que mencionan "Cannot find module X" (como ws, openai, vectra u otros) al activar la extensión:
 
 1. Este error ocurre cuando las dependencias no se han instalado correctamente
 2. Asegúrate de ejecutar `npm install` en el directorio de la extensión antes de empaquetar o usar la extensión
-3. Si instalaste la extensión desde un archivo VSIX, es posible que necesites instalar la dependencia manualmente:
+3. Si instalaste la extensión desde un archivo VSIX, es posible que necesites instalar las dependencias manualmente:
    ```bash
+   # Para el módulo ws:
    cd ~/.vscode/extensions/grec0ai.grec0ai-vscode-3.0.0
    npm install ws
+   
+   # Para el módulo openai:
+   cd ~/.vscode/extensions/grec0ai.grec0ai-vscode-3.0.0
+   npm install openai
+   
+   # Para el módulo vectra:
+   cd ~/.vscode/extensions/grec0ai.grec0ai-vscode-3.0.0
+   npm install vectra
+   
+   # O para instalar todas las dependencias a la vez:
+   cd ~/.vscode/extensions/grec0ai.grec0ai-vscode-3.0.0
+   npm install
    ```
 4. Reinicia VS Code después de instalar las dependencias
 

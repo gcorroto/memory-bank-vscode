@@ -3,7 +3,13 @@
  * Proporciona métodos para generar texto, obtener embeddings y manejar chat completions
  */
 
-const OpenAI = require('openai');
+let OpenAI;
+try {
+    OpenAI = require('openai');
+} catch (error) {
+    // Handle missing openai module gracefully
+    console.error('The "openai" module is missing. Please run "npm install" in the extension directory.');
+}
 const vscode = require('vscode');
 
 class OpenAIService {
@@ -18,6 +24,12 @@ class OpenAIService {
      */
     initialize() {
         try {
+            // Check if OpenAI module is available
+            if (!OpenAI) {
+                vscode.window.showErrorMessage('El módulo OpenAI no está instalado. Por favor, ejecute "npm install" en el directorio de la extensión.');
+                return false;
+            }
+
             // Obtener la clave API de la configuración de VS Code
             const config = vscode.workspace.getConfiguration('grec0ai');
             const apiKey = config.get('openai.apiKey');

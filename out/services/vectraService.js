@@ -3,7 +3,14 @@
  * Proporciona métodos para indexar código fuente y realizar consultas semánticas
  */
 
-const { LocalIndex } = require('vectra');
+let LocalIndex;
+try {
+    const vectra = require('vectra');
+    LocalIndex = vectra.LocalIndex;
+} catch (error) {
+    // Handle missing vectra module gracefully
+    console.error('The "vectra" module is missing. Please run "npm install" in the extension directory.');
+}
 const path = require('path');
 const fs = require('fs');
 const vscode = require('vscode');
@@ -23,6 +30,12 @@ class VectraService {
      */
     async initialize(workspacePath) {
         try {
+            // Check if Vectra module is available
+            if (!LocalIndex) {
+                vscode.window.showErrorMessage('El módulo Vectra no está instalado. Por favor, ejecute "npm install" en el directorio de la extensión.');
+                return false;
+            }
+
             // Determinar la ruta del índice
             const config = vscode.workspace.getConfiguration('grec0ai');
             
