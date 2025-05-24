@@ -48,6 +48,7 @@ const agentSystem = require('./agent');
 
 // Global agent instance
 let mainAgent = null;
+global.mainAgent = null;
 
 // This method is called when the extension is activated
 function activate(context) {
@@ -108,8 +109,17 @@ async function initializeAgentSystem(context) {
 		// Create and initialize the main agent
 		mainAgent = await agentSystem.createAgent('Grec0AI', context);
 		
+		// Make it globally accessible
+		global.mainAgent = mainAgent;
+		
 		// Register agent-based command handlers
 		registerAgentCommands(context);
+		
+		// Register logs view command
+		let disposable = vscode.commands.registerCommand('grec0ai.agent.showLogs', () => {
+			showAgentLogs(context);
+		});
+		context.subscriptions.push(disposable);
 		
 		logger.appendLine('Grec0AI Agent System initialized successfully');
 	} catch (error) {
@@ -148,6 +158,25 @@ function registerAgentCommands(context) {
 	
 	disposable = vscode.commands.registerCommand('grec0ai.agent.explain', explainCodeCmd);
 	context.subscriptions.push(disposable);
+}
+
+/**
+ * Show agent logs view
+ * @param {vscode.ExtensionContext} context - Extension context
+ */
+function showAgentLogs(context) {
+	try {
+		const AgentLogsView = require('./agent/ui/logsView');
+		
+		if (!global.agentLogsView) {
+			global.agentLogsView = new AgentLogsView(context);
+		}
+		
+		global.agentLogsView.show();
+	} catch (error) {
+		logger.appendLine(`Error showing agent logs: ${error.message}`);
+		vscode.window.showErrorMessage('Failed to show agent logs.');
+	}
 }
 exports.activate = activate;
 
@@ -841,6 +870,7 @@ function deactivate() {
 				logger.info('Disposing agent resources...');
 				mainAgent.dispose();
 				mainAgent = null;
+				global.mainAgent = null;
 			}
 		}
 		catch (error) {

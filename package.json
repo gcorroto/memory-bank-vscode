@@ -135,6 +135,11 @@
         "command": "grec0ai.agent.explain",
         "title": "Explain Code (Agent)",
         "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.agent.showLogs",
+        "title": "Show Agent Logs",
+        "category": "Grec0AI Agent"
       }
     ],
     "menus": {

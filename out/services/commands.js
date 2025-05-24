@@ -177,6 +177,13 @@ async function indexProjectForRAG() {
  */
 async function explainCode() {
     try {
+        // Check if agent system is available
+        const agentSystem = require('../agent');
+        if (global.mainAgent) {
+            return await explainCodeWithAgent();
+        }
+        
+        // Legacy implementation
         // Obtener editor activo
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -273,11 +280,151 @@ async function explainCode() {
 }
 
 /**
+ * Explain code using the agent system
+ * @returns {Promise<void>}
+ */
+async function explainCodeWithAgent() {
+    try {
+        // Obtener editor activo
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            throw new Error('No hay editor activo');
+        }
+        
+        // Obtener texto seleccionado
+        const selection = editor.selection;
+        const selectedText = editor.document.getText(selection);
+        
+        if (!selectedText) {
+            throw new Error('No hay texto seleccionado');
+        }
+        
+        // Obtener lenguaje
+        const filePath = editor.document.uri.fsPath;
+        const extension = getFileExtension(filePath);
+        const language = mapExtensionToLanguage(extension);
+        
+        // Show progress
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Analyzing code with Grec0AI Agent...",
+            cancellable: true
+        }, async (progress, token) => {
+            // Create context for the agent
+            const context = {
+                taskType: 'explain',
+                filePath: filePath,
+                selectedText: selectedText,
+                language: language
+            };
+            
+            // Let the agent handle the task
+            const userRequest = `Explain how this ${language} code works: ${selectedText.substring(0, 100)}...`;
+            
+            progress.report({ message: 'Analyzing code...' });
+            
+            const result = await global.mainAgent.handleUserInput(userRequest, context);
+            
+            // Show results in webview panel
+            const panel = vscode.window.createWebviewPanel(
+                'grec0aiAgentExplanation',
+                'Code Explanation - Grec0AI Agent',
+                vscode.ViewColumn.Beside,
+                {
+                    enableScripts: true,
+                    retainContextWhenHidden: true
+                }
+            );
+            
+            // Format agent results for display
+            let explanationContent = '';
+            
+            if (result.success) {
+                // Extract explanation from successful tool executions
+                const explanationResults = result.results.filter(r => r.success && r.result && r.result.explanation);
+                
+                if (explanationResults.length > 0) {
+                    explanationContent = explanationResults[0].result.explanation || 
+                                        JSON.stringify(explanationResults[0].result, null, 2);
+                } else {
+                    explanationContent = result.reflection ? 
+                        result.reflection.message : 
+                        'Analysis completed but no detailed explanation was generated.';
+                }
+            } else {
+                explanationContent = `Analysis failed: ${result.error || 'Unknown error'}`;
+            }
+            
+            panel.webview.html = `
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Code Explanation - Grec0AI Agent</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                            line-height: 1.6;
+                            padding: 20px;
+                        }
+                        h1 {
+                            color: #007acc;
+                            border-bottom: 1px solid #eee;
+                            padding-bottom: 10px;
+                        }
+                        pre {
+                            background-color: #f5f5f5;
+                            padding: 10px;
+                            border-radius: 5px;
+                            overflow: auto;
+                        }
+                        code {
+                            font-family: 'Courier New', Courier, monospace;
+                        }
+                        .agent-workflow {
+                            background-color: #f9f9f9;
+                            border-left: 3px solid #007acc;
+                            padding: 10px;
+                            margin: 20px 0;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>Code Explanation</h1>
+                    <pre><code>${selectedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+                    
+                    <div class="agent-workflow">
+                        <strong>Grec0AI Agent Analysis</strong><br>
+                        Status: ${result.success ? 'Success' : 'Failed'}<br>
+                        ${result.reflection ? `Reflection: ${result.reflection.message}` : ''}
+                    </div>
+                    
+                    <div>${explanationContent.replace(/\n/g, '<br>').replace(/`{3}(\w*)\n([\s\S]*?)\n`{3}/g, '<pre><code>$2</code></pre>')}</div>
+                </body>
+                </html>
+            `;
+            
+            return result;
+        });
+    } catch (error) {
+        console.error('Error explaining code with agent:', error);
+        vscode.window.showErrorMessage(`Error explaining code: ${error.message}`);
+    }
+}
+
+/**
  * Comando para corregir código seleccionado
  * @returns {Promise<void>}
  */
 async function fixCode() {
     try {
+        // Check if agent system is available
+        if (global.mainAgent) {
+            return await fixCodeWithAgent();
+        }
+        
+        // Legacy implementation
         // Obtener editor activo
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -455,6 +602,216 @@ async function fixCode() {
     } catch (error) {
         console.error('Error al corregir código:', error);
         vscode.window.showErrorMessage(`Error al corregir código: ${error.message}`);
+    }
+}
+
+/**
+ * Fix code using the agent system
+ * @returns {Promise<void>}
+ */
+async function fixCodeWithAgent() {
+    try {
+        // Obtener editor activo
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            throw new Error('No hay editor activo');
+        }
+        
+        // Obtener texto seleccionado
+        const selection = editor.selection;
+        const selectedText = editor.document.getText(selection);
+        
+        if (!selectedText) {
+            throw new Error('No hay texto seleccionado');
+        }
+        
+        // Obtener lenguaje
+        const filePath = editor.document.uri.fsPath;
+        const extension = getFileExtension(filePath);
+        const language = mapExtensionToLanguage(extension);
+        
+        // Pedir al usuario que describa el problema
+        const problemDescription = await vscode.window.showInputBox({
+            prompt: 'Describe el problema que deseas corregir',
+            placeHolder: 'Ej: Hay un error en la función de ordenamiento...',
+            ignoreFocusOut: true
+        });
+        
+        if (!problemDescription) {
+            return; // Usuario canceló
+        }
+        
+        // Show progress
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Fixing code with Grec0AI Agent...",
+            cancellable: true
+        }, async (progress, token) => {
+            // Create context for the agent
+            const context = {
+                taskType: 'fixError',
+                filePath: filePath,
+                selectedText: selectedText,
+                language: language,
+                errorMessage: problemDescription
+            };
+            
+            // Let the agent handle the task
+            const userRequest = `Fix this error in the ${language} code: ${problemDescription}`;
+            
+            progress.report({ message: 'Analyzing problem...' });
+            
+            const result = await global.mainAgent.handleUserInput(userRequest, context);
+            
+            // Extract the fixed code from the result
+            let fixedCode = null;
+            let explanation = null;
+            
+            if (result.success) {
+                // Look for successful execution of FixErrorTool or similar
+                const fixResults = result.results.filter(r => 
+                    r.success && 
+                    r.result && 
+                    (r.result.fixedCode || r.result.solution)
+                );
+                
+                if (fixResults.length > 0) {
+                    fixedCode = fixResults[0].result.fixedCode || fixResults[0].result.solution;
+                    explanation = fixResults[0].result.explanation || 'Code fixed successfully.';
+                }
+            }
+            
+            // If we have a solution, ask user what to do
+            if (fixedCode) {
+                const action = await vscode.window.showInformationMessage(
+                    `Grec0AI Agent has found a solution`,
+                    'Apply Solution',
+                    'View Details',
+                    'Cancel'
+                );
+                
+                if (action === 'Apply Solution') {
+                    // Apply the solution
+                    editor.edit(editBuilder => {
+                        editBuilder.replace(selection, fixedCode);
+                    });
+                    
+                    vscode.window.showInformationMessage('Solution applied successfully.');
+                } else if (action === 'View Details') {
+                    // Show solution in a panel
+                    const panel = vscode.window.createWebviewPanel(
+                        'grec0aiAgentSolution',
+                        'Code Solution - Grec0AI Agent',
+                        vscode.ViewColumn.Beside,
+                        {
+                            enableScripts: true,
+                            retainContextWhenHidden: true
+                        }
+                    );
+                    
+                    panel.webview.html = `
+                        <!DOCTYPE html>
+                        <html lang="es">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>Code Solution - Grec0AI Agent</title>
+                            <style>
+                                body {
+                                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                                    line-height: 1.6;
+                                    padding: 20px;
+                                }
+                                h1, h2 {
+                                    color: #007acc;
+                                    border-bottom: 1px solid #eee;
+                                    padding-bottom: 10px;
+                                }
+                                pre {
+                                    background-color: #f5f5f5;
+                                    padding: 10px;
+                                    border-radius: 5px;
+                                    overflow: auto;
+                                }
+                                code {
+                                    font-family: 'Courier New', Courier, monospace;
+                                }
+                                .apply-button {
+                                    background-color: #007acc;
+                                    color: white;
+                                    border: none;
+                                    padding: 8px 16px;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    margin-top: 20px;
+                                }
+                                .agent-workflow {
+                                    background-color: #f9f9f9;
+                                    border-left: 3px solid #007acc;
+                                    padding: 10px;
+                                    margin: 20px 0;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Code Solution</h1>
+                            
+                            <div class="agent-workflow">
+                                <strong>Grec0AI Agent Analysis</strong><br>
+                                Status: ${result.success ? 'Success' : 'Failed'}<br>
+                                ${result.reflection ? `Reflection: ${result.reflection.message}` : ''}
+                            </div>
+                            
+                            <h2>Explanation</h2>
+                            <div class="explanation">${explanation ? explanation.replace(/\n/g, '<br>') : 'No detailed explanation available.'}</div>
+                            
+                            <h2>Original Code</h2>
+                            <pre><code>${selectedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+                            
+                            <h2>Fixed Code</h2>
+                            <pre><code>${fixedCode.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+                            
+                            <button class="apply-button" id="applyButton">Apply Solution</button>
+                            
+                            <script>
+                                const vscode = acquireVsCodeApi();
+                                document.getElementById('applyButton').addEventListener('click', () => {
+                                    vscode.postMessage({
+                                        command: 'applyFix',
+                                        text: ${JSON.stringify(fixedCode)}
+                                    });
+                                });
+                            </script>
+                        </body>
+                        </html>
+                    `;
+                    
+                    // Handle messages from webview
+                    panel.webview.onDidReceiveMessage(
+                        message => {
+                            switch (message.command) {
+                                case 'applyFix':
+                                    editor.edit(editBuilder => {
+                                        editBuilder.replace(selection, message.text);
+                                    });
+                                    vscode.window.showInformationMessage('Solution applied successfully.');
+                                    break;
+                            }
+                        },
+                        undefined,
+                        []
+                    );
+                }
+            } else {
+                // No solution found
+                vscode.window.showErrorMessage('Could not generate a solution for the problem.');
+            }
+            
+            return result;
+        });
+    } catch (error) {
+        console.error('Error fixing code with agent:', error);
+        vscode.window.showErrorMessage(`Error fixing code: ${error.message}`);
     }
 }
 

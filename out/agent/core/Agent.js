@@ -73,11 +73,16 @@ class Agent {
             // 2. Plan task using LLM
             const plan = await this.planTask(input, context);
             
-            // 3. Log the plan
+            // Log the plan
             this.logger.appendLine("Generated plan:");
             plan.steps.forEach((step, index) => {
                 this.logger.appendLine(`  ${index + 1}. ${step.description} [Tool: ${step.tool}]`);
             });
+            
+            // Add to logs view if available
+            if (global.agentLogsView) {
+                global.agentLogsView.addPlanLog(plan.steps);
+            }
             
             // 4. Execute each step in the plan
             const results = [];
@@ -111,6 +116,11 @@ class Agent {
                         step: step
                     });
                     
+                    // Add to logs view if available
+                    if (global.agentLogsView) {
+                        global.agentLogsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
+                    }
+                    
                     this.logger.appendLine(`Step completed: ${step.description}`);
                 } catch (error) {
                     this.logger.appendLine(`Error executing step: ${error.message}`);
@@ -127,6 +137,11 @@ class Agent {
                         error: error.message,
                         step: step
                     });
+                    
+                    // Add to logs view if available
+                    if (global.agentLogsView) {
+                        global.agentLogsView.addStepLog(step.description, step.tool, step.params, { error: error.message }, false);
+                    }
                     
                     // Optional: retry with modified instructions based on error
                     const shouldRetry = await this.shouldRetryStep(step, error);
@@ -158,6 +173,11 @@ class Agent {
             
             // 5. Final reflection on entire process
             const reflection = await this.reflectOnExecution(plan, results);
+            
+            // Add reflection to logs view
+            if (global.agentLogsView) {
+                global.agentLogsView.addReflectionLog(reflection);
+            }
             
             // 6. Save the event and results to database
             await this.databaseManager.saveEvent({
