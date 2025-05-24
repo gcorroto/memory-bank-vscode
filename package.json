@@ -279,6 +279,7 @@
     "acorn": "^8.14.0",
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
+    "gray-matter": "^4.0.3",
     "grec0ai-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",

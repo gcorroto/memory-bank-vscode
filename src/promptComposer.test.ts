@@ -8,6 +8,48 @@ import * as path from 'path';
 jest.mock('fs');
 jest.mock('vscode');
 
+// Mock gray-matter if it's being used
+jest.mock('gray-matter', () => {
+    return function(content: string) {
+        // Simple mock implementation that extracts frontmatter
+        const startPos = content.indexOf('---');
+        const endPos = content.indexOf('---', startPos + 3);
+        
+        // Extract content after frontmatter
+        const cleanContent = content.substring(endPos + 3).trim();
+        
+        // Extract and parse frontmatter
+        const frontmatter = content.substring(startPos + 3, endPos).trim();
+        const data: any = {};
+        
+        frontmatter.split('\n').forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || trimmedLine.startsWith('#')) {
+                return; // Skip empty lines and comments
+            }
+            
+            const colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex !== -1) {
+                const key = trimmedLine.substring(0, colonIndex).trim();
+                const value = trimmedLine.substring(colonIndex + 1).trim();
+                
+                if (key === 'globs') {
+                    data.globs = value;
+                } else if (key === 'alwaysApply') {
+                    data.alwaysApply = value.toLowerCase() === 'true';
+                } else if (key === 'description') {
+                    data.description = value;
+                }
+            }
+        });
+        
+        return {
+            content: cleanContent,
+            data: data
+        };
+    };
+}, { virtual: true });
+
 describe('PromptComposer', () => {
     const mockSystemPrompt = "Eres un asistente de código avanzao llamao MacGyver";
     const mockToolsPrompt = "## Herramientas pa' código";

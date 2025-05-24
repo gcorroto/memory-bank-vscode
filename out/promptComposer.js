@@ -10,20 +10,20 @@
  * 5. Dynamic documentation chunks from RAG
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildPrompt = buildPrompt;
-var fs = require("fs");
-var path = require("path");
-var vscode = require("vscode");
+const fs = require("fs");
+const path = require("path");
+const vscode = require("vscode");
 // Static prompt content (cached)
-var SYSTEM_PROMPT = null;
-var TOOLS_PROMPT = null;
+let SYSTEM_PROMPT = null;
+let TOOLS_PROMPT = null;
 /**
  * Parses frontmatter from a markdown-like file content
+ * Uses gray-matter library if available, otherwise falls back to custom parsing
  * @param content File content string
  * @returns Parsed rule with metadata and content
  */
 function parseFrontmatter(content) {
-    var defaultResult = {
+    const defaultResult = {
         metadata: {},
         content: content
     };
@@ -31,48 +31,79 @@ function parseFrontmatter(content) {
     if (!content.trimStart().startsWith('---')) {
         return defaultResult;
     }
-    // Find the second delimiter
-    var startPos = content.indexOf('---');
-    var endPos = content.indexOf('---', startPos + 3);
-    if (endPos === -1) {
-        return defaultResult;
-    }
-    // Extract frontmatter and content
-    var frontmatter = content.substring(startPos + 3, endPos).trim();
-    var cleanContent = content.substring(endPos + 3).trim();
-    // Parse frontmatter into key-value pairs
-    var metadata = {};
-    var lines = frontmatter.split('\n');
-    for (var _i = 0, lines_1 = lines; _i < lines_1.length; _i++) {
-        var line = lines_1[_i];
-        var trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith('#')) {
-            continue; // Skip empty lines and comments
+    try {
+        // Try to use gray-matter if available
+        // Using require instead of import for dynamic loading
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const matter = require('gray-matter');
+        const parsed = matter(content);
+        // Extract relevant metadata fields
+        const metadata = {};
+        if (parsed.data.description) {
+            metadata.description = parsed.data.description;
         }
-        var colonIndex = trimmedLine.indexOf(':');
-        if (colonIndex !== -1) {
-            var key = trimmedLine.substring(0, colonIndex).trim();
-            var value = trimmedLine.substring(colonIndex + 1).trim();
-            // Parse specific types
-            if (key === 'globs') {
-                // Parse array value
-                if (value) {
-                    metadata.globs = value.split(',').map(function (item) { return item.trim(); });
+        if (parsed.data.alwaysApply !== undefined) {
+            metadata.alwaysApply = !!parsed.data.alwaysApply;
+        }
+        if (parsed.data.globs) {
+            // Handle both string and array formats
+            if (typeof parsed.data.globs === 'string') {
+                metadata.globs = parsed.data.globs.split(',').map((item) => item.trim());
+            }
+            else if (Array.isArray(parsed.data.globs)) {
+                metadata.globs = parsed.data.globs;
+            }
+        }
+        return {
+            metadata,
+            content: parsed.content
+        };
+    }
+    catch (error) {
+        console.log('gray-matter not available, using fallback parser');
+        // Fallback to manual parsing if gray-matter is not available
+        // Find the second delimiter
+        const startPos = content.indexOf('---');
+        const endPos = content.indexOf('---', startPos + 3);
+        if (endPos === -1) {
+            return defaultResult;
+        }
+        // Extract frontmatter and content
+        const frontmatter = content.substring(startPos + 3, endPos).trim();
+        const cleanContent = content.substring(endPos + 3).trim();
+        // Parse frontmatter into key-value pairs
+        const metadata = {};
+        const lines = frontmatter.split('\n');
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || trimmedLine.startsWith('#')) {
+                continue; // Skip empty lines and comments
+            }
+            const colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex !== -1) {
+                const key = trimmedLine.substring(0, colonIndex).trim();
+                const value = trimmedLine.substring(colonIndex + 1).trim();
+                // Parse specific types
+                if (key === 'globs') {
+                    // Parse array value
+                    if (value) {
+                        metadata.globs = value.split(',').map(item => item.trim());
+                    }
+                }
+                else if (key === 'alwaysApply') {
+                    // Parse boolean value
+                    metadata.alwaysApply = value.toLowerCase() === 'true';
+                }
+                else if (key === 'description') {
+                    metadata.description = value;
                 }
             }
-            else if (key === 'alwaysApply') {
-                // Parse boolean value
-                metadata.alwaysApply = value.toLowerCase() === 'true';
-            }
-            else if (key === 'description') {
-                metadata.description = value;
-            }
         }
+        return {
+            metadata,
+            content: cleanContent
+        };
     }
-    return {
-        metadata: metadata,
-        content: cleanContent
-    };
 }
 /**
  * Checks if a file path matches a glob pattern
@@ -82,14 +113,14 @@ function parseFrontmatter(content) {
  */
 function matchGlobPattern(filePath, pattern) {
     // Convert glob pattern to regex
-    var regexPattern = pattern
+    let regexPattern = pattern
         .replace(/\./g, '\\.') // Escape dots
         .replace(/\*\*/g, '.*') // ** matches any character (including /)
         .replace(/\*/g, '[^/]*'); // * matches any character except /
     // Make sure it's a full match
-    regexPattern = "^".concat(regexPattern, "$");
+    regexPattern = `^${regexPattern}$`;
     // Create regex and test
-    var regex = new RegExp(regexPattern);
+    const regex = new RegExp(regexPattern);
     return regex.test(filePath);
 }
 /**
@@ -108,10 +139,9 @@ function ruleAppliesToFile(rule, filePath) {
         return true; // Default behavior: include if no constraints
     }
     // Get relative path for matching
-    var fileName = path.basename(filePath);
+    const fileName = path.basename(filePath);
     // Check if any glob pattern matches
-    for (var _i = 0, _a = rule.metadata.globs; _i < _a.length; _i++) {
-        var pattern = _a[_i];
+    for (const pattern of rule.metadata.globs) {
         if (pattern && (matchGlobPattern(filePath, pattern) || matchGlobPattern(fileName, pattern))) {
             return true;
         }
@@ -122,18 +152,18 @@ function ruleAppliesToFile(rule, filePath) {
  * Loads the static prompt files from resources directory
  */
 function loadStaticPrompts() {
-    var _a;
     if (SYSTEM_PROMPT !== null && TOOLS_PROMPT !== null) {
         // Already loaded
         return;
     }
     try {
-        var extensionPath = (_a = vscode.extensions.getExtension('grec0ai.grec0ai-vscode')) === null || _a === void 0 ? void 0 : _a.extensionPath;
+        const extension = vscode.extensions.getExtension('grec0ai.grec0ai-vscode');
+        const extensionPath = extension ? extension.extensionPath : undefined;
         if (!extensionPath) {
             throw new Error('Extension path not found');
         }
-        var systemPromptPath = path.join(extensionPath, 'resources', 'system_prompt.md');
-        var toolsPromptPath = path.join(extensionPath, 'resources', 'tools_prompt.md');
+        const systemPromptPath = path.join(extensionPath, 'resources', 'system_prompt.md');
+        const toolsPromptPath = path.join(extensionPath, 'resources', 'tools_prompt.md');
         SYSTEM_PROMPT = fs.readFileSync(systemPromptPath, 'utf8');
         TOOLS_PROMPT = fs.readFileSync(toolsPromptPath, 'utf8');
     }
@@ -153,10 +183,9 @@ function formatDocChunks(docs) {
     if (!docs || docs.length === 0) {
         return '';
     }
-    var result = '';
-    for (var _i = 0, docs_1 = docs; _i < docs_1.length; _i++) {
-        var doc = docs_1[_i];
-        result += "### Fuente: ".concat(doc.source, "\n").concat(doc.text, "\n\n");
+    let result = '';
+    for (const doc of docs) {
+        result += `### Fuente: ${doc.source}\n${doc.text}\n\n`;
     }
     return result.trim();
 }
@@ -169,22 +198,22 @@ function buildPrompt(input) {
     // 1. Load static prompts if not loaded
     loadStaticPrompts();
     // 2. Process rules files
-    var rulesContent = '';
+    let rulesContent = '';
     // Check for traditional rules file first (backward compatibility)
-    var rulesPath = path.join(input.workspacePath, '.cursor', 'rules');
+    const rulesPath = path.join(input.workspacePath, '.cursor', 'rules');
     if (fs.existsSync(rulesPath)) {
         rulesContent = fs.readFileSync(rulesPath, 'utf8');
     }
     else {
         // Check for .mdc rule files
-        var altRulesPath = path.join(input.workspacePath, '@rules.mdc');
-        var rulesDir = path.join(input.workspacePath, '.cursor', 'rules.d');
+        const altRulesPath = path.join(input.workspacePath, '@rules.mdc');
+        const rulesDir = path.join(input.workspacePath, '.cursor', 'rules.d');
         // Rules content from all applicable files
-        var applicableRules = [];
+        const applicableRules = [];
         // Process individual @rules.mdc file if it exists
         if (fs.existsSync(altRulesPath)) {
-            var content = fs.readFileSync(altRulesPath, 'utf8');
-            var parsedRule = parseFrontmatter(content);
+            const content = fs.readFileSync(altRulesPath, 'utf8');
+            const parsedRule = parseFrontmatter(content);
             if (ruleAppliesToFile(parsedRule, input.currentFilePath)) {
                 applicableRules.push(parsedRule.content);
             }
@@ -192,13 +221,12 @@ function buildPrompt(input) {
         // Process rules directory if it exists
         if (fs.existsSync(rulesDir) && fs.statSync(rulesDir).isDirectory()) {
             try {
-                var files = fs.readdirSync(rulesDir);
-                for (var _i = 0, files_1 = files; _i < files_1.length; _i++) {
-                    var file = files_1[_i];
+                const files = fs.readdirSync(rulesDir);
+                for (const file of files) {
                     if (file.endsWith('.mdc')) {
-                        var filePath = path.join(rulesDir, file);
-                        var content = fs.readFileSync(filePath, 'utf8');
-                        var parsedRule = parseFrontmatter(content);
+                        const filePath = path.join(rulesDir, file);
+                        const content = fs.readFileSync(filePath, 'utf8');
+                        const parsedRule = parseFrontmatter(content);
                         if (ruleAppliesToFile(parsedRule, input.currentFilePath)) {
                             applicableRules.push(parsedRule.content);
                         }
@@ -213,10 +241,10 @@ function buildPrompt(input) {
         rulesContent = applicableRules.join('\n\n');
     }
     // 3. Format attached docs
-    var attachedDocsText = formatDocChunks(input.attachedDocs);
+    const attachedDocsText = formatDocChunks(input.attachedDocs);
     // 4. Assemble the prompt
     return [
-        "USER:\n".concat(input.userQuery.trim()),
+        `USER:\n${input.userQuery.trim()}`,
         '---',
         SYSTEM_PROMPT,
         '---',
@@ -225,8 +253,5 @@ function buildPrompt(input) {
         input.attachedDocs.length ? '---\n' + attachedDocsText : ''
     ].filter(Boolean).join('\n\n');
 }
-
-// CommonJS module export
-module.exports = {
-    buildPrompt: buildPrompt
-};
+exports.buildPrompt = buildPrompt;
+//# sourceMappingURL=promptComposer.js.map

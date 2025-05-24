@@ -54,6 +54,7 @@ let TOOLS_PROMPT: string | null = null;
 
 /**
  * Parses frontmatter from a markdown-like file content
+ * Uses gray-matter library if available, otherwise falls back to custom parsing
  * @param content File content string
  * @returns Parsed rule with metadata and content
  */
@@ -68,51 +69,87 @@ function parseFrontmatter(content: string): ParsedRule {
         return defaultResult;
     }
 
-    // Find the second delimiter
-    const startPos = content.indexOf('---');
-    const endPos = content.indexOf('---', startPos + 3);
-    if (endPos === -1) {
-        return defaultResult;
-    }
-
-    // Extract frontmatter and content
-    const frontmatter = content.substring(startPos + 3, endPos).trim();
-    const cleanContent = content.substring(endPos + 3).trim();
-
-    // Parse frontmatter into key-value pairs
-    const metadata: RuleMetadata = {};
-    const lines = frontmatter.split('\n');
-    
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith('#')) {
-            continue; // Skip empty lines and comments
+    try {
+        // Try to use gray-matter if available
+        // Using require instead of import for dynamic loading
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const matter = require('gray-matter');
+        const parsed = matter(content);
+        
+        // Extract relevant metadata fields
+        const metadata: RuleMetadata = {};
+        
+        if (parsed.data.description) {
+            metadata.description = parsed.data.description;
         }
-
-        const colonIndex = trimmedLine.indexOf(':');
-        if (colonIndex !== -1) {
-            const key = trimmedLine.substring(0, colonIndex).trim();
-            const value = trimmedLine.substring(colonIndex + 1).trim();
-
-            // Parse specific types
-            if (key === 'globs') {
-                // Parse array value
-                if (value) {
-                    metadata.globs = value.split(',').map(item => item.trim());
-                }
-            } else if (key === 'alwaysApply') {
-                // Parse boolean value
-                metadata.alwaysApply = value.toLowerCase() === 'true';
-            } else if (key === 'description') {
-                metadata.description = value;
+        
+        if (parsed.data.alwaysApply !== undefined) {
+            metadata.alwaysApply = !!parsed.data.alwaysApply;
+        }
+        
+        if (parsed.data.globs) {
+            // Handle both string and array formats
+            if (typeof parsed.data.globs === 'string') {
+                metadata.globs = parsed.data.globs.split(',').map((item: string) => item.trim());
+            } else if (Array.isArray(parsed.data.globs)) {
+                metadata.globs = parsed.data.globs;
             }
         }
-    }
+        
+        return {
+            metadata,
+            content: parsed.content
+        };
+    } catch (error) {
+        console.log('gray-matter not available, using fallback parser');
+        
+        // Fallback to manual parsing if gray-matter is not available
+        // Find the second delimiter
+        const startPos = content.indexOf('---');
+        const endPos = content.indexOf('---', startPos + 3);
+        if (endPos === -1) {
+            return defaultResult;
+        }
 
-    return {
-        metadata,
-        content: cleanContent
-    };
+        // Extract frontmatter and content
+        const frontmatter = content.substring(startPos + 3, endPos).trim();
+        const cleanContent = content.substring(endPos + 3).trim();
+
+        // Parse frontmatter into key-value pairs
+        const metadata: RuleMetadata = {};
+        const lines = frontmatter.split('\n');
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || trimmedLine.startsWith('#')) {
+                continue; // Skip empty lines and comments
+            }
+
+            const colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex !== -1) {
+                const key = trimmedLine.substring(0, colonIndex).trim();
+                const value = trimmedLine.substring(colonIndex + 1).trim();
+
+                // Parse specific types
+                if (key === 'globs') {
+                    // Parse array value
+                    if (value) {
+                        metadata.globs = value.split(',').map(item => item.trim());
+                    }
+                } else if (key === 'alwaysApply') {
+                    // Parse boolean value
+                    metadata.alwaysApply = value.toLowerCase() === 'true';
+                } else if (key === 'description') {
+                    metadata.description = value;
+                }
+            }
+        }
+
+        return {
+            metadata,
+            content: cleanContent
+        };
+    }
 }
 
 /**
@@ -176,7 +213,8 @@ function loadStaticPrompts(): void {
     }
 
     try {
-        const extensionPath = vscode.extensions.getExtension('grec0ai.grec0ai-vscode')?.extensionPath;
+        const extension = vscode.extensions.getExtension('grec0ai.grec0ai-vscode');
+        const extensionPath = extension ? extension.extensionPath : undefined;
         
         if (!extensionPath) {
             throw new Error('Extension path not found');
