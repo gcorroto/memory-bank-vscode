@@ -1,51 +1,51 @@
-# AutoFixer Feature Documentation
+# Documentación de la Funcionalidad AutoFixer
 
-## Overview
+## Descripción General
 
-The **AutoFixer** feature provides automated execution of instructions from a special file named `autofixer.md` in your project root. It's designed for CI/CD workflows, Cloud IDE environments, and automated deployments where you need to perform code fixes, refactors, or setup tasks without manual intervention.
+La funcionalidad **AutoFixer** proporciona la ejecución automatizada de instrucciones desde un archivo especial llamado `autofixer.md` en la raíz de tu proyecto. Está diseñado para flujos de trabajo CI/CD, entornos Cloud IDE y despliegues automatizados donde necesitas realizar correcciones de código, refactorizaciones o tareas de configuración sin intervención manual.
 
-## How to Enable AutoFixer
+## Cómo Habilitar AutoFixer
 
-There are two ways to enable the AutoFixer feature:
+Hay dos formas de habilitar la funcionalidad AutoFixer:
 
-1. **Extension Configuration**:
-   - Set `grec0ai.autofixer.enabled` to `true` in your VSCode settings
+1. **Configuración de la Extensión**:
+   - Establece `grec0ai.autofixer.enabled` como `true` en la configuración de VSCode
 
-2. **Environment Variable**:
-   - Set `GREC0AI_AUTOFIXER=1` in your environment
+2. **Variable de Entorno**:
+   - Configura `GREC0AI_AUTOFIXER=1` en tu entorno
 
-## How It Works
+## Cómo Funciona
 
-When enabled:
+Cuando está habilitado:
 
-1. The extension checks for an `autofixer.md` file in your workspace root directory
-2. If found, the contents are read and processed by the Grec0AI agent
-3. The agent executes the instructions as if they were entered by a user
-4. Results and logs are available in the Grec0AI output panel
+1. La extensión busca un archivo `autofixer.md` en el directorio raíz de tu workspace
+2. Si lo encuentra, el contenido es leído y procesado por el agente Grec0AI
+3. El agente ejecuta las instrucciones como si hubieran sido introducidas por un usuario
+4. Los resultados y logs están disponibles en el panel de salida de Grec0AI
 
-## Creating an autofixer.md File
+## Creación de un Archivo autofixer.md
 
-The `autofixer.md` file should be written in Markdown format and contain natural language instructions for the agent. For example:
+El archivo `autofixer.md` debe escribirse en formato Markdown y contener instrucciones en lenguaje natural para el agente. Por ejemplo:
 
 ```markdown
-# Automatic Code Fixes
+# Correcciones Automáticas de Código
 
-Please perform the following tasks:
+Por favor, realiza las siguientes tareas:
 
-1. Fix the error in the function `calculateTotal()` in `src/utils/calculator.js` 
-2. Add proper error handling to the API calls in `src/services/api.js`
-3. Increase test coverage for the `UserService` component to at least 80%
+1. Corrige el error en la función `calcularTotal()` en `src/utils/calculadora.js` 
+2. Añade manejo de errores adecuado a las llamadas API en `src/servicios/api.js`
+3. Aumenta la cobertura de pruebas para el componente `ServicioUsuario` al menos al 80%
 ```
 
-## Use Cases
+## Casos de Uso
 
-- **Automated environment setup**: Fix common issues when new developers clone the repository
-- **CI/CD pipelines**: Generate or update code as part of automated workflows
-- **Containerized environments**: Apply fixes when deploying to containerized VSCode environments like Code Server
+- **Configuración automatizada del entorno**: Solucionar problemas comunes cuando nuevos desarrolladores clonan el repositorio
+- **Pipelines CI/CD**: Generar o actualizar código como parte de flujos de trabajo automatizados
+- **Entornos en contenedores**: Aplicar correcciones al desplegar en entornos VSCode containerizados como Code Server
 
-## Notes
+## Notas
 
-- The AutoFixer is disabled by default for security reasons
-- No confirmation prompts are shown when AutoFixer is running
-- If the `autofixer.md` file is not found, the extension will continue normal operation without errors
-- All actions performed by AutoFixer are logged to the Grec0AI output channel
+- AutoFixer está desactivado por defecto por motivos de seguridad
+- No se muestran solicitudes de confirmación cuando AutoFixer está en ejecución
+- Si no se encuentra el archivo `autofixer.md`, la extensión continuará con la operación normal sin errores
+- Todas las acciones realizadas por AutoFixer se registran en el canal de salida de Grec0AI

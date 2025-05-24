@@ -1,5 +1,23 @@
 # Grec0AI For Developers
 
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=grec0ai.grec0ai-vscode)
+[![Versión](https://img.shields.io/badge/Versión-3.0.0-green)](https://github.com/gcorroto/autofixer_extension)
+
+## Tabla de Contenidos
+
+- [Visión General](#visión-general)
+- [Características Principales](#características-principales)
+- [Instalación](#instalación)
+- [Requisitos](#requisitos)
+- [Configuración Rápida](#configuración-rápida)
+- [Uso de Generación de Tests con IA](#uso-de-generación-de-tests-con-ia)
+- [Ciclo de Mejora Continua con IA](#ciclo-de-mejora-continua-con-ia)
+- [Panel de Actividad Grec0AI](#panel-de-actividad-grec0ai)
+- [Arquitectura Basada en Agentes (II-Agent)](#arquitectura-basada-en-agentes-ii-agent)
+- [Comandos Útiles](#comandos-útiles)
+- [Documentación Adicional](#documentación-adicional)
+- [Soporte y Licencia](#soporte-y-licencia)
+
 ## Visión General
 
 Grec0AI For Developers es una extensión avanzada para Visual Studio Code que integra capacidades de inteligencia artificial para automatizar y mejorar el desarrollo de software, enfocándose en:
@@ -55,7 +73,24 @@ AutoFixer permite ejecutar instrucciones de forma automática al abrir el worksp
 * **Basado en archivos**: Lee instrucciones desde un archivo `autofixer.md` en la raíz del proyecto.
 * **CI/CD integrado**: Ideal para entornos de integración continua, contenedores y despliegues automáticos.
 
-[Documentación completa de AutoFixer](docs/autofixer.md)
+[Documentación completa de AutoFixer](docs/uso-autofixer.md)
+
+## Instalación
+
+Para instalar la extensión Grec0AI For Developers, dispones de varias opciones:
+
+### Desde VS Code Marketplace
+
+1. Abre Visual Studio Code
+2. Accede a la pestaña de extensiones (Ctrl+Shift+X)
+3. Busca "Grec0AI for Developers"
+4. Haz clic en "Instalar"
+
+### Instalación Manual
+
+También puedes instalar la extensión manualmente descargando el archivo .vsix desde nuestro repositorio.
+
+[Consulta la guía completa de instalación](docs/instalacion.md)
 
 ## Requisitos
 
@@ -170,3 +205,13 @@ Grec0AI For Developers implementa una arquitectura avanzada basada en agentes si
 Si encuentras problemas al utilizar la extensión, visita nuestro repositorio en GitHub para reportar issues o contribuir al proyecto.
 
 Esta extensión está licenciada bajo los términos de licencia MIT.
+
+## Documentación Adicional
+
+Para obtener información más detallada sobre características específicas de la extensión, consulta los siguientes recursos:
+
+- [Guía de Instalación](docs/instalacion.md) - Instrucciones detalladas para la instalación manual y vía CLI
+- [Uso de AutoFixer](docs/uso-autofixer.md) - Cómo utilizar la característica AutoFixer en modo automático y manual
+- [Diagramas de Arquitectura](docs/diagramas.md) - Diagramas visuales de los procesos y arquitectura de la extensión
+- [Arquitectura de Prompts](docs/prompt-architecture.md) - Documentación sobre el sistema de prompts para MacGyver
+- [Formato de Reglas](docs/rules-format.md) - Información sobre cómo definir reglas personalizadas para la IA
