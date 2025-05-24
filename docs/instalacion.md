@@ -65,6 +65,8 @@ cd autofixer_extension
 npm install
 ```
 
+Este paso es **crucial** ya que instala todos los módulos necesarios como 'ws' (WebSocket) que son requeridos para el funcionamiento de la extensión.
+
 5. Genera el archivo VSIX:
 
 ```bash
@@ -212,6 +214,19 @@ Si encuentras problemas durante la instalación:
 2. Verifica que no hay conflictos con otras extensiones
 3. Revisa los logs de VS Code para identificar posibles errores
 4. Intenta reinstalar la extensión
+
+### Error "Cannot find module 'ws'"
+
+Si encuentras un error que menciona "Cannot find module 'ws'" al activar la extensión:
+
+1. Este error ocurre cuando las dependencias no se han instalado correctamente
+2. Asegúrate de ejecutar `npm install` en el directorio de la extensión antes de empaquetar o usar la extensión
+3. Si instalaste la extensión desde un archivo VSIX, es posible que necesites instalar la dependencia manualmente:
+   ```bash
+   cd ~/.vscode/extensions/grec0ai.grec0ai-vscode-3.0.0
+   npm install ws
+   ```
+4. Reinicia VS Code después de instalar las dependencias
 
 ## Siguientes Pasos
 
