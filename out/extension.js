@@ -29,6 +29,9 @@ const ragService = require('./services/ragService');
 const configManager = require('./utils/configManager');
 const commands = require('./services/commands');
 
+// Import agent system
+const agentSystem = require('./agent');
+
 // Create logger
 const logger = vscode.window.createOutputChannel('Grec0AI For Developers');
 
@@ -36,6 +39,16 @@ const logger = vscode.window.createOutputChannel('Grec0AI For Developers');
 const fileTreeProvider = new FileTreeProvider_1.CoverageDefectsProvider(logger);
 const coverageSummaryProvider = new CoverageSummaryProvider_1.CoverageSummaryProvider(fileTreeProvider, logger);
 const coverageDetailsProvider = new CoverageDetailsProvider_1.CoverageDetailsProvider();
+
+// Global agent instance
+let mainAgent = null;
+
+// Import agent system
+const agentSystem = require('./agent');
+
+// Global agent instance
+let mainAgent = null;
+global.mainAgent = null;
 
 // This method is called when the extension is activated
 function activate(context) {
@@ -77,6 +90,92 @@ function activate(context) {
 		logger.appendLine('OpenAI service initialized.');
 	} else {
 		logger.appendLine('OpenAI API key not configured. Use "Configure OpenAI API Key" command to set it up.');
+	}
+	
+	// Initialize agent system
+	initializeAgentSystem(context).catch(error => {
+		logger.appendLine(`Error initializing agent system: ${error.message}`);
+	});
+}
+
+/**
+ * Initialize the agent system
+ * @param {vscode.ExtensionContext} context - Extension context
+ */
+async function initializeAgentSystem(context) {
+	try {
+		logger.appendLine('Initializing Grec0AI Agent System...');
+		
+		// Create and initialize the main agent
+		mainAgent = await agentSystem.createAgent('Grec0AI', context);
+		
+		// Make it globally accessible
+		global.mainAgent = mainAgent;
+		
+		// Register agent-based command handlers
+		registerAgentCommands(context);
+		
+		// Register logs view command
+		let disposable = vscode.commands.registerCommand('grec0ai.agent.showLogs', () => {
+			showAgentLogs(context);
+		});
+		context.subscriptions.push(disposable);
+		
+		logger.appendLine('Grec0AI Agent System initialized successfully');
+	} catch (error) {
+		logger.appendLine(`Failed to initialize agent system: ${error.message}`);
+		
+		// Show notification
+		vscode.window.showErrorMessage('Failed to initialize Grec0AI Agent System. Some advanced features may not be available.');
+	}
+}
+
+/**
+ * Register commands that use the agent architecture
+ * @param {vscode.ExtensionContext} context - Extension context
+ */
+function registerAgentCommands(context) {
+	if (!mainAgent) {
+		logger.appendLine('Cannot register agent commands: Agent not initialized');
+		return;
+	}
+	
+	// Create command wrappers for the agent
+	const generateTestCmd = agentSystem.createCommandWrapper(mainAgent, 'generateTest');
+	const analyzeCodeCmd = agentSystem.createCommandWrapper(mainAgent, 'analyzeCode');
+	const fixErrorCmd = agentSystem.createCommandWrapper(mainAgent, 'fixError');
+	const explainCodeCmd = agentSystem.createCommandWrapper(mainAgent, 'explain');
+	
+	// Register these as new commands with 'agent.' prefix to avoid conflicts
+	let disposable = vscode.commands.registerCommand('grec0ai.agent.generateTest', generateTestCmd);
+	context.subscriptions.push(disposable);
+	
+	disposable = vscode.commands.registerCommand('grec0ai.agent.analyzeCode', analyzeCodeCmd);
+	context.subscriptions.push(disposable);
+	
+	disposable = vscode.commands.registerCommand('grec0ai.agent.fixError', fixErrorCmd);
+	context.subscriptions.push(disposable);
+	
+	disposable = vscode.commands.registerCommand('grec0ai.agent.explain', explainCodeCmd);
+	context.subscriptions.push(disposable);
+}
+
+/**
+ * Show agent logs view
+ * @param {vscode.ExtensionContext} context - Extension context
+ */
+function showAgentLogs(context) {
+	try {
+		const AgentLogsView = require('./agent/ui/logsView');
+		
+		if (!global.agentLogsView) {
+			global.agentLogsView = new AgentLogsView(context);
+		}
+		
+		global.agentLogsView.show();
+	} catch (error) {
+		logger.appendLine(`Error showing agent logs: ${error.message}`);
+		vscode.window.showErrorMessage('Failed to show agent logs.');
 	}
 }
 exports.activate = activate;
@@ -138,6 +237,15 @@ function openFileAtLine(element) {
 // Automatic test generation
 async function automaticTest(reasoning) {
 	try {
+		// If agent system is available, use it
+		if (mainAgent) {
+			logger.appendLine("Using agent architecture for test generation");
+			return await handleAutomaticTestWithAgent(reasoning);
+		}
+		
+		// Otherwise, use the legacy implementation
+		logger.appendLine("Using legacy implementation for test generation");
+		
 		// Check if OpenAI API key is configured
 		if (!configManager.isConfigComplete()) {
 			const configureNow = await vscode.window.showInformationMessage(
@@ -236,6 +344,92 @@ async function automaticTest(reasoning) {
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error in automaticTest: ${error.message}`);
 		logger.appendLine(`Error: ${error.message}`);
+	}
+}
+
+/**
+ * Handle automatic test generation using the agent system
+ * @param {string} reasoning - Level of reasoning detail
+ * @returns {Promise<Object>} - Result of the operation
+ */
+async function handleAutomaticTestWithAgent(reasoning) {
+	try {
+		// Check if OpenAI API key is configured
+		if (!configManager.isConfigComplete()) {
+			const configureNow = await vscode.window.showInformationMessage(
+				'OpenAI API key is required for test generation. Configure it now?',
+				'Yes', 'No'
+			);
+			
+			if (configureNow === 'Yes') {
+				await commands.configureOpenAIApiKey();
+			} else {
+				return;
+			}
+		}
+		
+		// Ask user for model type if not specified
+		if (!reasoning) {
+			const model = await vscode.window.showInformationMessage(
+				`Choose AI model for test generation`,
+				'Fast', 'Reasoning', 'Cancel'
+			);
+			
+			if (model === 'Reasoning') {
+				reasoning = await vscode.window.showInformationMessage(
+					`Choose reasoning level`,
+					'low', 'medium', 'high'
+				);
+			} else if (model === 'Cancel') {
+				return;
+			}
+		}
+		
+		// Ask user to select folder
+		const selectedFolderUri = await vscode.window.showOpenDialog({
+			canSelectFolders: true,
+			canSelectFiles: false,
+			openLabel: 'Select root folder'
+		});
+		
+		if (!selectedFolderUri || selectedFolderUri.length === 0) {
+			return; // User cancelled
+		}
+		
+		const rootPath = selectedFolderUri[0].fsPath;
+		
+		// Show progress
+		return await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Generating tests with Grec0AI Agent...",
+			cancellable: true
+		}, async (progress, token) => {
+			// Create context for the agent
+			const context = {
+				taskType: 'generateTest',
+				rootPath: rootPath,
+				reasoning: reasoning,
+				isAutomatic: true
+			};
+			
+			// Let the agent handle the task
+			const userRequest = `Generate tests for all source files in ${rootPath} with ${reasoning || 'standard'} reasoning`;
+			
+			progress.report({ message: 'Planning task...' });
+			const result = await mainAgent.handleUserInput(userRequest, context);
+			
+			// Show results
+			if (result.success) {
+				vscode.window.showInformationMessage(`Test generation completed successfully`);
+			} else {
+				vscode.window.showWarningMessage(`Test generation completed with some errors`);
+			}
+			
+			return result;
+		});
+	} catch (error) {
+		logger.appendLine(`Error in handleAutomaticTestWithAgent: ${error.message}`);
+		throw error;
 	}
 }
 
@@ -670,6 +864,14 @@ function deactivate() {
 	return __awaiter(this, void 0, void 0, function* () {
 		try {
 			logger.info('Grec0AI For Developers extension deactivated. See you!');
+			
+			// Clean up agent if it exists
+			if (mainAgent) {
+				logger.info('Disposing agent resources...');
+				mainAgent.dispose();
+				mainAgent = null;
+				global.mainAgent = null;
+			}
 		}
 		catch (error) {
 			logger.warn('Extension deactivation completed with errors: ' + error);
