@@ -6,15 +6,6 @@
 /out-tsc
 /bazel-out
 
-# Node
-/node_modules
-node_modules
-/node_modules/
-/node_modules/**
-/node_modules/*
-npm-debug.log
-yarn-error.log
-
 # IDEs and editors
 .idea/
 .project
@@ -45,5 +36,8 @@ testem.log
 .DS_Store
 Thumbs.db
 docker-compose.yml
+.history/*
+.history/
 cr3
 grec0ai_vscode.vsix
+grec0ai-vscode-3.0.0.vsix
