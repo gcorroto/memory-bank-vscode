@@ -119,6 +119,7 @@ Información detallada sobre el elemento seleccionado y opciones para resolverlo
 * `Grec0AI: Refresh File Tree`: Actualiza el árbol de archivos del proyecto.
 * `Grec0AI: Fix with Grec0AI`: Solicita a la IA que corrija un defecto o mejore el código seleccionado.
 * `Grec0AI: Explain Code`: Solicita a la IA que explique el código seleccionado.
+* `Grec0AI: Preguntar a MacGyver`: Realiza consultas al asistente "MacGyver" con estilo andaluz para resolver dudas de programación.
 
 ## Soporte y Licencia
 
