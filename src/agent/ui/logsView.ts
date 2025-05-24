@@ -17,10 +17,18 @@ interface LogEntry {
     timestamp: Date;
 }
 
+interface LogSession {
+    id: string;
+    name: string;
+    entries: LogEntry[];
+    createdAt: Date;
+}
+
 export class AgentLogsView {
     private panel: vscode.WebviewPanel | undefined;
     private context: vscode.ExtensionContext;
-    private logEntries: LogEntry[] = [];
+    private sessions: LogSession[] = [];
+    private activeSessionId: string = '';
 
     /**
      * Create a new logs view
@@ -28,6 +36,46 @@ export class AgentLogsView {
      */
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        // Create default session
+        this.createNewSession('Default');
+    }
+
+    /**
+     * Create a new log session
+     * @param name - Session name
+     * @returns Session ID
+     */
+    public createNewSession(name: string): string {
+        const id = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const session: LogSession = {
+            id,
+            name,
+            entries: [],
+            createdAt: new Date()
+        };
+        
+        this.sessions.push(session);
+        this.activeSessionId = id;
+        
+        if (this.panel) {
+            this.updateContent();
+        }
+        
+        return id;
+    }
+
+    /**
+     * Set the active session
+     * @param sessionId - Session ID to activate
+     */
+    public setActiveSession(sessionId: string): void {
+        if (this.sessions.find(s => s.id === sessionId)) {
+            this.activeSessionId = sessionId;
+            
+            if (this.panel) {
+                this.updateContent();
+            }
+        }
     }
 
     /**
@@ -64,6 +112,12 @@ export class AgentLogsView {
                         case 'clearLogs':
                             this.clearLogs();
                             break;
+                        case 'switchSession':
+                            this.setActiveSession(message.sessionId);
+                            break;
+                        case 'createSession':
+                            this.createNewSession(message.name || `Session ${this.sessions.length + 1}`);
+                            break;
                     }
                 },
                 undefined,
@@ -73,21 +127,43 @@ export class AgentLogsView {
     }
 
     /**
-     * Add a log entry
-     * @param entry - Log entry
+     * Get the active session
+     * @returns Active session or undefined
      */
-    public addLogEntry(entry: LogEntry): void {
+    private getActiveSession(): LogSession | undefined {
+        return this.sessions.find(s => s.id === this.activeSessionId) || 
+               (this.sessions.length > 0 ? this.sessions[0] : undefined);
+    }
+
+    /**
+     * Add a log entry to the active session
+     * @param entry - Log entry
+     * @param sessionId - Optional session ID (uses active session if not provided)
+     */
+    public addLogEntry(entry: LogEntry, sessionId?: string): void {
         // Add timestamp if not provided
         if (!entry.timestamp) {
             entry.timestamp = new Date();
         }
 
-        // Add entry to log
-        this.logEntries.push(entry);
-
-        // Update content if panel is visible
-        if (this.panel) {
-            this.updateContent();
+        const targetSessionId = sessionId || this.activeSessionId;
+        const session = this.sessions.find(s => s.id === targetSessionId);
+        
+        if (session) {
+            // Add entry to session logs
+            session.entries.push(entry);
+            
+            // Update content if panel is visible
+            if (this.panel) {
+                this.updateContent();
+            }
+        } else if (this.sessions.length > 0) {
+            // Fallback to first session if target not found
+            this.sessions[0].entries.push(entry);
+            
+            if (this.panel) {
+                this.updateContent();
+            }
         }
     }
 
@@ -98,8 +174,9 @@ export class AgentLogsView {
      * @param params - Parameters used
      * @param result - Execution result
      * @param success - Whether execution was successful
+     * @param sessionId - Optional session ID
      */
-    public addStepLog(description: string, tool: string, params: any, result: any, success: boolean): void {
+    public addStepLog(description: string, tool: string, params: any, result: any, success: boolean, sessionId?: string): void {
         this.addLogEntry({
             type: 'step',
             description,
@@ -108,40 +185,45 @@ export class AgentLogsView {
             result,
             success,
             timestamp: new Date()
-        });
+        }, sessionId);
     }
 
     /**
      * Add a plan log
      * @param steps - Planned steps
+     * @param sessionId - Optional session ID
      */
-    public addPlanLog(steps: any[]): void {
+    public addPlanLog(steps: any[], sessionId?: string): void {
         this.addLogEntry({
             type: 'plan',
             steps,
             timestamp: new Date()
-        });
+        }, sessionId);
     }
 
     /**
      * Add a reflection log
      * @param reflection - Reflection data
+     * @param sessionId - Optional session ID
      */
-    public addReflectionLog(reflection: string): void {
+    public addReflectionLog(reflection: string, sessionId?: string): void {
         this.addLogEntry({
             type: 'reflection',
             reflection,
             timestamp: new Date()
-        });
+        }, sessionId);
     }
 
     /**
-     * Clear all logs
+     * Clear logs for the active session
      */
     public clearLogs(): void {
-        this.logEntries = [];
-        if (this.panel) {
-            this.updateContent();
+        const session = this.getActiveSession();
+        if (session) {
+            session.entries = [];
+            if (this.panel) {
+                this.updateContent();
+            }
         }
     }
 
@@ -159,6 +241,9 @@ export class AgentLogsView {
      * @returns HTML content
      */
     private getHtmlContent(): string {
+        // Get color theme type (light or dark)
+        const isDarkTheme = vscode.window.activeColorTheme && vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
+
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -167,19 +252,65 @@ export class AgentLogsView {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Grec0AI Agent Logs</title>
                 <style>
+                    :root {
+                        ${isDarkTheme ? `
+                            --bg-color: #1e1e1e;
+                            --text-color: #e0e0e0;
+                            --accent-color: #0e639c;
+                            --border-color: #3e3e3e;
+                            --code-bg: #2d2d2d;
+                            --step-bg: #1a2535;
+                            --step-border: #0e639c;
+                            --plan-bg: #25231a;
+                            --plan-border: #bb8c00;
+                            --reflection-bg: #1a2c1a;
+                            --reflection-border: #089404;
+                            --success-color: #22cc44;
+                            --failure-color: #f14c4c;
+                            --timestamp-color: #7d7d7d;
+                            --collapsible-bg: #2a2a2a;
+                            --collapsible-hover: #3a3a3a;
+                            --tab-bg: #252525;
+                            --tab-active-bg: #1e1e1e;
+                            --tab-hover: #333333;
+                        ` : `
+                            --bg-color: #ffffff;
+                            --text-color: #333333;
+                            --accent-color: #007acc;
+                            --border-color: #eaeaea;
+                            --code-bg: #f5f5f5;
+                            --step-bg: #f0f7ff;
+                            --step-border: #007acc;
+                            --plan-bg: #fff8f0;
+                            --plan-border: #ff8c00;
+                            --reflection-bg: #f0fff0;
+                            --reflection-border: #00cc44;
+                            --success-color: #00cc44;
+                            --failure-color: #cc0000;
+                            --timestamp-color: #888888;
+                            --collapsible-bg: #f1f1f1;
+                            --collapsible-hover: #dddddd;
+                            --tab-bg: #ececec;
+                            --tab-active-bg: #ffffff;
+                            --tab-hover: #f5f5f5;
+                        `}
+                    }
                     body {
                         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
                         line-height: 1.6;
                         padding: 20px;
                         max-width: 100%;
+                        background-color: var(--bg-color);
+                        color: var(--text-color);
+                        margin: 0;
                     }
                     h1 {
-                        color: #007acc;
-                        border-bottom: 1px solid #eee;
+                        color: var(--accent-color);
+                        border-bottom: 1px solid var(--border-color);
                         padding-bottom: 10px;
                     }
                     pre {
-                        background-color: #f5f5f5;
+                        background-color: var(--code-bg);
                         padding: 10px;
                         border-radius: 5px;
                         overflow: auto;
@@ -190,45 +321,46 @@ export class AgentLogsView {
                     }
                     .log-entry {
                         margin-bottom: 20px;
-                        border-bottom: 1px solid #eee;
+                        border-bottom: 1px solid var(--border-color);
                         padding-bottom: 10px;
                     }
                     .timestamp {
-                        color: #888;
+                        color: var(--timestamp-color);
                         font-size: 0.8em;
                     }
                     .step {
-                        background-color: #f0f7ff;
-                        border-left: 4px solid #007acc;
+                        background-color: var(--step-bg);
+                        border-left: 4px solid var(--step-border);
                         padding: 10px;
                     }
                     .plan {
-                        background-color: #fff8f0;
-                        border-left: 4px solid #ff8c00;
+                        background-color: var(--plan-bg);
+                        border-left: 4px solid var(--plan-border);
                         padding: 10px;
                     }
                     .reflection {
-                        background-color: #f0fff0;
-                        border-left: 4px solid #00cc44;
+                        background-color: var(--reflection-bg);
+                        border-left: 4px solid var(--reflection-border);
                         padding: 10px;
                     }
                     .success {
-                        color: #00cc44;
+                        color: var(--success-color);
                     }
                     .failure {
-                        color: #cc0000;
+                        color: var(--failure-color);
                     }
                     .collapsible {
-                        background-color: #f1f1f1;
+                        background-color: var(--collapsible-bg);
                         cursor: pointer;
                         padding: 10px;
                         width: 100%;
                         border: none;
                         text-align: left;
                         outline: none;
+                        color: var(--text-color);
                     }
                     .active, .collapsible:hover {
-                        background-color: #ddd;
+                        background-color: var(--collapsible-hover);
                     }
                     .content {
                         padding: 0 10px;
@@ -237,7 +369,7 @@ export class AgentLogsView {
                         transition: max-height 0.2s ease-out;
                     }
                     .clear-button {
-                        background-color: #cc0000;
+                        background-color: var(--failure-color);
                         color: white;
                         border: none;
                         padding: 8px 16px;
@@ -245,19 +377,91 @@ export class AgentLogsView {
                         cursor: pointer;
                         margin-bottom: 20px;
                     }
+                    /* Tabs styles */
+                    .tabs {
+                        display: flex;
+                        border-bottom: 1px solid var(--border-color);
+                        margin-bottom: 20px;
+                        overflow-x: auto;
+                    }
+                    .tab {
+                        padding: 10px 15px;
+                        cursor: pointer;
+                        background-color: var(--tab-bg);
+                        border: none;
+                        outline: none;
+                        margin-right: 2px;
+                        color: var(--text-color);
+                        border-top-left-radius: 4px;
+                        border-top-right-radius: 4px;
+                    }
+                    .tab:hover {
+                        background-color: var(--tab-hover);
+                    }
+                    .tab.active {
+                        background-color: var(--tab-active-bg);
+                        border-bottom: 2px solid var(--accent-color);
+                    }
+                    .new-tab-button {
+                        padding: 10px 15px;
+                        background-color: var(--accent-color);
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-right: 10px;
+                    }
+                    .tab-controls {
+                        display: flex;
+                        margin-bottom: 20px;
+                    }
                 </style>
             </head>
             <body>
                 <h1>Grec0AI Agent Logs</h1>
-                <button class="clear-button" id="clearButton">Clear Logs</button>
+                
+                <div class="tab-controls">
+                    <button class="new-tab-button" id="newSessionButton">Nueva Sesión</button>
+                    <button class="clear-button" id="clearButton">Limpiar Logs</button>
+                </div>
+                
+                <div class="tabs">
+                    ${this.renderTabs()}
+                </div>
+                
                 <div id="logs">
                     ${this.renderLogs()}
                 </div>
+                
                 <script>
                     document.getElementById('clearButton').addEventListener('click', () => {
                         const vscode = acquireVsCodeApi();
                         vscode.postMessage({
                             command: 'clearLogs'
+                        });
+                    });
+                    
+                    document.getElementById('newSessionButton').addEventListener('click', () => {
+                        const sessionName = prompt('Nombre de la nueva sesión:', 'Nueva Sesión');
+                        if (sessionName) {
+                            const vscode = acquireVsCodeApi();
+                            vscode.postMessage({
+                                command: 'createSession',
+                                name: sessionName
+                            });
+                        }
+                    });
+                    
+                    // Set up tab switching
+                    const tabs = document.querySelectorAll('.tab');
+                    tabs.forEach(tab => {
+                        tab.addEventListener('click', function() {
+                            const sessionId = this.getAttribute('data-session-id');
+                            const vscode = acquireVsCodeApi();
+                            vscode.postMessage({
+                                command: 'switchSession',
+                                sessionId: sessionId
+                            });
                         });
                     });
                     
@@ -281,15 +485,33 @@ export class AgentLogsView {
     }
 
     /**
+     * Render the session tabs
+     * @returns HTML for tabs
+     */
+    private renderTabs(): string {
+        return this.sessions.map(session => {
+            const isActive = session.id === this.activeSessionId;
+            const activeClass = isActive ? 'active' : '';
+            return `
+                <button class="tab ${activeClass}" data-session-id="${session.id}">
+                    ${this.sanitizeForHtml(session.name)}
+                </button>
+            `;
+        }).join('');
+    }
+
+    /**
      * Render all logs as HTML
      * @returns HTML content for logs
      */
     private renderLogs(): string {
-        if (this.logEntries.length === 0) {
+        const session = this.getActiveSession();
+        
+        if (!session || session.entries.length === 0) {
             return '<p>No logs yet...</p>';
         }
 
-        return this.logEntries.map(entry => this.renderLogEntry(entry)).join('');
+        return session.entries.map(entry => this.renderLogEntry(entry)).join('');
     }
 
     /**

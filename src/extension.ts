@@ -180,17 +180,22 @@ function registerAgentCommands(context: vscode.ExtensionContext) {
  */
 function showAgentLogs(context: vscode.ExtensionContext) {
   try {
-    // Import dynamically to avoid circular dependencies
+    // Importar dinámicamente para evitar dependencias circulares
     const { AgentLogsView } = require('./agent/ui/logsView');
     
+    // Verificar si ya existe una instancia global
     if (!(global as any).agentLogsView) {
+      logger.appendLine('Creando nueva instancia de AgentLogsView');
       (global as any).agentLogsView = new AgentLogsView(context);
+    } else {
+      logger.appendLine('Usando instancia existente de AgentLogsView');
     }
     
+    // Mostrar la vista
     (global as any).agentLogsView.show();
   } catch (error: any) {
-    logger.appendLine(`Error showing agent logs: ${error.message}`);
-    vscode.window.showErrorMessage('Failed to show agent logs.');
+    logger.appendLine(`Error al mostrar logs del agente: ${error.message}`);
+    vscode.window.showErrorMessage('No se pudieron mostrar los logs del agente.');
   }
 }
 
@@ -650,7 +655,51 @@ async function checkAndProcessAutofixerMd() {
     
     // Process with agent if available
     if (mainAgent && configManager.isConfigComplete()) {
-      await mainAgent.executeTask('processAutoFixerFile', { content });
+      // Crear una sesión específica para la ejecución de autofixer en la vista de logs
+      let sessionId = '';
+      let logsView = (global as any).agentLogsView;
+      
+      if (logsView) {
+        // Crear una nueva sesión para esta ejecución
+        sessionId = logsView.createNewSession('AutoFixer');
+        logsView.show();
+        logsView.setActiveSession(sessionId);
+        
+        // Registrar inicio de la tarea
+        logsView.addReflectionLog('Iniciando procesamiento de autofixer.md', sessionId);
+      }
+      
+      try {
+        // Ejecutar la tarea y capturar el resultado
+        const result = await mainAgent.executeTask('processAutoFixerFile', { content });
+        
+        // Registrar resultado exitoso en logs
+        if (logsView) {
+          logsView.addStepLog(
+            'Procesar archivo AutoFixer',
+            'processAutoFixerFile',
+            { contentLength: content.length },
+            result,
+            true,
+            sessionId
+          );
+        }
+      } catch (error: any) {
+        // Registrar error en logs
+        if (logsView) {
+          logsView.addStepLog(
+            'Procesar archivo AutoFixer',
+            'processAutoFixerFile',
+            { contentLength: content.length },
+            { error: error.message },
+            false,
+            sessionId
+          );
+        }
+        
+        // Registrar error en el logger
+        logger.appendLine(`Error processing autofixer.md: ${error.message}`);
+      }
     } else {
       logger.appendLine('Agent not available for processing autofixer.md');
       vscode.window.showInformationMessage('Autofixer.md found but agent not available for processing.');
