@@ -188,4 +188,59 @@ export async function generateEmbeddings(text: string, model: string = 'text-emb
     console.error('Error al generar embeddings con OpenAI:', error);
     throw error;
   }
+}
+
+/**
+ * Generate a completion from a prompt
+ * @param prompt - The prompt to complete
+ * @param options - Additional options for the completion
+ * @returns The generated completion text or JSON object
+ */
+export async function generateCompletion(prompt: string, options: any = {}): Promise<string | any> {
+  if (!ensureInitialized()) {
+    throw new Error('Cliente OpenAI no inicializado');
+  }
+
+  try {
+    const model = options.model || 'gpt-3.5-turbo';
+    const maxTokens = options.maxTokens || 1024;
+    const temperature = options.temperature !== undefined ? options.temperature : 0.7;
+    const format = options.format || 'text';
+    
+    const systemMessage = {
+      role: 'system',
+      content: format === 'json' 
+        ? 'You are a helpful assistant that always responds in valid JSON format.'
+        : 'You are a helpful assistant that provides clear and concise responses.'
+    };
+
+    const userMessage = {
+      role: 'user',
+      content: prompt
+    };
+
+    const completion = await client.chat.completions.create({
+      model: model,
+      messages: [systemMessage, userMessage],
+      max_tokens: maxTokens,
+      temperature: temperature,
+      response_format: format === 'json' ? { type: 'json_object' } : undefined
+    });
+
+    const responseContent = completion.choices[0].message.content;
+    
+    if (format === 'json') {
+      try {
+        return JSON.parse(responseContent);
+      } catch (error) {
+        console.warn('Error parsing JSON response, returning raw text', error);
+        return responseContent;
+      }
+    }
+    
+    return responseContent;
+  } catch (error: any) {
+    console.error('Error generating completion with OpenAI:', error);
+    throw error;
+  }
 } 
