@@ -22,7 +22,7 @@
   "activationEvents": [
     "*"
   ],
-  "main": "./out/extension",
+  "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -314,10 +314,14 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "postinstall": "node ./node_modules/vscode/bin/install",
-    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p ./",
+    "watch-tests": "tsc -p ./ --watch",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
   },
   "dependencies": {
     "@types/async-lock": "^1.1.1",
@@ -327,7 +331,6 @@
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
     "gray-matter": "^4.0.3",
-    "grec0ai-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",
     "openai": "^4.103.0",
@@ -337,9 +340,15 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.0",
-    "typescript": "^2.9.2",
-    "vscode": "^1.1.21"
+    "@types/vscode": "^1.26.0",
+    "@types/webpack-env": "^1.18.0",
+    "eslint": "^8.40.0",
+    "ts-loader": "^9.4.2",
+    "typescript": "^5.0.4",
+    "webpack": "^5.82.0",
+    "webpack-cli": "^5.1.1"
   }
 }

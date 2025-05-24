@@ -1,43 +1,20 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
-
-# Compiled output
-/dist
-/tmp
-/out-tsc
-/bazel-out
-
-# IDEs and editors
-.idea/
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history/*
-
-# Miscellaneous
-/.angular/cache
-.sass-cache/
-/connect.lock
-/coverage
-/libpeerconnection.log
-testem.log
-/typings
-
-# System files
-.DS_Store
-Thumbs.db
-docker-compose.yml
-.history/*
-.history/
+.vscode
+node_modules
+tsconfig.json
+webpack.config.js
+esbuild.js
+.history
 cr3
 grec0ai_vscode.vsix
 grec0ai-vscode-3.0.0.vsix
+.git
+.github
+out/**
+src/**
+**/test/**
+**/scripts/**
+**/*.map
+**/*.ts
+**/tsconfig.json
+**/webpack.config.js
+**/.gitignore

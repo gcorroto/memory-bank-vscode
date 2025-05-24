@@ -7,7 +7,9 @@
     "sourceMap": true,
     "rootDir": "src",
     "strict": false,
-    "types": ["node", "mocha"]
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node", "mocha", "jest"]
   },
-  "exclude": ["node_modules", ".vscode-test"]
+  "exclude": ["node_modules", ".vscode-test", "dist"]
 }
