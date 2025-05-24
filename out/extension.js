@@ -12,7 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vscode = require("vscode");
 const path = require("path");
 const fs = require("fs");
-const WebSocket = require('ws');
+let WebSocket;
+try {
+    WebSocket = require('ws');
+} catch (error) {
+    // Handle missing ws module gracefully
+    console.error('The "ws" module is missing. Please run "npm install" in the extension directory.');
+}
 const { exec } = require('child_process');
 
 // Import our providers
@@ -47,6 +53,14 @@ global.mainAgent = null;
 // This method is called when the extension is activated
 function activate(context) {
 	logger.info('Grec0AI For Developers extension activated. Welcome!');
+	
+	// Check if required modules are available
+	if (!WebSocket) {
+		const message = 'Required dependencies are missing. Please run "npm install" in the extension directory.';
+		logger.error(message);
+		vscode.window.showErrorMessage(message);
+		return; // Exit activation process
+	}
 	
 	// Check for autofixer.md file if enabled
 	checkAndProcessAutofixerMd().catch(error => {
