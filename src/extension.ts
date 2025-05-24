@@ -230,7 +230,7 @@ function openFileAtLine(element: any) {
   }
 }
 
-async function automaticTest(reasoning?: any) {
+async function automaticTest(reasoning?: string) {
   // Implementation of automaticTest functionality
   try {
     // Check if we should use agent-based implementation
@@ -276,7 +276,7 @@ async function automaticTest(reasoning?: any) {
   }
 }
 
-async function handleAutomaticTestWithAgent(reasoning: any) {
+async function handleAutomaticTestWithAgent(reasoning: string) {
   // Agent-based implementation
   // Implementation details...
   
@@ -303,7 +303,7 @@ async function handleAutomaticTestWithAgent(reasoning: any) {
   }
 }
 
-function openTestContainers(pathFinal: string, pathTestFinal: string, error: any, auto: boolean, reasoning: any = undefined) {
+function openTestContainers(pathFinal: string, pathTestFinal: string, error: any, auto: boolean, reasoning: string = undefined) {
   // Check if test file exists
   fs.access(pathTestFinal, fs.constants.F_OK, (err) => {
     if (err) {
@@ -351,7 +351,7 @@ async function openOrCreateTestFile(filePath: string): Promise<void> {
   }
 }
 
-function testWithGrec0AI(sourcePath: string, testPath: string, reasoning: any, error: any, auto: boolean = false): Promise<string> {
+function testWithGrec0AI(sourcePath: string, testPath: string, reasoning: string, error: any, auto: boolean = false): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     if (auto) {
       callGrec0AI(sourcePath, testPath, undefined, error, reasoning, auto)
@@ -378,7 +378,7 @@ function testWithGrec0AI(sourcePath: string, testPath: string, reasoning: any, e
   });
 }
 
-function callGrec0AI(pathFinal: string, pathTestFinal: string, instructions: string | undefined, error: any, reasoning: any, auto: boolean = false): Promise<string> {
+function callGrec0AI(pathFinal: string, pathTestFinal: string, instructions: string | undefined, error: any, reasoning: string, auto: boolean = false): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     try {
       // Show progress indicator during test generation
@@ -437,11 +437,11 @@ Por favor, regenera el test corrigiendo el error mencionado.
             try {
               generatedTest = await ragService.generateTests(
                 sourceContent, 
-                pathFinal, 
-                language, 
-                framework, 
+                String(pathFinal), 
+                language as string, 
+                framework as string, 
                 5, // contextCount
-                configManager.getOpenAIModel()
+                "gpt-4"
               );
             } catch (ragError: any) {
               logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
@@ -449,9 +449,9 @@ Por favor, regenera el test corrigiendo el error mencionado.
               // Fallback to direct OpenAI if RAG fails
               generatedTest = await openaiService.generateTests(
                 sourceContent,
-                language,
-                framework,
-                configManager.getOpenAIModel()
+                language as string,
+                framework as string,
+                "gpt-4"
               );
             }
           } else {
@@ -477,11 +477,11 @@ Por favor, regenera el test corrigiendo el error mencionado.
             try {
               generatedTest = await ragService.generateTests(
                 sourceContent, 
-                pathFinal, 
-                language, 
-                framework, 
+                String(pathFinal), 
+                language as string, 
+                framework as string, 
                 5, // contextCount
-                configManager.getOpenAIModel()
+                "gpt-4"
               );
             } catch (ragError: any) {
               logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
@@ -489,9 +489,9 @@ Por favor, regenera el test corrigiendo el error mencionado.
               // Fallback to direct OpenAI if RAG fails
               generatedTest = await openaiService.generateTests(
                 sourceContent,
-                language,
-                framework,
-                configManager.getOpenAIModel(),
+                language as string,
+                framework as string,
+                "gpt-4",
                 {
                   instructions: `Genera tests unitarios completos para este código. ${reasoningContext} ${additionalInstructions}`
                 }
@@ -582,9 +582,11 @@ async function simulateTestExecution(sourcePath: string, testPath: string): Prom
   }
 }
 
-function generateTestExplanation(filePath: string, reasoning: any): string {
+function generateTestExplanation(filePath: string, reasoning: string): string {
   const fileName = path.basename(filePath);
-  const reasoningLevel = reasoning || 'standard';
+  
+  // Convertir reasoning a string si no lo es
+  const reasoningLevel = reasoning ? String(reasoning) : 'standard';
   
   let detail = `## Tests generados para ${fileName}\n\n`;
   

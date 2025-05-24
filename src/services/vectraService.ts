@@ -1,3 +1,9 @@
+/**
+ * Servicio de búsqueda vectorial para RAG (Retrieval Augmented Generation)
+ * Este servicio proporciona funcionalidades para buscar contenido relevante
+ * en una base de conocimiento vectorial.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -16,6 +22,10 @@ let index: any = null;
 let indexPath: string | null = null;
 let initialized = false;
 
+/**
+ * Inicializa el servicio de búsqueda vectorial
+ * @returns true si la inicialización fue exitosa, false en caso contrario
+ */
 export async function initialize(workspacePath?: string): Promise<boolean> {
   try {
     // Check if Vectra module is available
@@ -114,28 +124,54 @@ export async function indexCode(code: string, metadata: any): Promise<boolean> {
   }
 }
 
-export async function query(queryText: string, topK: number = 5): Promise<string[]> {
-  if (!await ensureInitialized()) {
-    return ['Error: Vectra service not initialized'];
+/**
+ * Realiza una búsqueda semántica basada en la consulta proporcionada
+ * @param query Texto de consulta para buscar contenido relevante
+ * @param limit Número máximo de resultados a devolver
+ * @returns Array de resultados de la búsqueda
+ */
+export async function query(query: string, limit: number = 5): Promise<string[]> {
+  if (!initialized) {
+    throw new Error('El servicio vectorial no está inicializado');
   }
-
+  
   try {
-    // In a real implementation, we would:
-    // 1. Generate embeddings for the query
-    // 2. Search the vector index
-    // 3. Return the matching results
+    // En una implementación real, aquí se realizaría la búsqueda vectorial
+    // basada en la similitud semántica con la consulta
     
-    console.log(`Vectra query for: ${queryText}`);
-    
-    // For now, return simulated results
+    // Por ahora, devolvemos resultados simulados
     return [
-      `Resultado simulado 1 para "${queryText}"`,
-      `Resultado simulado 2 para "${queryText}"`,
-      `Resultado simulado 3 para "${queryText}"`
-    ];
-  } catch (error: any) {
-    console.error(`Error querying Vectra index: ${error.message}`);
-    return [`Error: ${error.message}`];
+      "La función solicitada está en el módulo utils/helpers.ts",
+      "Para manejar errores, use try/catch y registre excepciones con logger.error()",
+      "Las mejores prácticas de TypeScript incluyen usar tipos explícitos",
+      "La configuración de la extensión se maneja en src/utils/configManager.ts",
+      "Para pruebas unitarias, se recomienda usar Jest con ts-jest"
+    ].slice(0, limit);
+  } catch (error) {
+    console.error('Error en la búsqueda vectorial:', error);
+    return [];
+  }
+}
+
+/**
+ * Calcula la similitud semántica entre dos textos
+ * @param text1 Primer texto para comparar
+ * @param text2 Segundo texto para comparar
+ * @returns Puntuación de similitud entre 0 y 1
+ */
+export async function calculateSimilarity(text1: string, text2: string): Promise<number> {
+  if (!initialized) {
+    throw new Error('El servicio vectorial no está inicializado');
+  }
+  
+  try {
+    // En una implementación real, aquí se calcularían embeddings y similitud coseno
+    
+    // Por ahora, devolvemos un valor simulado
+    return Math.random();
+  } catch (error) {
+    console.error('Error al calcular similitud:', error);
+    return 0;
   }
 }
 

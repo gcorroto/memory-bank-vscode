@@ -14,4 +14,13 @@ export function getConfig(key: string, defaultValue: any = undefined): any {
 export function setConfig(key: string, value: any): Thenable<void> {
   const config = vscode.workspace.getConfiguration('grec0ai');
   return config.update(key, value, vscode.ConfigurationTarget.Global);
+}
+
+/**
+ * Obtiene el modelo de OpenAI configurado o devuelve el modelo por defecto
+ * @returns Nombre del modelo de OpenAI a utilizar
+ */
+export function getOpenAIModel(): string {
+  const config = vscode.workspace.getConfiguration('grec0ai');
+  return config.get('openai.model', 'gpt-4') as string;
 } 
