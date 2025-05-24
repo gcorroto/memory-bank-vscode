@@ -22,17 +22,149 @@ export interface DocChunk {
 }
 
 /**
+ * Rule metadata from frontmatter in .mdc files
+ */
+export interface RuleMetadata {
+    description?: string;
+    globs?: string[];
+    alwaysApply?: boolean;
+}
+
+/**
+ * Parsed rule with metadata and content
+ */
+export interface ParsedRule {
+    metadata: RuleMetadata;
+    content: string;
+}
+
+/**
  * Input parameters for the buildPrompt function
  */
 export interface PromptComposerInput {
     userQuery: string;          // mensaje del usuario
     workspacePath: string;      // raíz del proyecto abierto
     attachedDocs: DocChunk[];   // output del motor RAG (puede ir vacío)
+    currentFilePath?: string;   // ruta del archivo actual (opcional, para matching de globs)
 }
 
 // Static prompt content (cached)
 let SYSTEM_PROMPT: string | null = null;
 let TOOLS_PROMPT: string | null = null;
+
+/**
+ * Parses frontmatter from a markdown-like file content
+ * @param content File content string
+ * @returns Parsed rule with metadata and content
+ */
+function parseFrontmatter(content: string): ParsedRule {
+    const defaultResult: ParsedRule = {
+        metadata: {},
+        content: content
+    };
+
+    // Check if content starts with frontmatter delimiter
+    if (!content.trimStart().startsWith('---')) {
+        return defaultResult;
+    }
+
+    // Find the second delimiter
+    const startPos = content.indexOf('---');
+    const endPos = content.indexOf('---', startPos + 3);
+    if (endPos === -1) {
+        return defaultResult;
+    }
+
+    // Extract frontmatter and content
+    const frontmatter = content.substring(startPos + 3, endPos).trim();
+    const cleanContent = content.substring(endPos + 3).trim();
+
+    // Parse frontmatter into key-value pairs
+    const metadata: RuleMetadata = {};
+    const lines = frontmatter.split('\n');
+    
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+            continue; // Skip empty lines and comments
+        }
+
+        const colonIndex = trimmedLine.indexOf(':');
+        if (colonIndex !== -1) {
+            const key = trimmedLine.substring(0, colonIndex).trim();
+            const value = trimmedLine.substring(colonIndex + 1).trim();
+
+            // Parse specific types
+            if (key === 'globs') {
+                // Parse array value
+                if (value) {
+                    metadata.globs = value.split(',').map(item => item.trim());
+                }
+            } else if (key === 'alwaysApply') {
+                // Parse boolean value
+                metadata.alwaysApply = value.toLowerCase() === 'true';
+            } else if (key === 'description') {
+                metadata.description = value;
+            }
+        }
+    }
+
+    return {
+        metadata,
+        content: cleanContent
+    };
+}
+
+/**
+ * Checks if a file path matches a glob pattern
+ * @param filePath Path to check
+ * @param pattern Glob pattern
+ * @returns true if the path matches the pattern
+ */
+function matchGlobPattern(filePath: string, pattern: string): boolean {
+    // Convert glob pattern to regex
+    let regexPattern = pattern
+        .replace(/\./g, '\\.')    // Escape dots
+        .replace(/\*\*/g, '.*')   // ** matches any character (including /)
+        .replace(/\*/g, '[^/]*'); // * matches any character except /
+
+    // Make sure it's a full match
+    regexPattern = `^${regexPattern}$`;
+    
+    // Create regex and test
+    const regex = new RegExp(regexPattern);
+    return regex.test(filePath);
+}
+
+/**
+ * Checks if a rule applies to a specific file based on its metadata
+ * @param rule Parsed rule with metadata
+ * @param filePath Current file path (optional)
+ * @returns true if the rule applies
+ */
+function ruleAppliesToFile(rule: ParsedRule, filePath?: string): boolean {
+    // If alwaysApply is true, the rule always applies
+    if (rule.metadata.alwaysApply) {
+        return true;
+    }
+
+    // If no globs or no file path, don't apply pattern matching
+    if (!rule.metadata.globs || !filePath) {
+        return true; // Default behavior: include if no constraints
+    }
+
+    // Get relative path for matching
+    const fileName = path.basename(filePath);
+    
+    // Check if any glob pattern matches
+    for (const pattern of rule.metadata.globs) {
+        if (pattern && (matchGlobPattern(filePath, pattern) || matchGlobPattern(fileName, pattern))) {
+            return true;
+        }
+    }
+    
+    return false;
+}
 
 /**
  * Loads the static prompt files from resources directory
@@ -91,16 +223,54 @@ export function buildPrompt(input: PromptComposerInput): string {
     // 1. Load static prompts if not loaded
     loadStaticPrompts();
 
-    // 2. Check for rules file
-    let rules = '';
-    const rulesPath = path.join(input.workspacePath, '.cursor', 'rules');
-    // Alternative path
-    const altRulesPath = path.join(input.workspacePath, '@rules.mdc');
+    // 2. Process rules files
+    let rulesContent = '';
     
+    // Check for traditional rules file first (backward compatibility)
+    const rulesPath = path.join(input.workspacePath, '.cursor', 'rules');
     if (fs.existsSync(rulesPath)) {
-        rules = fs.readFileSync(rulesPath, 'utf8');
-    } else if (fs.existsSync(altRulesPath)) {
-        rules = fs.readFileSync(altRulesPath, 'utf8');
+        rulesContent = fs.readFileSync(rulesPath, 'utf8');
+    } else {
+        // Check for .mdc rule files
+        const altRulesPath = path.join(input.workspacePath, '@rules.mdc');
+        const rulesDir = path.join(input.workspacePath, '.cursor', 'rules.d');
+        
+        // Rules content from all applicable files
+        const applicableRules: string[] = [];
+        
+        // Process individual @rules.mdc file if it exists
+        if (fs.existsSync(altRulesPath)) {
+            const content = fs.readFileSync(altRulesPath, 'utf8');
+            const parsedRule = parseFrontmatter(content);
+            
+            if (ruleAppliesToFile(parsedRule, input.currentFilePath)) {
+                applicableRules.push(parsedRule.content);
+            }
+        }
+        
+        // Process rules directory if it exists
+        if (fs.existsSync(rulesDir) && fs.statSync(rulesDir).isDirectory()) {
+            try {
+                const files = fs.readdirSync(rulesDir);
+                
+                for (const file of files) {
+                    if (file.endsWith('.mdc')) {
+                        const filePath = path.join(rulesDir, file);
+                        const content = fs.readFileSync(filePath, 'utf8');
+                        const parsedRule = parseFrontmatter(content);
+                        
+                        if (ruleAppliesToFile(parsedRule, input.currentFilePath)) {
+                            applicableRules.push(parsedRule.content);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error reading rules directory:', error);
+            }
+        }
+        
+        // Combine applicable rules
+        rulesContent = applicableRules.join('\n\n');
     }
 
     // 3. Format attached docs
@@ -113,7 +283,7 @@ export function buildPrompt(input: PromptComposerInput): string {
         SYSTEM_PROMPT,
         '---',
         TOOLS_PROMPT,
-        rules ? '---\n' + rules : '',
+        rulesContent ? '---\n' + rulesContent : '',
         input.attachedDocs.length ? '---\n' + attachedDocsText : ''
     ].filter(Boolean).join('\n\n');
 }
