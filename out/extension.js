@@ -52,12 +52,12 @@ global.mainAgent = null;
 
 // This method is called when the extension is activated
 function activate(context) {
-	logger.info('Grec0AI For Developers extension activated. Welcome!');
+	logger.appendLine('Grec0AI For Developers extension activated. Welcome!');
 	
 	// Check if required modules are available
 	if (!WebSocket) {
 		const message = 'Required dependencies are missing. Please run "npm install" in the extension directory.';
-		logger.error(message);
+		logger.appendLine(message);
 		vscode.window.showErrorMessage(message);
 		return; // Exit activation process
 	}
@@ -881,11 +881,11 @@ The test includes:
 function deactivate() {
 	return __awaiter(this, void 0, void 0, function* () {
 		try {
-			logger.info('Grec0AI For Developers extension deactivated. See you!');
+			logger.appendLine('Grec0AI For Developers extension deactivated. See you!');
 			
 			// Clean up agent if it exists
 			if (mainAgent) {
-				logger.info('Disposing agent resources...');
+				logger.appendLine('Disposing agent resources...');
 				mainAgent.dispose();
 				mainAgent = null;
 				global.mainAgent = null;
