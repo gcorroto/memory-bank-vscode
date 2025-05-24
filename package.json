@@ -115,6 +115,26 @@
         "command": "grec0ai.ask.macgyver",
         "title": "Preguntar a MacGyver",
         "category": "Grec0AI"
+      },
+      {
+        "command": "grec0ai.agent.generateTest",
+        "title": "Generate Test (Agent)",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.agent.analyzeCode",
+        "title": "Analyze Code (Agent)",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.agent.fixError",
+        "title": "Fix Error (Agent)",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.agent.explain",
+        "title": "Explain Code (Agent)",
+        "category": "Grec0AI Agent"
       }
     ],
     "menus": {
@@ -157,6 +177,22 @@
         {
           "command": "grec0ai.ask.macgyver",
           "group": "grec0ai"
+        },
+        {
+          "command": "grec0ai.agent.generateTest",
+          "group": "grec0ai-agent"
+        },
+        {
+          "command": "grec0ai.agent.analyzeCode",
+          "group": "grec0ai-agent"
+        },
+        {
+          "command": "grec0ai.agent.fixError",
+          "group": "grec0ai-agent"
+        },
+        {
+          "command": "grec0ai.agent.explain",
+          "group": "grec0ai-agent"
         }
       ],
       "view/item/context": [
