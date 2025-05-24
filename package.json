@@ -110,6 +110,11 @@
         "command": "grec0ai.vectra.indexProject",
         "title": "Index Project for RAG",
         "category": "Grec0AI"
+      },
+      {
+        "command": "grec0ai.ask.macgyver",
+        "title": "Preguntar a MacGyver",
+        "category": "Grec0AI"
       }
     ],
     "menus": {
@@ -147,6 +152,10 @@
         },
         {
           "command": "grec0ai.fix",
+          "group": "grec0ai"
+        },
+        {
+          "command": "grec0ai.ask.macgyver",
           "group": "grec0ai"
         }
       ],
