@@ -212,7 +212,7 @@ Genera SOLO el código de los tests, sin explicaciones adicionales.
         
         const completion = await openaiService.chatCompletion(
             [systemMessage, userMessage],
-            "gpt-4"
+            "gpt-4.1-mini"
         );
         
         return completion.choices[0].message.content.trim();

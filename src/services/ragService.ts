@@ -52,7 +52,7 @@ export async function generateTests(
   language: string,
   framework: string,
   contextCount: number = 5,
-  model: string = 'gpt-4'
+  model: string = "gpt-4.1-mini"
 ): Promise<string> {
   try {
     // Construir un prompt específico para generación de tests

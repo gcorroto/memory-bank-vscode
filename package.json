@@ -258,11 +258,14 @@
         "grec0ai.openai.model": {
           "type": "string",
           "enum": [
-            "gpt-4o",
-            "gpt-4-turbo",
-            "gpt-3.5-turbo"
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "o3-mini",
+            "o4-mini",
+            "codex-mini-latest"
+
           ],
-          "default": "gpt-4o",
+          "default": "gpt-4.1-mini",
           "description": "Modelo de OpenAI a utilizar para las consultas",
           "scope": "application"
         },

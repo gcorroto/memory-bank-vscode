@@ -57,7 +57,7 @@ export async function callOpenAI(prompt: string): Promise<string> {
 
   try {
     const completion = await client.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4.1-mini',
       messages: [
         { 
           role: 'system', 
@@ -77,7 +77,7 @@ export async function callOpenAI(prompt: string): Promise<string> {
   }
 }
 
-export async function generateText(prompt: string, model: string = 'gpt-3.5-turbo', options: any = {}): Promise<string> {
+export async function generateText(prompt: string, model: string = 'gpt-4.1-mini', options: any = {}): Promise<string> {
   if (!ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
@@ -98,7 +98,7 @@ export async function generateText(prompt: string, model: string = 'gpt-3.5-turb
   }
 }
 
-export async function chatCompletion(messages: any[], model: string = 'gpt-3.5-turbo', options: any = {}): Promise<any> {
+export async function chatCompletion(messages: any[], model: string = 'gpt-4.1-mini', options: any = {}): Promise<any> {
   if (!ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
@@ -121,7 +121,7 @@ export async function generateTests(
   sourceCode: string,
   language: string,
   framework: string,
-  model: string = 'gpt-3.5-turbo',
+  model: string = 'gpt-4.1-mini',
   options: any = {}
 ): Promise<string> {
   if (!ensureInitialized()) {
@@ -202,7 +202,7 @@ export async function generateCompletion(prompt: string, options: any = {}): Pro
   }
 
   try {
-    const model = options.model || 'gpt-3.5-turbo';
+    const model = options.model || 'gpt-4.1-mini';
     const maxTokens = options.maxTokens || 1024;
     const temperature = options.temperature !== undefined ? options.temperature : 0.7;
     const format = options.format || 'text';

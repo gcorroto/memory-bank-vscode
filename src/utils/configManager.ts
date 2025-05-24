@@ -22,5 +22,5 @@ export function setConfig(key: string, value: any): Thenable<void> {
  */
 export function getOpenAIModel(): string {
   const config = vscode.workspace.getConfiguration('grec0ai');
-  return config.get('openai.model', 'gpt-4') as string;
+  return config.get('openai.model', "gpt-4.1-mini") as string;
 } 

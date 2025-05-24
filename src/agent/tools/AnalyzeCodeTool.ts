@@ -253,7 +253,7 @@ Response format should be valid JSON with the following structure:
             
             const completion = await openaiService.chatCompletion(
                 [systemMessage, userMessage], 
-                "gpt-4",
+                "gpt-4.1-mini",
                 { response_format: responseFormat }
             );
             

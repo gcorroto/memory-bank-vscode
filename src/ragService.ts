@@ -52,7 +52,7 @@ export async function generateTests(
   language: string,
   framework: string,
   contextCount: number = 5,
-  model: string = 'gpt-4'
+  model: string = "gpt-4.1-mini"
 ): Promise<string> {
   try {
     // Construir un prompt específico para generación de tests
@@ -95,7 +95,7 @@ export async function resolveError(
   sourceCode: string,
   language: string,
   contextCount: number = 4,
-  model: string = 'gpt-4'
+  model: string = "gpt-4.1-mini"
 ): Promise<{explanation: string, solution: string, fixedCode: string}> {
   try {
     // Construir un prompt para resolver el error
@@ -155,7 +155,7 @@ export async function analyzeCode(
   sourceCode: string,
   language: string,
   contextCount: number = 3,
-  model: string = 'gpt-4'
+  model: string = "gpt-4.1-mini"
 ): Promise<{issues: any[], summary: string}> {
   try {
     // Construir un prompt para analizar el código

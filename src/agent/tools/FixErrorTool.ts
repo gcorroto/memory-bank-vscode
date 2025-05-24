@@ -186,7 +186,7 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
             // Usamos el método chatCompletion del servicio de OpenAI
             const completion = await openaiService.chatCompletion(
                 [systemMessage, userMessage], 
-                "gpt-4" // Usamos un valor directo en lugar de configManager.getOpenAIModel()
+                "gpt-4.1-mini" // Usamos un valor directo en lugar de configManager.getOpenAIModel()
             );
             
             return completion.choices[0].message.content.trim();

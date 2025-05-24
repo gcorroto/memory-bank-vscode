@@ -441,7 +441,7 @@ Por favor, regenera el test corrigiendo el error mencionado.
                 language as string, 
                 framework as string, 
                 5, // contextCount
-                "gpt-4"
+                "gpt-4.1-mini"
               );
             } catch (ragError: any) {
               logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
@@ -451,7 +451,7 @@ Por favor, regenera el test corrigiendo el error mencionado.
                 sourceContent,
                 language as string,
                 framework as string,
-                "gpt-4"
+                "gpt-4.1-mini"
               );
             }
           } else {
@@ -481,7 +481,7 @@ Por favor, regenera el test corrigiendo el error mencionado.
                 language as string, 
                 framework as string, 
                 5, // contextCount
-                "gpt-4"
+                "gpt-4.1-mini"
               );
             } catch (ragError: any) {
               logger.appendLine(`Error con RAG, usando OpenAI directamente: ${ragError.message}`);
@@ -491,7 +491,7 @@ Por favor, regenera el test corrigiendo el error mencionado.
                 sourceContent,
                 language as string,
                 framework as string,
-                "gpt-4",
+                "gpt-4.1-mini",
                 {
                   instructions: `Genera tests unitarios completos para este código. ${reasoningContext} ${additionalInstructions}`
                 }
