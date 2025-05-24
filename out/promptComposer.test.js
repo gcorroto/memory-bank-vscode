@@ -91,7 +91,7 @@ REGLA: Usar PEP8 para el código Python`;
                 { text: 'Example React component', source: 'components.md' }
             ]
         };
-        const result = promptComposer_1.buildPrompt(input);
+        const result = (0, promptComposer_1.buildPrompt)(input);
         // Check that all parts are included
         expect(result).toContain(input.userQuery);
         expect(result).toContain(mockSystemPrompt);
@@ -107,7 +107,7 @@ REGLA: Usar PEP8 para el código Python`;
             workspacePath: '/fake/path',
             attachedDocs: []
         };
-        const result = promptComposer_1.buildPrompt(input);
+        const result = (0, promptComposer_1.buildPrompt)(input);
         // Rules should not be included
         expect(result).not.toContain(mockRules);
     });
@@ -117,7 +117,7 @@ REGLA: Usar PEP8 para el código Python`;
             workspacePath: '/fake/path',
             attachedDocs: []
         };
-        const result = promptComposer_1.buildPrompt(input);
+        const result = (0, promptComposer_1.buildPrompt)(input);
         // Attached docs should not be included
         expect(result).not.toContain('Fuente:');
     });
@@ -147,7 +147,7 @@ REGLA: Usar PEP8 para el código Python`;
             attachedDocs: [],
             currentFilePath: '/fake/path/src/component.js'
         };
-        const result = promptComposer_1.buildPrompt(input);
+        const result = (0, promptComposer_1.buildPrompt)(input);
         // Frontmatter shouldn't be included, but content should be
         expect(result).not.toContain('description:');
         expect(result).not.toContain('alwaysApply:');
@@ -181,7 +181,7 @@ REGLA: Usar PEP8 para el código Python`;
             attachedDocs: [],
             currentFilePath: '/fake/path/src/script.py'
         };
-        const pythonResult = promptComposer_1.buildPrompt(pythonInput);
+        const pythonResult = (0, promptComposer_1.buildPrompt)(pythonInput);
         expect(pythonResult).toContain('REGLA: Usar PEP8 para el código Python');
         // Test with JavaScript file (should NOT apply)
         const jsInput = {
@@ -190,7 +190,7 @@ REGLA: Usar PEP8 para el código Python`;
             attachedDocs: [],
             currentFilePath: '/fake/path/src/script.js'
         };
-        const jsResult = promptComposer_1.buildPrompt(jsInput);
+        const jsResult = (0, promptComposer_1.buildPrompt)(jsInput);
         expect(jsResult).not.toContain('REGLA: Usar PEP8 para el código Python');
     });
     test('buildPrompt should handle multiple rule files from directory', () => {
@@ -231,7 +231,7 @@ REGLA JS: Usar ES6+`;
             attachedDocs: [],
             currentFilePath: '/fake/path/src/script.py'
         };
-        const pythonResult = promptComposer_1.buildPrompt(pythonInput);
+        const pythonResult = (0, promptComposer_1.buildPrompt)(pythonInput);
         expect(pythonResult).toContain('REGLA: Usar PEP8 para el código Python');
         expect(pythonResult).not.toContain('REGLA JS: Usar ES6+');
         // Test with JavaScript file (should apply JS rules only)
@@ -241,7 +241,7 @@ REGLA JS: Usar ES6+`;
             attachedDocs: [],
             currentFilePath: '/fake/path/src/script.js'
         };
-        const jsResult = promptComposer_1.buildPrompt(jsInput);
+        const jsResult = (0, promptComposer_1.buildPrompt)(jsInput);
         expect(jsResult).not.toContain('REGLA: Usar PEP8 para el código Python');
         expect(jsResult).toContain('REGLA JS: Usar ES6+');
     });

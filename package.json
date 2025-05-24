@@ -284,6 +284,12 @@
           "description": "Número de fragmentos de contexto a recuperar para RAG",
           "scope": "application"
         },
+        "grec0ai.autofixer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic execution of instructions from autofixer.md file on startup",
+          "scope": "application"
+        },
         "git.connectionSettings.jira": {
           "type": "string",
           "default": "",

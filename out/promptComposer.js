@@ -10,6 +10,7 @@
  * 5. Dynamic documentation chunks from RAG
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.buildPrompt = buildPrompt;
 const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
@@ -253,5 +254,4 @@ function buildPrompt(input) {
         input.attachedDocs.length ? '---\n' + attachedDocsText : ''
     ].filter(Boolean).join('\n\n');
 }
-exports.buildPrompt = buildPrompt;
 //# sourceMappingURL=promptComposer.js.map

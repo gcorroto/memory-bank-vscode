@@ -47,6 +47,16 @@ La extensión puede analizar errores en tu código y sugerir soluciones:
 * **Cumplimiento de estándares**: Verifica la conformidad con CWE, OWASP, CERT, SANS-Top25, PCI-DSS, NIST, MISRA, etc.
 * **Prevención automática de errores**: Detecta problemas de código antes de que lleguen a producción.
 
+### 🚀 AutoFixer - Ejecución Automática
+
+AutoFixer permite ejecutar instrucciones de forma automática al abrir el workspace:
+
+* **Desatendido**: Ejecuta instrucciones sin intervención del usuario al iniciar VSCode/Code Server.
+* **Basado en archivos**: Lee instrucciones desde un archivo `autofixer.md` en la raíz del proyecto.
+* **CI/CD integrado**: Ideal para entornos de integración continua, contenedores y despliegues automáticos.
+
+[Documentación completa de AutoFixer](docs/autofixer.md)
+
 ## Requisitos
 
 * Visual Studio Code v1.40.0 o superior.
