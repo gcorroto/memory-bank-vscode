@@ -41,7 +41,7 @@ code --install-extension ruta/a/grec0ai-vscode-3.0.0.vsix
 
 Si necesitas generar el archivo VSIX por ti mismo (para desarrollo, distribución interna o para personalizar la extensión), puedes hacerlo utilizando la herramienta VSCE (Visual Studio Code Extensions):
 
-1. Asegúrate de tener instalado Node.js en tu sistema
+1. Asegúrate de tener instalado Node.js y Git en tu sistema
 
 2. Instala la herramienta VSCE globalmente:
 
@@ -49,10 +49,13 @@ Si necesitas generar el archivo VSIX por ti mismo (para desarrollo, distribució
 npm install -g @vscode/vsce
 ```
 
-3. Clona el repositorio y navega a la carpeta del proyecto:
+3. Descarga el código fuente desde GitHub utilizando la línea de comandos:
 
 ```bash
-git clone https://github.com/gcorroto/autofixer_extension.git
+# Clonar el repositorio desde la rama principal (main)
+git clone -b main https://github.com/gcorroto/autofixer_extension.git
+
+# Navegar al directorio del proyecto
 cd autofixer_extension
 ```
 
