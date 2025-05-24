@@ -42,12 +42,6 @@ const coverageDetailsProvider = new CoverageDetailsProvider_1.CoverageDetailsPro
 
 // Global agent instance
 let mainAgent = null;
-
-// Import agent system
-const agentSystem = require('./agent');
-
-// Global agent instance
-let mainAgent = null;
 global.mainAgent = null;
 
 // This method is called when the extension is activated
