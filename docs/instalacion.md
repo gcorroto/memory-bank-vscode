@@ -34,8 +34,41 @@ También puedes instalar la extensión utilizando la interfaz de línea de coman
 code --install-extension grec0ai.grec0ai-vscode
 
 # Instalar desde un archivo VSIX local
-code --install-extension grec0ai-vscode-3.0.0.vsix
+code --install-extension ruta/a/grec0ai-vscode-3.0.0.vsix
 ```
+
+### 4. Generación del Paquete VSIX
+
+Si necesitas generar el archivo VSIX por ti mismo (para desarrollo, distribución interna o para personalizar la extensión), puedes hacerlo utilizando la herramienta VSCE (Visual Studio Code Extensions):
+
+1. Asegúrate de tener instalado Node.js en tu sistema
+
+2. Instala la herramienta VSCE globalmente:
+
+```bash
+npm install -g @vscode/vsce
+```
+
+3. Clona el repositorio y navega a la carpeta del proyecto:
+
+```bash
+git clone https://github.com/gcorroto/autofixer_extension.git
+cd autofixer_extension
+```
+
+4. Instala las dependencias del proyecto:
+
+```bash
+npm install
+```
+
+5. Genera el archivo VSIX:
+
+```bash
+vsce package
+```
+
+Esto generará un archivo con el formato `grec0ai-vscode-X.X.X.vsix` en el directorio raíz del proyecto.
 
 ## Requisitos Previos
 
@@ -54,6 +87,48 @@ Una vez instalada la extensión, realiza la configuración inicial:
 3. Configura tu clave API de OpenAI en `grec0ai.openai.apiKey` 
 4. Selecciona el framework de pruebas que deseas utilizar en `grec0ai.test.framework`
 5. Personaliza otras opciones según tus necesidades
+
+### Configuración desde la Línea de Comandos
+
+También puedes configurar la extensión directamente desde la línea de comandos, lo que es especialmente útil para automatizaciones, CI/CD o configuración por lotes:
+
+1. Configurar autofixer para que se ejecute automáticamente al iniciar:
+
+```bash
+# En Windows
+code --install-extension ruta/a/grec0ai-vscode-3.0.0.vsix --force
+code --user-data-dir=<ruta> --settings '{"grec0ai.autofixer.enabled": true}'
+
+# En Linux/macOS
+code --install-extension ruta/a/grec0ai-vscode-3.0.0.vsix --force
+code --user-data-dir=<ruta> --settings '{"grec0ai.autofixer.enabled": true}'
+```
+
+2. Usando variables de entorno (útil para entornos CI/CD):
+
+```bash
+# Windows (PowerShell)
+$env:GREC0AI_AUTOFIXER=1
+code .
+
+# Windows (CMD)
+set GREC0AI_AUTOFIXER=1
+code .
+
+# Linux/macOS
+export GREC0AI_AUTOFIXER=1
+code .
+```
+
+3. Modificando directamente el archivo `settings.json`:
+
+```bash
+# Abrir settings.json
+code --user-data-dir=<ruta> --user-settings
+
+# O manualmente añadir al archivo settings.json
+# "grec0ai.autofixer.enabled": true
+```
 
 ## Verificación de la Instalación
 
