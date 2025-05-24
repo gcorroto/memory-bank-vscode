@@ -58,10 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
     return; // Exit activation process
   }
   
-  // Check for autofixer.md file if enabled
-  checkAndProcessAutofixerMd().catch(error => {
-    logger.appendLine(`Error processing autofixer.md: ${error.message}`);
-  });
+  // No ejecutamos aquí el autofixer.md, lo haremos después de inicializar el agente
+  // para evitar ejecuciones duplicadas
   
   // Register providers for file tree, coverage summary, and coverage details
   vscode.window.registerTreeDataProvider('grec0ai-filesystem-tree', fileTreeProvider);

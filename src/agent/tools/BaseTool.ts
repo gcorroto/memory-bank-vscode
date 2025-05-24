@@ -83,10 +83,52 @@ export abstract class BaseTool {
             throw new Error('No parameters provided');
         }
         
+        // Normalize parameters (handle common variations)
+        this.normalizeParams(params);
+        
         // Check for required parameters (defined in this.parameters)
         for (const [paramName, paramDef] of Object.entries(this.parameters)) {
             if (paramDef.required && (params[paramName] === undefined || params[paramName] === null)) {
                 throw new Error(`Required parameter '${paramName}' is missing`);
+            }
+        }
+    }
+
+    /**
+     * Normalize parameters to handle common variations and apply defaults
+     * @param params - Parameters to normalize
+     */
+    protected normalizeParams(params: Record<string, any>): void {
+        // Handle common parameter name variations
+        const commonVariations: Record<string, string[]> = {
+            'filePath': ['filepath', 'file_path', 'path'],
+            'sourcePath': ['source_path', 'sourcepath', 'path', 'file'],
+            'content': ['code', 'text', 'data'],
+            'command': ['cmd', 'exec', 'script']
+        };
+        
+        // Apply parameter variations
+        for (const [standardName, variations] of Object.entries(commonVariations)) {
+            // If the standard parameter is already defined, skip
+            if (params[standardName] !== undefined) {
+                continue;
+            }
+            
+            // Check if any variation is present and use its value
+            for (const variation of variations) {
+                if (params[variation] !== undefined) {
+                    params[standardName] = params[variation];
+                    this.logger.appendLine(`Normalized parameter ${variation} to ${standardName}`);
+                    break;
+                }
+            }
+        }
+        
+        // Apply default values for missing parameters
+        for (const [paramName, paramDef] of Object.entries(this.parameters)) {
+            if (params[paramName] === undefined && paramDef.default !== undefined) {
+                params[paramName] = paramDef.default;
+                this.logger.appendLine(`Applied default value for parameter ${paramName}`);
             }
         }
     }

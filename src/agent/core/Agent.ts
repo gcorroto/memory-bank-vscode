@@ -115,7 +115,10 @@ export class Agent {
                 }
                 
                 try {
-                    const stepResult = await tool.run(step.params);
+                    // Resolve variables in parameters before execution
+                    const resolvedParams = this.resolveVariables(step.params);
+                    
+                    const stepResult = await tool.run(resolvedParams);
                     
                     // Add result to context
                     this.contextManager.addStepResult(step, stepResult);
@@ -161,7 +164,10 @@ export class Agent {
                         
                         try {
                             const tool = this.toolManager.selectTool(modifiedStep.tool);
-                            const retryResult = await tool.run(modifiedStep.params);
+                            // Resolve variables in parameters for retry
+                            const resolvedParams = this.resolveVariables(modifiedStep.params);
+                            
+                            const retryResult = await tool.run(resolvedParams);
                             
                             this.contextManager.addStepResult(modifiedStep, retryResult);
                             results.push({
@@ -436,5 +442,101 @@ Respond in the following JSON format:
         this.toolManager.dispose();
         this.workspaceManager.dispose();
         this.databaseManager.dispose();
+    }
+
+    /**
+     * Resolve variables in parameters before executing tools
+     * @param params - Tool parameters with potential variables
+     * @returns Resolved parameters
+     */
+    private resolveVariables(params: Record<string, any>): Record<string, any> {
+        if (!params) {
+            return {};
+        }
+
+        // Helper function to get current active editor info
+        const getActiveEditorInfo = (): { filePath?: string, content?: string } => {
+            try {
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    return {
+                        filePath: editor.document.uri.fsPath,
+                        content: editor.document.getText()
+                    };
+                }
+            } catch (e) {
+                this.logger.appendLine(`Error getting active editor info: ${e}`);
+            }
+            return {};
+        };
+
+        // Get active editor info once for efficiency
+        const activeInfo = getActiveEditorInfo();
+        
+        // Clone the params to avoid modifying the original
+        const resolvedParams: Record<string, any> = {};
+        
+        // Process all parameters
+        for (const [key, value] of Object.entries(params)) {
+            // Handle string values that might be variables
+            if (typeof value === 'string') {
+                // Normalize parameter keys
+                const normalizedKey = key.toLowerCase();
+                
+                // Handle common variable patterns
+                if (value === '$SELECTED_FILE' || value === 'path_to_selected_file') {
+                    if (activeInfo.filePath) {
+                        resolvedParams[key] = activeInfo.filePath;
+                        continue;
+                    }
+                }
+                
+                if (value === '$CONTENT_OF_SELECTED_FILE' || value === 'content_of_the_file') {
+                    if (activeInfo.content) {
+                        resolvedParams[key] = activeInfo.content;
+                        continue;
+                    }
+                }
+                
+                // Correct common parameter mismatches
+                if ((normalizedKey === 'filepath' || normalizedKey === 'file_path') && key !== 'filePath') {
+                    // ReadFileTool expects 'filePath' not 'filepath' or 'file_path'
+                    resolvedParams['filePath'] = value;
+                    
+                    // If the value itself is a variable, resolve it
+                    if (value === '$SELECTED_FILE' || value === 'path_to_selected_file') {
+                        resolvedParams['filePath'] = activeInfo.filePath || value;
+                    }
+                    
+                    continue;
+                }
+                
+                // If we get here, keep the original value
+                resolvedParams[key] = value;
+            } else if (typeof value === 'object' && value !== null) {
+                // Recursively resolve nested objects
+                resolvedParams[key] = this.resolveVariables(value as Record<string, any>);
+            } else {
+                // For non-string, non-object values, keep as is
+                resolvedParams[key] = value;
+            }
+        }
+        
+        // Special case handling for known tools with specific parameter requirements
+        
+        // Fix ReadFileTool parameters
+        if (params.filepath && !params.filePath) {
+            resolvedParams.filePath = params.filepath;
+            if (resolvedParams.filePath === '$SELECTED_FILE' || resolvedParams.filePath === 'path_to_selected_file') {
+                resolvedParams.filePath = activeInfo.filePath || resolvedParams.filePath;
+            }
+        }
+        
+        // Fix AnalyzeCodeTool parameters
+        if (params.code && !params.sourcePath) {
+            resolvedParams.sourcePath = activeInfo.filePath || 'unknown.txt';
+        }
+        
+        return resolvedParams;
     }
 } 

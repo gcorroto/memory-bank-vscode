@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseTool } from './BaseTool';
 import { Agent } from '../core/Agent';
+import * as vscode from 'vscode';
 
 interface ReadFileResult {
     content: string;
@@ -55,7 +56,38 @@ export class ReadFileTool extends BaseTool {
      * @returns File content and metadata
      */
     protected async run_impl(params: Record<string, any>): Promise<ReadFileResult> {
-        const { filePath, encoding = 'utf8', maxLines = 0, startLine = 0 } = params;
+        let { filePath, encoding = 'utf8', maxLines = 0, startLine = 0 } = params;
+        
+        // Additional validation for filePath
+        if (!filePath) {
+            // Try to get active editor file as fallback
+            try {
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    filePath = editor.document.uri.fsPath;
+                    this.logger.appendLine(`No filePath provided, using active editor file: ${filePath}`);
+                } else {
+                    throw new Error('Required parameter filePath is missing and no active editor available');
+                }
+            } catch (e) {
+                throw new Error('Required parameter filePath is missing and could not determine active file');
+            }
+        }
+        
+        // Handle common placeholders
+        if (filePath === '$SELECTED_FILE' || filePath === 'path_to_selected_file') {
+            try {
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    filePath = editor.document.uri.fsPath;
+                    this.logger.appendLine(`Resolved $SELECTED_FILE to: ${filePath}`);
+                } else {
+                    throw new Error('No active editor available to resolve $SELECTED_FILE');
+                }
+            } catch (e) {
+                throw new Error('Could not resolve $SELECTED_FILE variable: No active editor');
+            }
+        }
         
         try {
             // Check if file exists

@@ -9,6 +9,7 @@ import { BaseTool } from './BaseTool';
 import * as ragService from '../../services/ragService';
 import * as openaiService from '../../services/openaiService';
 import * as configManager from '../../utils/configManager';
+import * as vscode from 'vscode';
 
 interface AnalysisIssue {
     description: string;
@@ -60,137 +61,110 @@ export class AnalyzeCodeTool extends BaseTool {
      * @returns - Analysis results
      */
     async run_impl(params: Record<string, any>): Promise<any> {
-        const { 
+        let { 
             sourcePath, 
+            code,
             focus = 'all', 
             detailLevel = 'medium',
             outputFormat = 'json'
         } = params;
         
         try {
-            // Check if source file exists
-            if (!fs.existsSync(sourcePath)) {
-                throw new Error(`Source file not found: ${sourcePath}`);
+            // Handle missing sourcePath by using active editor if possible
+            if (!sourcePath) {
+                try {
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor) {
+                        sourcePath = editor.document.uri.fsPath;
+                        this.logger.appendLine(`No sourcePath provided, using active editor file: ${sourcePath}`);
+                    } else if (!code) {
+                        throw new Error('Required parameter sourcePath is missing and no active editor available');
+                    }
+                } catch (e) {
+                    if (!code) {
+                        throw new Error('Required parameter sourcePath is missing and could not determine active file');
+                    }
+                }
             }
             
-            // Read source file
-            const sourceContent = fs.readFileSync(sourcePath, 'utf8');
-            
-            // Get file extension and determine language
-            const extension = path.extname(sourcePath).substring(1);
-            const language = this.mapExtensionToLanguage(extension);
-            
-            // Initialize RAG service
-            const ragInitialized = await ragService.initialize();
-            
-            let analysis: AnalysisResult;
-            
-            // Use RAG service if available
-            if (ragInitialized) {
+            // Handle variables in sourcePath
+            if (sourcePath === '$SELECTED_FILE' || sourcePath === 'path_to_selected_file') {
                 try {
-                    this.logger.appendLine(`Analyzing code with RAG for ${sourcePath}`);
-                    
-                    // Adjust context count based on detail level
-                    let contextCount = 3;
-                    if (detailLevel === 'high') {
-                        contextCount = 5;
-                    } else if (detailLevel === 'low') {
-                        contextCount = 2;
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor) {
+                        sourcePath = editor.document.uri.fsPath;
+                        this.logger.appendLine(`Resolved $SELECTED_FILE to: ${sourcePath}`);
+                    } else {
+                        throw new Error('No active editor available to resolve $SELECTED_FILE');
                     }
-                    
-                    // En lugar de usar ragService.analyzeCode, utilizamos nuestro método interno
-                    analysis = await this.analyzeWithOpenAI(
-                        sourceContent,
-                        language,
-                        focus,
-                        detailLevel
-                    );
-                } catch (ragError: any) {
-                    this.logger.appendLine(`Error analyzing with RAG: ${ragError.message}`);
-                    
-                    // Fallback to analyzing with OpenAI directly
-                    analysis = await this.analyzeWithOpenAI(
-                        sourceContent,
-                        language,
-                        focus,
-                        detailLevel
-                    );
+                } catch (e) {
+                    throw new Error('Could not resolve $SELECTED_FILE variable: No active editor');
+                }
+            }
+            
+            let sourceContent: string;
+            let language: string;
+            
+            // Get content from either code parameter or file
+            if (code && code !== '$CONTENT_OF_SELECTED_FILE' && code !== 'content_of_the_file' && code !== 'content from previous step') {
+                // Use provided code
+                sourceContent = code;
+                
+                // Try to determine language from sourcePath or default to 'text'
+                if (sourcePath) {
+                    const extension = path.extname(sourcePath).substring(1);
+                    language = this.mapExtensionToLanguage(extension);
+                } else {
+                    language = 'text';
                 }
             } else {
-                // Use OpenAI directly if RAG is not available
-                analysis = await this.analyzeWithOpenAI(
-                    sourceContent,
-                    language,
-                    focus,
-                    detailLevel
-                );
+                // Code parameter is a variable or not provided, read from file
+                if (!sourcePath) {
+                    throw new Error('Either sourcePath or valid code parameter must be provided');
+                }
+                
+                // Check if source file exists
+                if (!fs.existsSync(sourcePath)) {
+                    throw new Error(`Source file not found: ${sourcePath}`);
+                }
+                
+                // Read source file
+                sourceContent = fs.readFileSync(sourcePath, 'utf8');
+                
+                // Get file extension and determine language
+                const extension = path.extname(sourcePath).substring(1);
+                language = this.mapExtensionToLanguage(extension);
+                
+                // If code was a variable, update it for logs and context
+                if (code === '$CONTENT_OF_SELECTED_FILE' || code === 'content_of_the_file' || code === 'content from previous step') {
+                    this.logger.appendLine(`Resolved code variable to file content from: ${sourcePath}`);
+                }
             }
             
-            // Format output if needed
-            if (outputFormat === 'markdown') {
-                return {
-                    sourcePath,
-                    analysis: this.formatAnalysisAsMarkdown(analysis, sourcePath, language)
-                };
-            } else if (outputFormat === 'text') {
-                return {
-                    sourcePath,
-                    analysis: this.formatAnalysisAsText(analysis, sourcePath, language)
-                };
-            } else {
-                // Default to JSON
-                return {
-                    sourcePath,
-                    language,
-                    analysis
-                };
-            }
-        } catch (error: any) {
-            throw new Error(`Error analyzing code: ${error.message}`);
-        }
-    }
-
-    /**
-     * Analyze code using OpenAI directly
-     * @param sourceCode - Source code to analyze
-     * @param language - Programming language
-     * @param focus - Focus area for analysis
-     * @param detailLevel - Level of detail
-     * @returns - Analysis results
-     */
-    async analyzeWithOpenAI(
-        sourceCode: string, 
-        language: string, 
-        focus: string, 
-        detailLevel: string
-    ): Promise<AnalysisResult> {
-        try {
-            // Create prompt for analysis
-            let focusInstructions = '';
-            if (focus === 'security') {
-                focusInstructions = 'Focus primarily on security vulnerabilities and issues.';
-            } else if (focus === 'performance') {
-                focusInstructions = 'Focus primarily on performance issues and optimizations.';
-            } else if (focus === 'structure') {
-                focusInstructions = 'Focus primarily on code structure, maintainability, and best practices.';
-            }
+            // Fallback de análisis básico en caso de errores
+            let analysis: AnalysisResult = {
+                issues: [],
+                summary: "Code analysis completed."
+            };
             
-            let detailInstructions = '';
-            if (detailLevel === 'high') {
-                detailInstructions = 'Provide very detailed analysis with concrete examples and fixes.';
-            } else if (detailLevel === 'low') {
-                detailInstructions = 'Provide a concise summary of the most important issues.';
-            }
-            
-            const prompt = `
+            try {
+                // Intentar usar OpenAI para el análisis
+                this.logger.appendLine(`Analyzing code with OpenAI for ${sourcePath || 'provided code'}`);
+                
+                // Generate analysis with OpenAI
+                const systemMessage = {
+                    role: 'system',
+                    content: 'You are an expert code reviewer specializing in identifying problems and suggesting improvements. Provide detailed, actionable feedback in JSON format.'
+                };
+                
+                const userMessage = {
+                    role: 'user',
+                    content: `
 Analyze this ${language} code:
 
 \`\`\`${language}
-${sourceCode}
+${sourceContent}
 \`\`\`
-
-${focusInstructions}
-${detailInstructions}
 
 Look for:
 1. Errors and bugs
@@ -216,51 +190,72 @@ Response format should be valid JSON with the following structure:
   ],
   "summary": "Overall assessment"
 }
-`;
-            
-            // Generate analysis with OpenAI
-            const systemMessage = {
-                role: 'system',
-                content: 'You are an expert code reviewer specializing in identifying problems and suggesting improvements. Provide detailed, actionable feedback.'
-            };
-            
-            const userMessage = {
-                role: 'user',
-                content: prompt
-            };
-            
-            const responseFormat = {
-                type: 'json_object',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        issues: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    description: { type: 'string' },
-                                    severity: { type: 'string', enum: ['High', 'Medium', 'Low'] },
-                                    solution: { type: 'string' },
-                                    code: { type: 'string' }
-                                }
-                            }
-                        },
-                        summary: { type: 'string' }
-                    }
+`
+                };
+                
+                // Simplificamos las opciones para evitar el error
+                const apiConfig = configManager.getConfig();
+                const modelToUse = apiConfig.model || "gpt-4.1-mini";
+                
+                const completion = await openaiService.chatCompletion(
+                    [systemMessage, userMessage], 
+                    modelToUse,
+                    { temperature: 0.3 }
+                );
+                
+                let resultContent = completion.choices[0].message.content;
+                
+                try {
+                    // Intentamos parsear el resultado como JSON
+                    analysis = JSON.parse(resultContent);
+                } catch (parseError) {
+                    // Si falla, usar resultado genérico
+                    this.logger.appendLine("Failed to parse OpenAI response as JSON, using fallback analysis");
+                    analysis = {
+                        issues: [{
+                            description: "Could not parse analysis results",
+                            severity: "Medium" as 'Medium',
+                            solution: "The code analyzer encountered an error parsing the results",
+                            code: ""
+                        }],
+                        summary: "Analysis failed to produce properly formatted results."
+                    };
                 }
-            };
+            } catch (aiError: any) {
+                // Log error but continue
+                this.logger.appendLine(`Error using OpenAI: ${aiError.message}`);
+                analysis = {
+                    issues: [{
+                        description: "Error during analysis",
+                        severity: "Medium" as 'Medium',
+                        solution: "The code analyzer encountered an error: " + aiError.message,
+                        code: ""
+                    }],
+                    summary: "Analysis failed due to an error with the AI service."
+                };
+            }
             
-            const completion = await openaiService.chatCompletion(
-                [systemMessage, userMessage], 
-                "gpt-4.1-mini",
-                { response_format: responseFormat }
-            );
-            
-            return JSON.parse(completion.choices[0].message.content);
+            // Format output if needed
+            if (outputFormat === 'markdown') {
+                return {
+                    sourcePath: sourcePath || 'code-snippet',
+                    analysis: this.formatAnalysisAsMarkdown(analysis, sourcePath || 'code-snippet', language)
+                };
+            } else if (outputFormat === 'text') {
+                return {
+                    sourcePath: sourcePath || 'code-snippet',
+                    analysis: this.formatAnalysisAsText(analysis, sourcePath || 'code-snippet', language)
+                };
+            } else {
+                // Default to JSON
+                return {
+                    sourcePath: sourcePath || 'code-snippet',
+                    language,
+                    analysis
+                };
+            }
         } catch (error: any) {
-            this.logger.appendLine(`Error analyzing with OpenAI: ${error.message}`);
-            throw error;
+            throw new Error(`Error analyzing code: ${error.message}`);
         }
     }
 
