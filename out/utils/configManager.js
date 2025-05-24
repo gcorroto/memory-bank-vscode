@@ -81,6 +81,16 @@ class ConfigManager {
     }
 
     /**
+     * Verifica si el modo autofixer está habilitado
+     * @returns {boolean} - True si el autofixer está activado
+     */
+    isAutofixerEnabled() {
+        const config = this.getConfig();
+        // Check configuration first, then environment variable
+        return config.get('autofixer.enabled') || process.env.GREC0AI_AUTOFIXER === '1';
+    }
+
+    /**
      * Comprueba si la configuración necesaria está completa
      * @returns {boolean} - True si la configuración está completa
      */
@@ -139,6 +149,11 @@ class ConfigManager {
                 type: 'number',
                 default: 3,
                 description: 'Número de fragmentos de contexto a recuperar para RAG'
+            },
+            'grec0ai.autofixer.enabled': {
+                type: 'boolean',
+                default: false,
+                description: 'Enable automatic execution of instructions from autofixer.md file on startup'
             }
         };
     }

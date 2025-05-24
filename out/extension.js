@@ -54,6 +54,11 @@ global.mainAgent = null;
 function activate(context) {
 	logger.info('Grec0AI For Developers extension activated. Welcome!');
 	
+	// Check for autofixer.md file if enabled
+	checkAndProcessAutofixerMd().catch(error => {
+		logger.appendLine(`Error processing autofixer.md: ${error.message}`);
+	});
+	
 	// Register providers for file tree, coverage summary, and coverage details
 	vscode.window.registerTreeDataProvider('grec0ai-filesystem-tree', fileTreeProvider);
 	vscode.window.registerTreeDataProvider('grec0ai-coverage-summary', coverageSummaryProvider);
@@ -122,6 +127,11 @@ async function initializeAgentSystem(context) {
 		context.subscriptions.push(disposable);
 		
 		logger.appendLine('Grec0AI Agent System initialized successfully');
+		
+		// Now that the agent is initialized, check for autofixer.md
+		checkAndProcessAutofixerMd().catch(error => {
+			logger.appendLine(`Error processing autofixer.md after agent initialization: ${error.message}`);
+		});
 	} catch (error) {
 		logger.appendLine(`Failed to initialize agent system: ${error.message}`);
 		
@@ -878,4 +888,69 @@ function deactivate() {
 		}
 	});
 }
+
+/**
+ * Check for autofixer.md file and process it if found
+ * @returns {Promise<void>}
+ */
+async function checkAndProcessAutofixerMd() {
+	// Check if autofixer is enabled via config or environment variable
+	if (!configManager.isAutofixerEnabled()) {
+		logger.appendLine('AutoFixer is disabled, skipping autofixer.md check');
+		return;
+	}
+	
+	logger.appendLine('AutoFixer is enabled, checking for autofixer.md file...');
+	
+	try {
+		// Get workspace folders
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders || workspaceFolders.length === 0) {
+			logger.appendLine('No workspace folders found, cannot check for autofixer.md');
+			return;
+		}
+		
+		// Look for autofixer.md in the root of each workspace folder
+		for (const folder of workspaceFolders) {
+			const autofixerPath = path.join(folder.uri.fsPath, 'autofixer.md');
+			
+			if (fs.existsSync(autofixerPath)) {
+				logger.appendLine(`Found autofixer.md in workspace: ${folder.name}`);
+				
+				// Read file content
+				const content = fs.readFileSync(autofixerPath, 'utf8');
+				if (!content.trim()) {
+					logger.appendLine('autofixer.md file is empty, skipping');
+					continue;
+				}
+				
+				// Process with mainAgent if available, otherwise wait for agent initialization
+				if (!mainAgent) {
+					logger.appendLine('Waiting for agent initialization...');
+					// Wait for agent to be initialized (ideally this should be event-based)
+					await new Promise(resolve => setTimeout(resolve, 2000));
+				}
+				
+				// Check again if agent is available
+				if (mainAgent) {
+					logger.appendLine('Processing autofixer.md with agent...');
+					await mainAgent.handleUserInput(content, { 
+						isAutoFixer: true, 
+						source: 'autofixer.md',
+						workspace: folder.uri.fsPath 
+					});
+					logger.appendLine('AutoFixer processing completed');
+				} else {
+					logger.appendLine('Agent not available, cannot process autofixer.md');
+				}
+			} else {
+				logger.appendLine(`No autofixer.md found in workspace: ${folder.name}`);
+			}
+		}
+	} catch (error) {
+		logger.appendLine(`Error in autofixer processing: ${error.message}`);
+		throw error;
+	}
+}
+
 exports.deactivate = deactivate;
