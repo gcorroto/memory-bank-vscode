@@ -655,6 +655,15 @@ async function checkAndProcessAutofixerMd() {
     
     // Process with agent if available
     if (mainAgent && configManager.isConfigComplete()) {
+      // Verificar que mainAgent tenga la función handleUserInput
+      if (typeof mainAgent.handleUserInput !== 'function') {
+        logger.appendLine('Error: mainAgent.handleUserInput is not a function');
+        logger.appendLine(`mainAgent type: ${typeof mainAgent}`);
+        logger.appendLine(`mainAgent properties: ${Object.keys(mainAgent).join(', ')}`);
+        vscode.window.showErrorMessage('Error al procesar autofixer.md: El agente no tiene la función handleUserInput');
+        return;
+      }
+      
       // Crear una sesión específica para la ejecución de autofixer en la vista de logs
       let sessionId = '';
       let logsView = (global as any).agentLogsView;
@@ -670,14 +679,27 @@ async function checkAndProcessAutofixerMd() {
       }
       
       try {
-        // Ejecutar la tarea y capturar el resultado
-        const result = await mainAgent.executeTask('processAutoFixerFile', { content });
+        // Preparar contexto para el archivo autofixer
+        const context = {
+          taskType: 'processAutoFixerFile',
+          filePath: autoFixerPath,
+          timestamp: new Date()
+        };
+        
+        // Crear mensaje de solicitud
+        const userRequest = `Procesar instrucciones de autofixer.md`;
+        
+        // Ejecutar la tarea y capturar el resultado usando handleUserInput
+        const result = await mainAgent.handleUserInput(userRequest, {
+          ...context,
+          content: content
+        });
         
         // Registrar resultado exitoso en logs
         if (logsView) {
           logsView.addStepLog(
             'Procesar archivo AutoFixer',
-            'processAutoFixerFile',
+            'handleUserInput',
             { contentLength: content.length },
             result,
             true,
@@ -689,7 +711,7 @@ async function checkAndProcessAutofixerMd() {
         if (logsView) {
           logsView.addStepLog(
             'Procesar archivo AutoFixer',
-            'processAutoFixerFile',
+            'handleUserInput',
             { contentLength: content.length },
             { error: error.message },
             false,

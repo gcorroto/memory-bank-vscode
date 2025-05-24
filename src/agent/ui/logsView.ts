@@ -177,15 +177,95 @@ export class AgentLogsView {
      * @param sessionId - Optional session ID
      */
     public addStepLog(description: string, tool: string, params: any, result: any, success: boolean, sessionId?: string): void {
+        // Process variables in params and results
+        const processedParams = this.processVariables(params);
+        const processedResult = this.processVariables(result);
+        
         this.addLogEntry({
             type: 'step',
             description,
             tool,
-            params,
-            result,
+            params: processedParams,
+            result: processedResult,
             success,
             timestamp: new Date()
         }, sessionId);
+    }
+
+    /**
+     * Process variables in parameters or results
+     * @param obj - Object containing variables to process
+     * @returns Processed object with variables resolved where possible
+     */
+    private processVariables(obj: any): any {
+        if (!obj) {
+            return obj;
+        }
+
+        // Helper function to get current active editor info
+        const getActiveEditorInfo = (): { filePath?: string, content?: string } => {
+            try {
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    return {
+                        filePath: editor.document.uri.fsPath,
+                        content: editor.document.getText()
+                    };
+                }
+            } catch (e) {
+                // Ignore errors
+            }
+            return {};
+        };
+
+        // Handle primitive types
+        if (typeof obj !== 'object') {
+            if (typeof obj === 'string') {
+                // Process string variable references
+                const activeInfo = getActiveEditorInfo();
+                
+                // Replace common variables
+                if (obj === '$SELECTED_FILE' && activeInfo.filePath) {
+                    return activeInfo.filePath;
+                }
+                if (obj === '$CONTENT_OF_SELECTED_FILE' && activeInfo.content) {
+                    return activeInfo.content;
+                }
+            }
+            return obj;
+        }
+
+        // Handle arrays
+        if (Array.isArray(obj)) {
+            return obj.map(item => this.processVariables(item));
+        }
+
+        // Handle objects
+        const result: Record<string, any> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            // Special case for common parameter names
+            if (key === 'file_path' && value === '$SELECTED_FILE') {
+                const activeInfo = getActiveEditorInfo();
+                result[key] = activeInfo.filePath || value;
+            } else if (key === 'filePath' && value === '$SELECTED_FILE') {
+                const activeInfo = getActiveEditorInfo();
+                result[key] = activeInfo.filePath || value;
+            } else if (key === 'code' && value === '$CONTENT_OF_SELECTED_FILE') {
+                const activeInfo = getActiveEditorInfo();
+                result[key] = activeInfo.content || value;
+            } else if (key === 'content' && value === '$CONTENT_OF_SELECTED_FILE') {
+                const activeInfo = getActiveEditorInfo();
+                result[key] = activeInfo.content || value;
+            } else if (key === 'sourcePath' && value === '$SELECTED_FILE') {
+                const activeInfo = getActiveEditorInfo();
+                result[key] = activeInfo.filePath || value;
+            } else {
+                // Recursively process nested objects
+                result[key] = this.processVariables(value);
+            }
+        }
+        
+        return result;
     }
 
     /**
@@ -194,9 +274,15 @@ export class AgentLogsView {
      * @param sessionId - Optional session ID
      */
     public addPlanLog(steps: any[], sessionId?: string): void {
+        // Process variables in plan steps
+        const processedSteps = steps.map(step => ({
+            ...step,
+            params: this.processVariables(step.params || {})
+        }));
+        
         this.addLogEntry({
             type: 'plan',
-            steps,
+            steps: processedSteps,
             timestamp: new Date()
         }, sessionId);
     }
