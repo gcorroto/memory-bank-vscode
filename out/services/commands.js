@@ -524,7 +524,8 @@ async function askMacGyver() {
                 attachedDocs: contextResults.map(result => ({
                     text: result.code,
                     source: result.metadata.filePath || 'Desconocido'
-                }))
+                })),
+                currentFilePath: editor ? editor.document.uri.fsPath : undefined
             };
             
             progress.report({ message: 'Generando respuesta...' });
