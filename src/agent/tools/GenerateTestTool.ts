@@ -64,23 +64,32 @@ describe('{{className}}', () => {
     async run_impl(params: Record<string, any>): Promise<any> {
         const { 
             sourcePath, 
-            testPath = this.getDefaultTestPath(sourcePath), 
+            testPath,
             framework = 'jasmine',
             reasoning,
             instructions 
         } = params;
         
         try {
+            // Normalizar la ruta del archivo fuente
+            const normalizedSourcePath = this.normalizePath(sourcePath);
+            this.logger.appendLine(`Generating tests for file: ${normalizedSourcePath}`);
+            
             // Check if source file exists
-            if (!fs.existsSync(sourcePath)) {
-                throw new Error(`Source file not found: ${sourcePath}`);
+            if (!this.fileExists(normalizedSourcePath)) {
+                throw new Error(`Source file not found: ${normalizedSourcePath}`);
             }
             
+            // Determinar la ruta del archivo de test (normalizada)
+            const defaultTestPath = this.getDefaultTestPath(normalizedSourcePath);
+            const normalizedTestPath = testPath ? this.normalizePath(testPath) : defaultTestPath;
+            this.logger.appendLine(`Test will be written to: ${normalizedTestPath}`);
+            
             // Read source file
-            const sourceContent = fs.readFileSync(sourcePath, 'utf8');
+            const sourceContent = fs.readFileSync(normalizedSourcePath, 'utf8');
             
             // Get file extension and determine language
-            const extension = path.extname(sourcePath).substring(1);
+            const extension = path.extname(normalizedSourcePath).substring(1);
             const language = extension === 'ts' ? 'typescript' : 'javascript';
             
             // Initialize services if needed
@@ -110,12 +119,28 @@ describe('{{className}}', () => {
             // Generate tests with RAG if available
             if (ragInitialized) {
                 try {
-                    this.logger.appendLine(`Generating tests with RAG for ${sourcePath}`);
-                    generatedTest = await ragService.generateTests(
+                    this.logger.appendLine(`Generating tests with RAG for ${normalizedSourcePath}`);
+                    const ragResult = await ragService.generateTests(
                         sourceContent, 
-                        sourcePath, 
+                        normalizedSourcePath, 
                         language, 
                         framework
+                    );
+                    
+                    // Extraer el contenido y los metadatos
+                    generatedTest = ragResult.content;
+                    
+                    // Registrar la información del modelo usado por el RAG
+                    this.agent.logsView?.addStepLog(
+                        `Generando tests con RAG para ${normalizedSourcePath}`,
+                        "GenerateTestTool",
+                        { sourcePath, framework, language },
+                        { testPath: normalizedTestPath },
+                        true,
+                        undefined,
+                        ragResult.modelInfo,
+                        [], // No hay reglas aplicadas
+                        ragResult.tokenCount
                     );
                 } catch (ragError: any) {
                     this.logger.appendLine(`Error generating tests with RAG: ${ragError.message}`);
@@ -141,22 +166,24 @@ describe('{{className}}', () => {
             }
             
             // Create directories if needed
-            const testDir = path.dirname(testPath);
+            const testDir = path.dirname(normalizedTestPath);
             if (!fs.existsSync(testDir)) {
+                this.logger.appendLine(`Creating test directory: ${testDir}`);
                 fs.mkdirSync(testDir, { recursive: true });
             }
             
             // Write test file
-            fs.writeFileSync(testPath, generatedTest);
+            fs.writeFileSync(normalizedTestPath, generatedTest);
+            this.logger.appendLine(`Test file written to: ${normalizedTestPath}`);
             
             return {
                 success: true,
-                sourcePath,
-                testPath,
+                sourcePath: normalizedSourcePath,
+                testPath: normalizedTestPath,
                 generatedTest,
                 language,
                 framework,
-                message: `Test file generated: ${testPath}`
+                message: `Test file generated: ${normalizedTestPath}`
             };
         } catch (error: any) {
             throw new Error(`Error generating test: ${error.message}`);
@@ -199,23 +226,30 @@ ${additionalInstructions}
 Genera SOLO el código de los tests, sin explicaciones adicionales.
 `;
 
-        // Generate using OpenAI
-        const systemMessage = {
-            role: 'system',
-            content: `Eres un experto programador de ${language} especializado en escribir tests unitarios de alta calidad.`
-        };
+        this.logger.appendLine('Generating tests with OpenAI using codegen model...');
         
-        const userMessage = {
-            role: 'user',
-            content: prompt
-        };
+        // Usar generateCompletion con taskType='codegen'
+        const result = await openaiService.generateCompletion(prompt, {
+            taskType: 'codegen',
+            temperature: 0.2,
+            systemPrompt: `Eres un experto programador de ${language} especializado en escribir tests unitarios de alta calidad.`
+        });
         
-        const completion = await openaiService.chatCompletion(
-            [systemMessage, userMessage],
-            "gpt-4.1-mini"
+        // Guardar la información del modelo en el LogsView
+        this.agent.logsView?.addStepLog(
+            `Generando tests unitarios con ${framework} para ${language}`,
+            "GenerateTestTool",
+            { language, framework },
+            { testCodeLength: result.content?.length || 0 },
+            true,
+            undefined,
+            result.modelInfo,
+            [], // No hay reglas aplicadas
+            result.tokenCount
         );
         
-        return completion.choices[0].message.content.trim();
+        // Devolver el contenido generado
+        return result.content;
     }
 
     /**

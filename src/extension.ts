@@ -33,6 +33,7 @@ import * as commands from './services/commands';
 
 // Import agent system
 import * as agentSystem from './agent';
+import { Agent } from './agent/core/Agent';
 
 // Create logger
 const logger = vscode.window.createOutputChannel('Grec0AI For Developers');
@@ -43,8 +44,7 @@ const coverageSummaryProvider = new CoverageSummaryProvider(fileTreeProvider, lo
 const coverageDetailsProvider = new CoverageDetailsProvider();
 
 // Global agent instance
-let mainAgent: any = null;
-(global as any).mainAgent = null;
+let agent: Agent | null = null;
 
 // This method is called when the extension is activated
 export function activate(context: vscode.ExtensionContext) {
@@ -103,6 +103,194 @@ export function activate(context: vscode.ExtensionContext) {
   initializeAgentSystem(context).catch(error => {
     logger.appendLine(`Error initializing agent system: ${error.message}`);
   });
+
+  // Registrar comando para crear y ejecutar el agente
+  const createAgentCommand = vscode.commands.registerCommand('grec0ai.createAgent', async () => {
+    // Si ya existe un agente, no crear uno nuevo
+    if (agent) {
+      vscode.window.showInformationMessage('El agente ya está activado.');
+      return agent;
+    }
+    
+    try {
+      // Crear y retornar una nueva instancia del agente
+      agent = new Agent('Grec0AI', context);
+      await agent.initialize();
+      vscode.window.showInformationMessage('Agente Grec0AI inicializado correctamente.');
+      return agent;
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al inicializar el agente: ${error.message}`);
+      return null;
+    }
+  });
+  
+  // Registrar comando para acceder al agente existente
+  const getAgentCommand = vscode.commands.registerCommand('grec0ai.getAgent', () => {
+    if (!agent) {
+      vscode.window.showWarningMessage('El agente no está activado. Use "grec0ai.createAgent" primero.');
+    }
+    return agent;
+  });
+  
+  // Registrar comando para enviar consultas al agente
+  const askAgentCommand = vscode.commands.registerCommand('grec0ai.ask', async () => {
+    // Asegurarse de que existe un agente
+    if (!agent) {
+      try {
+        agent = new Agent('Grec0AI', context);
+        await agent.initialize();
+        vscode.window.showInformationMessage('Agente Grec0AI inicializado correctamente.');
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Error al inicializar el agente: ${error.message}`);
+        return;
+      }
+    }
+    
+    // Solicitar input del usuario
+    const userInput = await vscode.window.showInputBox({
+      prompt: 'Instrucciones para el agente:',
+      placeHolder: 'Ej: Genera tests para el archivo actual'
+    });
+    
+    if (!userInput) return; // El usuario canceló
+    
+    try {
+      // Mostrar indicador de progreso
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Procesando instrucciones...',
+        cancellable: false
+      }, async (progress) => {
+        // Enviar consulta al agente
+        const result = await agent!.handleUserInput(userInput);
+        
+        if (result.success) {
+          vscode.window.showInformationMessage('Instrucciones procesadas correctamente.');
+        } else {
+          vscode.window.showErrorMessage(`Error: ${result.error || 'Error desconocido'}`);
+        }
+        
+        return result;
+      });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al procesar instrucciones: ${error.message}`);
+    }
+  });
+  
+  // Registrar comando para inicializar servicios RAG
+  const initializeRAGCommand = vscode.commands.registerCommand('grec0ai.rag.initialize', async () => {
+    try {
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Inicializando servicios RAG...',
+        cancellable: false
+      }, async (progress) => {
+        // Inicializar Vectra
+        await vectraService.initialize();
+        
+        // Inicializar RAG
+        const ragInitialized = await ragService.initialize();
+        
+        if (ragInitialized) {
+          vscode.window.showInformationMessage('Servicios RAG inicializados correctamente.');
+        } else {
+          vscode.window.showWarningMessage('Inicialización parcial de servicios RAG. Verifique la configuración.');
+        }
+      });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al inicializar RAG: ${error.message}`);
+    }
+  });
+  
+  // Registrar comando para reindexar el proyecto bajo demanda
+  const reindexProjectCommand = vscode.commands.registerCommand('grec0ai.vectra.reindexProject', async () => {
+    try {
+      // Verificar que hay un workspace
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) {
+        vscode.window.showErrorMessage('No se encontró un workspace para indexar.');
+        return;
+      }
+      
+      const projectPath = folders[0].uri.fsPath;
+      
+      // Mostrar diálogo de confirmación
+      const confirmation = await vscode.window.showWarningMessage(
+        'Esta operación recreará el índice vectorial completo. ¿Desea continuar?',
+        { modal: true },
+        'Sí, recrear índice'
+      );
+      
+      if (confirmation !== 'Sí, recrear índice') {
+        return;
+      }
+      
+      // Mostrar progreso
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Reindexando proyecto...',
+        cancellable: true
+      }, async (progress, token) => {
+        // Inicializar y recrear índice
+        await vectraService.initialize(projectPath);
+        progress.report({ message: 'Recreando índice vectorial...' });
+        await vectraService.createIndex(projectPath);
+        
+        // Ejecutar el comando de indexación
+        await vscode.commands.executeCommand('grec0ai.vectra.indexProject');
+      });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al reindexar proyecto: ${error.message}`);
+    }
+  });
+  
+  // Registrar comando para ejecutar manualmente el autofixer
+  disposable = vscode.commands.registerCommand('grec0ai.runAutofixer', async () => {
+    try {
+      // Mostrar indicador de progreso
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Ejecutando Autofixer...',
+        cancellable: false
+      }, async (progress) => {
+        // Verificar si está habilitado en la configuración
+        const config = vscode.workspace.getConfiguration('grec0ai');
+        const autoFixerEnabled = config.get('autofixer.enabled', false);
+        
+        if (!autoFixerEnabled) {
+          // Aunque no esté habilitado, permitimos la ejecución manual
+          logger.appendLine('Autofixer está deshabilitado en la configuración, pero se ejecutará manualmente');
+          progress.report({ message: 'Autofixer está deshabilitado pero se ejecutará manualmente' });
+        }
+        
+        // Ejecutar el proceso de autofixer
+        const result = await checkAndProcessAutofixerMd(true);
+        
+        if (result.found && result.processed) {
+          vscode.window.showInformationMessage('Autofixer ejecutado correctamente');
+        } else if (result.found && !result.processed) {
+          vscode.window.showWarningMessage(`Se encontró el archivo autofixer.md pero no se pudo procesar: ${result.error || 'Error desconocido'}`);
+        } else {
+          vscode.window.showErrorMessage(`No se encontró el archivo autofixer.md en el workspace: ${result.error || 'Archivo no encontrado'}`);
+        }
+        
+        return { success: result.processed };
+      });
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al ejecutar autofixer: ${error.message}`);
+    }
+  });
+  
+  // Register commands that use the agent architecture
+  registerAgentCommands(context);
+  
+  // Agregar todos los comandos al contexto
+  context.subscriptions.push(createAgentCommand);
+  context.subscriptions.push(getAgentCommand);
+  context.subscriptions.push(askAgentCommand);
+  context.subscriptions.push(initializeRAGCommand);
+  context.subscriptions.push(reindexProjectCommand);
+  context.subscriptions.push(disposable);
 }
 
 /**
@@ -114,10 +302,10 @@ async function initializeAgentSystem(context: vscode.ExtensionContext) {
     logger.appendLine('Initializing Grec0AI Agent System...');
     
     // Create and initialize the main agent
-    mainAgent = await agentSystem.createAgent('Grec0AI', context);
+    agent = await agentSystem.createAgent('Grec0AI', context);
     
     // Make it globally accessible
-    (global as any).mainAgent = mainAgent;
+    (global as any).mainAgent = agent;
     
     // Register agent-based command handlers
     registerAgentCommands(context);
@@ -131,9 +319,17 @@ async function initializeAgentSystem(context: vscode.ExtensionContext) {
     logger.appendLine('Grec0AI Agent System initialized successfully');
     
     // Now that the agent is initialized, check for autofixer.md
-    checkAndProcessAutofixerMd().catch(error => {
-      logger.appendLine(`Error processing autofixer.md after agent initialization: ${error.message}`);
-    });
+    checkAndProcessAutofixerMd()
+      .then(result => {
+        if (result.processed) {
+          logger.appendLine('Autofixer.md procesado automáticamente al iniciar la extensión');
+        } else if (result.found) {
+          logger.appendLine(`Autofixer.md encontrado pero no procesado: ${result.error}`);
+        }
+      })
+      .catch(error => {
+        logger.appendLine(`Error processing autofixer.md after agent initialization: ${error.message}`);
+      });
   } catch (error: any) {
     logger.appendLine(`Failed to initialize agent system: ${error.message}`);
     
@@ -147,16 +343,16 @@ async function initializeAgentSystem(context: vscode.ExtensionContext) {
  * @param context Extension context
  */
 function registerAgentCommands(context: vscode.ExtensionContext) {
-  if (!mainAgent) {
+  if (!agent) {
     logger.appendLine('Cannot register agent commands: Agent not initialized');
     return;
   }
   
   // Create command wrappers for the agent
-  const generateTestCmd = agentSystem.createCommandWrapper(mainAgent, 'generateTest');
-  const analyzeCodeCmd = agentSystem.createCommandWrapper(mainAgent, 'analyzeCode');
-  const fixErrorCmd = agentSystem.createCommandWrapper(mainAgent, 'fixError');
-  const explainCodeCmd = agentSystem.createCommandWrapper(mainAgent, 'explain');
+  const generateTestCmd = agentSystem.createCommandWrapper(agent, 'generateTest');
+  const analyzeCodeCmd = agentSystem.createCommandWrapper(agent, 'analyzeCode');
+  const fixErrorCmd = agentSystem.createCommandWrapper(agent, 'fixError');
+  const explainCodeCmd = agentSystem.createCommandWrapper(agent, 'explain');
   
   // Register these as new commands with 'agent.' prefix to avoid conflicts
   let disposable = vscode.commands.registerCommand('grec0ai.agent.generateTest', generateTestCmd);
@@ -169,6 +365,198 @@ function registerAgentCommands(context: vscode.ExtensionContext) {
   context.subscriptions.push(disposable);
   
   disposable = vscode.commands.registerCommand('grec0ai.agent.explain', explainCodeCmd);
+  context.subscriptions.push(disposable);
+  
+  // Registrar comando para probar modelos de razonamiento
+  disposable = vscode.commands.registerCommand('grec0ai.agent.testReasoningModel', async () => {
+    try {
+      // Solicitar al usuario un prompt para el modelo de razonamiento
+      const userInput = await vscode.window.showInputBox({
+        prompt: 'Introduce una pregunta para probar el modelo de razonamiento',
+        placeHolder: 'Ejemplo: Busca archivos con extensión .ts y analiza su contenido'
+      });
+      
+      if (!userInput) {
+        return; // Usuario canceló la operación
+      }
+      
+      // Mostrar mensaje de procesamiento
+      const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+      statusBarItem.text = "$(sync~spin) Procesando con modelo de razonamiento...";
+      statusBarItem.show();
+      
+      try {
+        // Llamar al método de demostración del agente
+        const result = await agent.demoReasoningModel(userInput);
+        
+        // Mostrar los resultados en un webview
+        const panel = vscode.window.createWebviewPanel(
+          'reasoningModelResult',
+          'Resultado del Modelo de Razonamiento',
+          vscode.ViewColumn.One,
+          { enableScripts: true }
+        );
+        
+        // Crear contenido HTML para mostrar los resultados
+        const conversation = result.conversation || [];
+        let conversationHtml = '';
+        
+        conversation.forEach((msg: any) => {
+          const role = msg.role;
+          const content = msg.content || 'Sin contenido';
+          
+          let roleClass = '';
+          let roleLabel = '';
+          
+          switch (role) {
+            case 'developer':
+              roleClass = 'developer-message';
+              roleLabel = 'Sistema';
+              break;
+            case 'user':
+              roleClass = 'user-message';
+              roleLabel = 'Usuario';
+              break;
+            case 'assistant':
+              roleClass = 'assistant-message';
+              roleLabel = 'Asistente';
+              break;
+            case 'tool':
+              roleClass = 'tool-message';
+              roleLabel = 'Herramienta';
+              break;
+            default:
+              roleClass = 'other-message';
+              roleLabel = role;
+          }
+          
+          conversationHtml += `
+            <div class="message ${roleClass}">
+              <div class="role-label">${roleLabel}</div>
+              <div class="content">${formatContent(content)}</div>
+            </div>
+          `;
+        });
+        
+        // Función para formatear el contenido, detectando JSON y código
+        function formatContent(content: string): string {
+          if (typeof content !== 'string') {
+            content = JSON.stringify(content, null, 2);
+            return `<pre class="json">${escapeHtml(content)}</pre>`;
+          }
+          
+          // Intentar analizar como JSON si parece ser JSON
+          if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+            try {
+              const json = JSON.parse(content);
+              content = JSON.stringify(json, null, 2);
+              return `<pre class="json">${escapeHtml(content)}</pre>`;
+            } catch (e) {
+              // No es JSON válido, continuar con el formato normal
+            }
+          }
+          
+          // Convertir saltos de línea en <br> para visualización HTML
+          return content.replace(/\n/g, '<br>');
+        }
+        
+        // Función para escapar HTML
+        function escapeHtml(text: string): string {
+          return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        }
+        
+        // Establecer el contenido HTML
+        panel.webview.html = `
+          <!DOCTYPE html>
+          <html lang="es">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Resultado del Modelo de Razonamiento</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                padding: 20px;
+                line-height: 1.5;
+              }
+              .message {
+                margin-bottom: 15px;
+                padding: 10px;
+                border-radius: 5px;
+              }
+              .role-label {
+                font-weight: bold;
+                margin-bottom: 5px;
+              }
+              .developer-message {
+                background-color: #f0f0f0;
+                border-left: 4px solid #007acc;
+              }
+              .user-message {
+                background-color: #e6f7ff;
+                border-left: 4px solid #0078d4;
+              }
+              .assistant-message {
+                background-color: #f3f9ef;
+                border-left: 4px solid #107c10;
+              }
+              .tool-message {
+                background-color: #fff8e6;
+                border-left: 4px solid #f8a100;
+              }
+              .other-message {
+                background-color: #f0f0f0;
+                border-left: 4px solid #6e6e6e;
+              }
+              pre {
+                background-color: #f8f8f8;
+                padding: 10px;
+                border-radius: 3px;
+                overflow-x: auto;
+              }
+              .json {
+                font-family: 'Courier New', monospace;
+              }
+              .summary {
+                margin-top: 20px;
+                padding: 15px;
+                background-color: #f5f5f5;
+                border-radius: 5px;
+                border-left: 4px solid #007acc;
+              }
+              h2 {
+                color: #007acc;
+              }
+            </style>
+          </head>
+          <body>
+            <h2>Conversación con Modelo de Razonamiento</h2>
+            ${conversationHtml}
+            
+            <div class="summary">
+              <h3>Resumen de la Interacción</h3>
+              <p>Modelo utilizado: <strong>o3-mini</strong> (Esfuerzo de razonamiento: medium)</p>
+              ${result.tool_calls && result.tool_calls.length > 0 
+                ? `<p>Se realizaron <strong>${result.tool_calls.length}</strong> llamadas a herramientas.</p>` 
+                : '<p>No se utilizaron herramientas durante la conversación.</p>'}
+            </div>
+          </body>
+          </html>
+        `;
+      } finally {
+        // Ocultar indicador de progreso
+        statusBarItem.dispose();
+      }
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Error al probar el modelo de razonamiento: ${error.message}`);
+      logger.appendLine(`Error en testReasoningModel: ${error.message}`);
+    }
+  });
   context.subscriptions.push(disposable);
 }
 
@@ -237,7 +625,7 @@ async function automaticTest(reasoning?: string) {
   // Implementation of automaticTest functionality
   try {
     // Check if we should use agent-based implementation
-    if (mainAgent && configManager.isConfigComplete()) {
+    if (agent && configManager.isConfigComplete()) {
       return await handleAutomaticTestWithAgent(reasoning);
     }
     
@@ -295,15 +683,15 @@ async function handleAutomaticTestWithAgent(reasoning: string) {
   // Rest of implementation...
   vscode.window.showInformationMessage('Generating test with Grec0AI Agent...');
   
-  try {
-    await mainAgent.executeTask('generateTest', {
-      filePath,
-      reasoning
-    });
-  } catch (error: any) {
-    logger.appendLine(`Agent error: ${error.message}`);
-    vscode.window.showErrorMessage('Failed to generate test with agent.');
-  }
+  // try {
+  //   await agent!.executeTask('generateTest', {
+  //     filePath,
+  //     reasoning
+  //   });
+  // } catch (error: any) {
+  //   logger.appendLine(`Agent error: ${error.message}`);
+  //   vscode.window.showErrorMessage('Failed to generate test with agent.');
+  // }
 }
 
 function openTestContainers(pathFinal: string, pathTestFinal: string, error: any, auto: boolean, reasoning: string = undefined) {
@@ -625,19 +1013,28 @@ function generateTestExplanation(filePath: string, reasoning: string): string {
   return detail;
 }
 
-async function checkAndProcessAutofixerMd() {
+/**
+ * Verifica y procesa el archivo autofixer.md
+ * @param forceProcess - Si es true, procesa el archivo aunque la configuración lo tenga deshabilitado
+ * @returns Un objeto con el resultado del procesamiento
+ */
+async function checkAndProcessAutofixerMd(forceProcess: boolean = false): Promise<{
+  found: boolean;
+  processed: boolean;
+  error?: string;
+}> {
   // Implementation for processing autofixer.md
   const config = vscode.workspace.getConfiguration('grec0ai');
   const autoFixerEnabled = config.get('autofixer.enabled', false);
   
-  if (!autoFixerEnabled) {
-    return;
+  if (!autoFixerEnabled && !forceProcess) {
+    return { found: false, processed: false };
   }
   
   // Look for autofixer.md file in workspace root
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
-    return;
+    return { found: false, processed: false, error: 'No se encontró un workspace' };
   }
   
   const rootPath = workspaceFolders[0].uri.fsPath;
@@ -652,14 +1049,14 @@ async function checkAndProcessAutofixerMd() {
     const content = await fs.promises.readFile(autoFixerPath, 'utf8');
     
     // Process with agent if available
-    if (mainAgent && configManager.isConfigComplete()) {
+    if (agent && configManager.isConfigComplete()) {
       // Verificar que mainAgent tenga la función handleUserInput
-      if (typeof mainAgent.handleUserInput !== 'function') {
-        logger.appendLine('Error: mainAgent.handleUserInput is not a function');
-        logger.appendLine(`mainAgent type: ${typeof mainAgent}`);
-        logger.appendLine(`mainAgent properties: ${Object.keys(mainAgent).join(', ')}`);
+      if (typeof agent.handleUserInput !== 'function') {
+        logger.appendLine('Error: agent.handleUserInput is not a function');
+        logger.appendLine(`agent type: ${typeof agent}`);
+        logger.appendLine(`agent properties: ${Object.keys(agent).join(', ')}`);
         vscode.window.showErrorMessage('Error al procesar autofixer.md: El agente no tiene la función handleUserInput');
-        return;
+        return { found: true, processed: false, error: 'El agente no tiene la función handleUserInput' };
       }
       
       // Crear una sesión específica para la ejecución de autofixer en la vista de logs
@@ -688,7 +1085,7 @@ async function checkAndProcessAutofixerMd() {
         const userRequest = `Procesar instrucciones de autofixer.md`;
         
         // Ejecutar la tarea y capturar el resultado usando handleUserInput
-        const result = await mainAgent.handleUserInput(userRequest, {
+        const result = await agent.handleUserInput(userRequest, {
           ...context,
           content: content
         });
@@ -704,6 +1101,8 @@ async function checkAndProcessAutofixerMd() {
             sessionId
           );
         }
+        
+        return { found: true, processed: true };
       } catch (error: any) {
         // Registrar error en logs
         if (logsView) {
@@ -719,14 +1118,17 @@ async function checkAndProcessAutofixerMd() {
         
         // Registrar error en el logger
         logger.appendLine(`Error processing autofixer.md: ${error.message}`);
+        return { found: true, processed: false, error: error.message };
       }
     } else {
       logger.appendLine('Agent not available for processing autofixer.md');
       vscode.window.showInformationMessage('Autofixer.md found but agent not available for processing.');
+      return { found: true, processed: false, error: 'Agente no disponible' };
     }
-  } catch (error) {
+  } catch (error: any) {
     // File doesn't exist or other error
     logger.appendLine('No autofixer.md file found or error accessing it.');
+    return { found: false, processed: false, error: error.message };
   }
 }
 
@@ -734,4 +1136,10 @@ async function checkAndProcessAutofixerMd() {
 export function deactivate() {
   // Cleanup code
   logger.appendLine('Grec0AI For Developers extension deactivated.');
+  
+  // Limpiar recursos del agente
+  if (agent) {
+    agent.dispose();
+    agent = null;
+  }
 } 

@@ -5,6 +5,8 @@
 
 import * as vscode from 'vscode';
 import { Agent } from '../core/Agent';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export interface ToolParameter {
     type: string;
@@ -48,6 +50,15 @@ export abstract class BaseTool {
             // Log tool parameters (without sensitive information)
             const safeParams = this.sanitizeParams(params);
             this.logger.appendLine(`Parameters: ${JSON.stringify(safeParams)}`);
+
+            // Log current working directory for debugging
+            this.logger.appendLine(`Current working directory: ${process.cwd()}`);
+            
+            // Register event start
+            await this.registerEvent('tool_start', {
+                tool: this.name,
+                params: safeParams
+            });
             
             // Validate parameters
             this.validateParams(params);
@@ -55,12 +66,24 @@ export abstract class BaseTool {
             // Execute the tool implementation
             const result = await this.run_impl(params);
             
-            // Log success
+            // Log success and register success event
             this.logger.appendLine(`Tool ${this.name} executed successfully`);
+            await this.registerEvent('tool_success', {
+                tool: this.name,
+                params: safeParams,
+                result: this.sanitizeResult(result)
+            }, true);
+            
             return result;
         } catch (error: any) {
-            // Log failure
+            // Log failure and register failure event
             this.logger.appendLine(`Tool ${this.name} execution failed: ${error.message}`);
+            await this.registerEvent('tool_error', {
+                tool: this.name,
+                error: error.message,
+                stack: error.stack
+            }, false);
+            
             throw error;
         }
     }
@@ -71,6 +94,148 @@ export abstract class BaseTool {
      * @returns Result of the tool execution
      */
     protected abstract run_impl(params: Record<string, any>): Promise<any>;
+
+    /**
+     * Register an event in the database
+     * @param type - Event type
+     * @param data - Event data
+     * @param success - Whether the event was successful
+     */
+    protected async registerEvent(type: string, data: any, success: boolean = true): Promise<void> {
+        try {
+            if (this.agent.databaseManager) {
+                await this.agent.databaseManager.saveEvent({
+                    type,
+                    ...data,
+                    success,
+                    timestamp: new Date()
+                });
+                
+                // También agregamos al logsView para visualización inmediata
+                if (type === 'tool_start') {
+                    // No hacemos nada aquí, se manejará en el LogsView
+                } else if (type === 'tool_success' || type === 'tool_error') {
+                    this.agent.logsView?.addStepLog(
+                        data.description || `Executing ${this.name}`,
+                        this.name,
+                        data.params || {},
+                        data.result || (type === 'tool_error' ? { error: data.error } : {}),
+                        success
+                    );
+                }
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error registering event: ${error.message}`);
+        }
+    }
+
+    /**
+     * Normalize a file path to an absolute path
+     * @param filePath - File path (relative or absolute)
+     * @returns Absolute file path
+     */
+    protected normalizePath(filePath: string): string {
+        if (!filePath) {
+            throw new Error('No file path provided');
+        }
+        
+        // Si ya es absoluto, lo devolvemos tal cual
+        if (path.isAbsolute(filePath)) {
+            return filePath;
+        }
+        
+        // Intentamos primero en el workspace del usuario
+        try {
+            const userWorkspacePath = this.agent.workspaceManager.getUserWorkspacePath();
+            if (userWorkspacePath) {
+                const userWorkspaceFilePath = path.join(userWorkspacePath, filePath);
+                this.logger.appendLine(`Checking if file exists in user workspace: ${userWorkspaceFilePath}`);
+                
+                if (fs.existsSync(userWorkspaceFilePath)) {
+                    this.logger.appendLine(`File found in user workspace: ${userWorkspaceFilePath}`);
+                    return userWorkspaceFilePath;
+                }
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error checking user workspace: ${error.message}`);
+        }
+        
+        // Si no se encuentra en el workspace del usuario, intentamos en el directorio actual
+        try {
+            const cwdFilePath = path.resolve(process.cwd(), filePath);
+            this.logger.appendLine(`Checking if file exists in current directory: ${cwdFilePath}`);
+            
+            if (fs.existsSync(cwdFilePath)) {
+                this.logger.appendLine(`File found in current directory: ${cwdFilePath}`);
+                return cwdFilePath;
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error checking current directory: ${error.message}`);
+        }
+        
+        // Como último recurso, usamos la ruta principal (puede ser usuario o agente)
+        try {
+            // Usamos el método getPrimaryWorkspacePath que decide el mejor workspace
+            const workspacePath = this.agent.workspaceManager.getPrimaryWorkspacePath();
+            const normalizedPath = path.join(workspacePath, filePath);
+            this.logger.appendLine(`Using primary workspace path: ${filePath} -> ${normalizedPath}`);
+            return normalizedPath;
+        } catch (error: any) {
+            this.logger.appendLine(`Error normalizing to primary workspace: ${error.message}`);
+            // Fallback a CWD si falla todo lo anterior
+            return path.resolve(process.cwd(), filePath);
+        }
+    }
+
+    /**
+     * Check if a file exists with proper error handling
+     * @param filePath - Path to check
+     * @returns True if file exists
+     */
+    protected fileExists(filePath: string): boolean {
+        try {
+            const normalizedPath = this.normalizePath(filePath);
+            this.logger.appendLine(`Checking if file exists: ${normalizedPath}`);
+            return fs.existsSync(normalizedPath);
+        } catch (error: any) {
+            this.logger.appendLine(`Error checking if file exists: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Sanitize the result for logging and event recording
+     * @param result - Result to sanitize
+     * @returns Sanitized result
+     */
+    protected sanitizeResult(result: any): any {
+        // Implementación básica, se puede mejorar
+        if (!result) {
+            return {};
+        }
+        
+        // Si es string muy largo, lo truncamos
+        if (typeof result === 'string' && result.length > 1000) {
+            return result.substring(0, 1000) + '... [truncated]';
+        }
+        
+        // Si es un objeto con propiedades grandes, las truncamos
+        if (typeof result === 'object') {
+            const sanitized: Record<string, any> = {};
+            
+            for (const [key, value] of Object.entries(result)) {
+                if (typeof value === 'string' && value.length > 1000) {
+                    sanitized[key] = value.substring(0, 1000) + '... [truncated]';
+                } else {
+                    sanitized[key] = value;
+                }
+            }
+            
+            return sanitized;
+        }
+        
+        return result;
+    }
 
     /**
      * Validate the parameters for the tool

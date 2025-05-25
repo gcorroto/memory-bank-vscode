@@ -140,6 +140,28 @@
         "command": "grec0ai.agent.showLogs",
         "title": "Show Agent Logs",
         "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.agent.testReasoningModel",
+        "title": "Test Reasoning Model",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.runAutofixer",
+        "title": "Ejecutar Autofixer",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.showEventsViewer",
+        "title": "Grec0AI: Mostrar Visor de Eventos y Cambios"
+      },
+      {
+        "command": "grec0ai.clearEvents",
+        "title": "Grec0AI: Limpiar Eventos"
+      },
+      {
+        "command": "grec0ai.toggleTerminal",
+        "title": "Grec0AI: Mostrar/Ocultar Terminal CLI"
       }
     ],
     "menus": {
@@ -197,6 +219,14 @@
         },
         {
           "command": "grec0ai.agent.explain",
+          "group": "grec0ai-agent"
+        },
+        {
+          "command": "grec0ai.agent.testReasoningModel",
+          "group": "grec0ai-agent"
+        },
+        {
+          "command": "grec0ai.runAutofixer",
           "group": "grec0ai-agent"
         }
       ],
@@ -267,6 +297,43 @@
           ],
           "default": "gpt-4.1-mini",
           "description": "Modelo de OpenAI a utilizar para las consultas",
+          "scope": "application"
+        },
+        "grec0ai.openai.models.planning": {
+          "type": "string",
+          "enum": [
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "o3-mini",
+            "o4-mini"
+          ],
+          "default": "o4-mini",
+          "description": "Modelo de OpenAI a utilizar para tareas de planificación",
+          "scope": "application"
+        },
+        "grec0ai.openai.models.analysis": {
+          "type": "string",
+          "enum": [
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "o3-mini",
+            "o4-mini"
+          ],
+          "default": "gpt-4.1-mini",
+          "description": "Modelo de OpenAI a utilizar para tareas de análisis",
+          "scope": "application"
+        },
+        "grec0ai.openai.models.codegen": {
+          "type": "string",
+          "enum": [
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "o3-mini",
+            "o4-mini",
+            "codex-mini-latest"
+          ],
+          "default": "gpt-4.1-mini",
+          "description": "Modelo de OpenAI a utilizar para tareas de generación de código",
           "scope": "application"
         },
         "grec0ai.vectra.indexPath": {

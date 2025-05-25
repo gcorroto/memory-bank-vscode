@@ -63,7 +63,25 @@ export function runLogsViewExample(context: vscode.ExtensionContext): void {
         }
     ];
     
-    logsView.addPlanLog(plan, session3Id);
+    // Agregar información de ejemplo sobre el modelo y tokens
+    const exampleModelInfo = {
+        name: 'gpt-4.1-mini',
+        taskType: 'planning'
+    };
+    
+    const exampleTokenCount = {
+        prompt: 450,
+        completion: 120,
+        total: 570
+    };
+    
+    const exampleRules = [
+        'Usar validación estricta de tipos',
+        'Evitar nulos sin verificación',
+        'Seguir patrones de código del proyecto'
+    ];
+    
+    logsView.addPlanLog(plan, session3Id, exampleModelInfo, exampleRules, exampleTokenCount);
     
     // Simular ejecución de los pasos del plan
     setTimeout(() => {
@@ -131,7 +149,13 @@ export function setupAgentLogging(agent: any, logsView: AgentLogsView): string {
     
     // Definir hooks para capturar eventos del agente
     agent.onPlan((plan: any[]) => {
-        logsView.addPlanLog(plan, sessionId);
+        logsView.addPlanLog(
+            plan, 
+            sessionId,
+            agent.lastModelInfo || { name: 'unknown', taskType: 'unknown' },
+            agent.lastAppliedRules || [],
+            agent.lastTokenCount || { prompt: 0, completion: 0, total: 0 }
+        );
     });
     
     agent.onStep((description: string, tool: string, params: any, result: any, success: boolean) => {
@@ -149,6 +173,9 @@ export function setupAgentLogging(agent: any, logsView: AgentLogsView): string {
 interface LoggableAgent {
     name: string;
     logsSessionId?: string;
+    lastModelInfo?: { name: string; taskType?: string };
+    lastAppliedRules?: string[];
+    lastTokenCount?: { prompt: number; completion: number; total: number };
     onPlan: (callback: (plan: any[]) => void) => void;
     onStep: (callback: (description: string, tool: string, params: any, result: any, success: boolean) => void) => void;
     onReflection: (callback: (reflection: string) => void) => void;
@@ -176,12 +203,18 @@ export function exampleMainUsage(context: vscode.ExtensionContext): void {
     // Ejemplo de cómo usar la vista al crear múltiples agentes
     const mockAgent1: LoggableAgent = { 
         name: 'TestGenerator',
+        lastModelInfo: { name: 'gpt-4.1-mini', taskType: 'codegen' },
+        lastAppliedRules: ['Usar assertions específicas', 'Incluir casos de error'],
+        lastTokenCount: { prompt: 320, completion: 150, total: 470 },
         onPlan: () => {},
         onStep: () => {},
         onReflection: () => {}
     };
     const mockAgent2: LoggableAgent = { 
         name: 'CodeFixer',
+        lastModelInfo: { name: 'gpt-4.1-mini', taskType: 'analysis' },
+        lastAppliedRules: ['Evitar side effects', 'Mantener compatibilidad API'],
+        lastTokenCount: { prompt: 280, completion: 90, total: 370 },
         onPlan: () => {},
         onStep: () => {},
         onReflection: () => {}

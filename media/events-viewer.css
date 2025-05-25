@@ -1,0 +1,165 @@
+/* Estilos para el visor de eventos y cambios */
+
+:root {
+    --grec0ai-primary: var(--vscode-button-background);
+    --grec0ai-primary-hover: var(--vscode-button-hoverBackground);
+    --grec0ai-border: var(--vscode-panel-border);
+    --grec0ai-text: var(--vscode-foreground);
+    --grec0ai-background: var(--vscode-editor-background);
+    --grec0ai-item-background: var(--vscode-list-hoverBackground);
+    
+    /* Estados */
+    --grec0ai-success: #4CAF50;
+    --grec0ai-error: #F44336;
+    --grec0ai-warning: #FF9800;
+    --grec0ai-info: #2196F3;
+    --grec0ai-running: #9C27B0;
+}
+
+body {
+    font-family: var(--vscode-font-family);
+    color: var(--grec0ai-text);
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--grec0ai-border);
+}
+
+.toolbar h2 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+/* Contenedor de eventos */
+.events-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* Elemento de evento */
+.event-item {
+    border: 1px solid var(--grec0ai-border);
+    border-radius: 4px;
+    margin-bottom: 15px;
+    background-color: var(--grec0ai-background);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.event-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--grec0ai-border);
+    background-color: var(--grec0ai-item-background);
+}
+
+.event-icon {
+    margin-right: 10px;
+    font-size: 1.2em;
+}
+
+.event-title {
+    flex: 1;
+    font-weight: bold;
+}
+
+.event-time {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.85em;
+}
+
+.event-description {
+    padding: 10px 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.event-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 5px 10px;
+    border-top: 1px solid var(--grec0ai-border);
+    background-color: var(--grec0ai-item-background);
+}
+
+/* Estados de eventos */
+.status-success .event-header {
+    border-left: 4px solid var(--grec0ai-success);
+}
+
+.status-error .event-header {
+    border-left: 4px solid var(--grec0ai-error);
+}
+
+.status-warning .event-header {
+    border-left: 4px solid var(--grec0ai-warning);
+}
+
+.status-info .event-header {
+    border-left: 4px solid var(--grec0ai-info);
+}
+
+.status-running .event-header {
+    border-left: 4px solid var(--grec0ai-running);
+}
+
+/* Botones de acción */
+.action-button {
+    background-color: transparent;
+    border: 1px solid var(--grec0ai-border);
+    color: var(--grec0ai-text);
+    padding: 4px 10px;
+    margin-left: 5px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 0.85em;
+}
+
+.action-button:hover {
+    background-color: var(--grec0ai-primary);
+    color: var(--vscode-button-foreground);
+}
+
+.action-button .codicon {
+    margin-right: 5px;
+}
+
+/* Barra de comandos */
+.command-bar {
+    display: flex;
+    padding: 10px 15px;
+    border-top: 1px solid var(--grec0ai-border);
+    background-color: var(--grec0ai-item-background);
+}
+
+#command-input {
+    flex: 1;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    padding: 6px 10px;
+    margin-right: 5px;
+}
+
+/* Estado vacío */
+.no-events {
+    text-align: center;
+    padding: 40px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+} 

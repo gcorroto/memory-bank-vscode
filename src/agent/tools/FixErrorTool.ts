@@ -44,6 +44,11 @@ export class FixErrorTool extends BaseTool {
                 type: 'boolean',
                 required: false,
                 default: true
+            },
+            additionalContext: {
+                description: 'Additional context from RAG or other sources',
+                type: 'string',
+                required: false
             }
         };
     }
@@ -58,20 +63,25 @@ export class FixErrorTool extends BaseTool {
             sourcePath, 
             errorMessage, 
             applyFix = false, 
-            saveBackup = true 
+            saveBackup = true,
+            additionalContext = ''
         } = params;
         
         try {
+            // Normalizar ruta del archivo
+            const normalizedSourcePath = this.normalizePath(sourcePath);
+            this.logger.appendLine(`Attempting to fix error in file: ${normalizedSourcePath}`);
+            
             // Check if source file exists
-            if (!fs.existsSync(sourcePath)) {
-                throw new Error(`Source file not found: ${sourcePath}`);
+            if (!this.fileExists(normalizedSourcePath)) {
+                throw new Error(`Source file not found: ${normalizedSourcePath}`);
             }
             
             // Read source file
-            const sourceContent = fs.readFileSync(sourcePath, 'utf8');
+            const sourceContent = fs.readFileSync(normalizedSourcePath, 'utf8');
             
             // Get file extension and determine language
-            const extension = path.extname(sourcePath).substring(1);
+            const extension = path.extname(normalizedSourcePath).substring(1);
             const language = this.mapExtensionToLanguage(extension);
             
             // Initialize RAG service
@@ -82,41 +92,55 @@ export class FixErrorTool extends BaseTool {
             // Use RAG service if available
             if (ragInitialized) {
                 try {
-                    this.logger.appendLine(`Resolving error with RAG for ${sourcePath}`);
-                    // Usamos el método directamente con OpenAI ya que no existe en ragService
-                    const fixedCode = await this.generateSimpleFix(
-                        errorMessage, 
+                    this.logger.appendLine(`Resolving error with RAG for ${normalizedSourcePath}`);
+                    
+                    // Usar el servicio RAG especializado para corrección de errores
+                    const fixedCode = await ragService.fixError(
                         sourceContent,
+                        errorMessage,
+                        normalizedSourcePath,
                         language
                     );
                     
-                    solution = {
-                        explanation: `Error: ${errorMessage}`,
-                        solution: 'Generated fix based on error message',
-                        fixedCode: fixedCode
-                    };
+                    if (fixedCode && fixedCode.length > 0) {
+                        this.logger.appendLine(`RAG service provided a fix for the error`);
+                        
+                        solution = {
+                            explanation: `Error fixed: ${errorMessage}`,
+                            solution: 'Generated fix based on project context and error patterns',
+                            fixedCode: fixedCode
+                        };
+                    } else {
+                        throw new Error('RAG service did not provide a valid fix');
+                    }
                 } catch (ragError: any) {
                     this.logger.appendLine(`Error resolving with RAG: ${ragError.message}`);
                     
-                    // Fallback to a simpler solution with OpenAI
-                    const fixedCode = await this.generateSimpleFix(
+                    // Fallback to a simpler solution with OpenAI and additional context
+                    const combinedContext = additionalContext 
+                        ? `${additionalContext}\n\nError to fix: ${errorMessage}`
+                        : `Error to fix: ${errorMessage}`;
+                    
+                    const fixedCode = await this.generateFixWithContext(
                         errorMessage, 
                         sourceContent,
-                        language
+                        language,
+                        combinedContext
                     );
                     
                     solution = {
                         explanation: `Error: ${errorMessage}`,
-                        solution: 'Generated fix based on error message',
+                        solution: 'Generated fix based on error message and available context',
                         fixedCode: fixedCode
                     };
                 }
             } else {
                 // Use simple fix if RAG is not available
-                const fixedCode = await this.generateSimpleFix(
+                const fixedCode = await this.generateFixWithContext(
                     errorMessage, 
                     sourceContent,
-                    language
+                    language,
+                    additionalContext
                 );
                 
                 solution = {
@@ -130,17 +154,39 @@ export class FixErrorTool extends BaseTool {
             if (applyFix && solution.fixedCode) {
                 // Save backup if requested
                 if (saveBackup) {
-                    const backupPath = `${sourcePath}.backup.${Date.now()}`;
+                    const backupPath = `${normalizedSourcePath}.backup.${Date.now()}`;
                     fs.writeFileSync(backupPath, sourceContent);
+                    this.logger.appendLine(`Backup saved to: ${backupPath}`);
                 }
                 
                 // Write fixed code to file
-                fs.writeFileSync(sourcePath, solution.fixedCode);
+                fs.writeFileSync(normalizedSourcePath, solution.fixedCode);
+                this.logger.appendLine(`Fixed code written to: ${normalizedSourcePath}`);
+                
+                // Indexar el archivo corregido en Vectra para futuras consultas
+                try {
+                    await ragService.initialize();
+                    const metadata = {
+                        filePath: normalizedSourcePath,
+                        fileName: path.basename(normalizedSourcePath),
+                        extension: extension,
+                        errorFixed: errorMessage,
+                        fixedAt: new Date().toISOString()
+                    };
+                    
+                    // Intentar indexar el código corregido
+                    const vectraService = require('../../services/vectraService');
+                    await vectraService.indexCode(solution.fixedCode, metadata);
+                    this.logger.appendLine(`Indexed fixed code in vector store for future reference`);
+                } catch (indexError) {
+                    this.logger.appendLine(`Warning: Could not index fixed code: ${indexError}`);
+                    // No interrumpir el flujo principal por un error de indexación
+                }
             }
             
             return {
                 success: true,
-                sourcePath,
+                sourcePath: normalizedSourcePath,
                 errorMessage,
                 explanation: solution.explanation,
                 solution: solution.solution,
@@ -153,22 +199,39 @@ export class FixErrorTool extends BaseTool {
     }
 
     /**
-     * Generate a simple fix using OpenAI
+     * Generate a fix using OpenAI with additional context
      * @param errorMessage - Error message
      * @param sourceCode - Source code
      * @param language - Programming language
+     * @param additionalContext - Additional context for the fix
      * @returns - Fixed code
      */
-    async generateSimpleFix(errorMessage: string, sourceCode: string, language: string): Promise<string> {
+    async generateFixWithContext(
+        errorMessage: string, 
+        sourceCode: string, 
+        language: string,
+        additionalContext: string = ''
+    ): Promise<string> {
         try {
-            // Create prompt for fixing the error
-            const prompt = `
+            // Create base prompt for fixing the error
+            let prompt = `
 Fix the following ${language} code that has this error: "${errorMessage}"
 
 \`\`\`${language}
 ${sourceCode}
 \`\`\`
+`;
 
+            // Add additional context if available
+            if (additionalContext) {
+                prompt = `
+${additionalContext}
+
+${prompt}
+`;
+            }
+
+            prompt += `
 Provide ONLY the corrected code without any explanations or markdown formatting. The entire fixed file should be returned.
 `;
             
@@ -183,15 +246,19 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
                 content: prompt
             };
             
+            // Obtener el modelo configurado o usar uno predeterminado
+            const configuredModel = configManager.getOpenAIModel();
+            const modelToUse = configuredModel || "gpt-4.1-mini";
+            
             // Usamos el método chatCompletion del servicio de OpenAI
             const completion = await openaiService.chatCompletion(
                 [systemMessage, userMessage], 
-                "gpt-4.1-mini" // Usamos un valor directo en lugar de configManager.getOpenAIModel()
+                modelToUse
             );
             
             return completion.choices[0].message.content.trim();
         } catch (error: any) {
-            this.logger.appendLine(`Error generating simple fix: ${error.message}`);
+            this.logger.appendLine(`Error generating fix: ${error.message}`);
             throw error;
         }
     }
@@ -224,4 +291,4 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
         
         return extensionMap[extension.toLowerCase()] || extension;
     }
-} 
+}

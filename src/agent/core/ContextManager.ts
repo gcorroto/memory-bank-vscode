@@ -343,4 +343,49 @@ export class ContextManager {
         this.history = [];
         this.currentContext = {};
     }
+
+    /**
+     * Get a specific item from current context by key
+     * @param key - The key to look up in the context
+     * @returns The value for the key or undefined if not found
+     */
+    getItemByKey(key: string): any {
+        return this.currentContext[key];
+    }
+
+    /**
+     * Get the user's workspace path
+     * @returns The path to the user's workspace, or null if not available
+     */
+    getUserWorkspacePath(): string | null {
+        // Primero intentamos obtener del contexto actual
+        if (this.currentContext.workspacePath) {
+            return this.currentContext.workspacePath;
+        }
+        
+        // Luego intentamos obtener del workspace de VS Code
+        try {
+            const vscodeWorkspaces = require('vscode').workspace.workspaceFolders;
+            if (vscodeWorkspaces && vscodeWorkspaces.length > 0) {
+                return vscodeWorkspaces[0].uri.fsPath;
+            }
+        } catch (error) {
+            this.logger.appendLine(`Error getting VSCode workspace: ${error}`);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Añade un item al contexto actual
+     * @param key - La clave para almacenar el valor
+     * @param value - El valor a almacenar
+     */
+    addItem(key: string, value: any): void {
+        this.currentContext[key] = value;
+        this.logger.appendLine(`Added item to context: ${key}`);
+        
+        // Actualizar el contador de tokens
+        this.updateTokenCount();
+    }
 } 

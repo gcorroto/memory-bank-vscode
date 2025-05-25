@@ -59,33 +59,40 @@ export class WriteFileTool extends BaseTool {
         const { filePath, content, encoding = 'utf8', mode = 'write' } = params;
         
         try {
+            // Normalizar la ruta del archivo
+            const normalizedFilePath = this.normalizePath(filePath);
+            this.logger.appendLine(`Attempting to write to file: ${normalizedFilePath}`);
+            
             // Create directory if it doesn't exist
-            const dir = path.dirname(filePath);
+            const dir = path.dirname(normalizedFilePath);
             if (!fs.existsSync(dir)) {
+                this.logger.appendLine(`Creating directory structure: ${dir}`);
                 fs.mkdirSync(dir, { recursive: true });
             }
             
             // Check if file exists
-            const fileExists = fs.existsSync(filePath);
+            const fileExists = this.fileExists(normalizedFilePath);
             
             // Handle different write modes
             if (mode === 'create' && fileExists) {
-                throw new Error(`File already exists: ${filePath}`);
+                throw new Error(`File already exists: ${normalizedFilePath}`);
             }
             
             // Perform the write operation
             if (mode === 'append' && fileExists) {
-                fs.appendFileSync(filePath, content, { encoding: encoding as BufferEncoding });
+                this.logger.appendLine(`Appending to file: ${normalizedFilePath}`);
+                fs.appendFileSync(normalizedFilePath, content, { encoding: encoding as BufferEncoding });
             } else {
-                fs.writeFileSync(filePath, content, { encoding: encoding as BufferEncoding });
+                this.logger.appendLine(`Writing to file: ${normalizedFilePath}`);
+                fs.writeFileSync(normalizedFilePath, content, { encoding: encoding as BufferEncoding });
             }
             
             // Get file stats after writing
-            const stats = fs.statSync(filePath);
+            const stats = fs.statSync(normalizedFilePath);
             
             return {
                 success: true,
-                filePath,
+                filePath: normalizedFilePath,
                 size: stats.size,
                 modified: stats.mtime,
                 created: !fileExists,

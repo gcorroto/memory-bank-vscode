@@ -242,4 +242,41 @@ export class WorkspaceManager {
     dispose(): void {
         // Clean up resources if needed
     }
+
+    /**
+     * Get the path to the user's workspace (the VS Code workspace)
+     * @returns User workspace path or null if not available
+     */
+    getUserWorkspacePath(): string | null {
+        try {
+            // Intentar obtener de VS Code
+            const vscode = require('vscode');
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            
+            if (workspaceFolders && workspaceFolders.length > 0) {
+                const userWorkspacePath = workspaceFolders[0].uri.fsPath;
+                this.logger.appendLine(`Found user workspace at: ${userWorkspacePath}`);
+                return userWorkspacePath;
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error getting user workspace: ${error.message}`);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get the primary workspace path for file operations
+     * @returns Best workspace path to use (user workspace if available, agent workspace if not)
+     */
+    getPrimaryWorkspacePath(): string {
+        // Primero intentar obtener el workspace del usuario
+        const userWorkspace = this.getUserWorkspacePath();
+        if (userWorkspace) {
+            return userWorkspace;
+        }
+        
+        // Si no hay workspace de usuario, usar el del agente
+        return this.workspacePath;
+    }
 } 

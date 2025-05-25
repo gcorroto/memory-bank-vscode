@@ -90,16 +90,20 @@ export class ReadFileTool extends BaseTool {
         }
         
         try {
-            // Check if file exists
-            if (!fs.existsSync(filePath)) {
-                throw new Error(`File not found: ${filePath}`);
+            // Normalizar la ruta del archivo usando el nuevo método
+            const normalizedFilePath = this.normalizePath(filePath);
+            this.logger.appendLine(`Attempting to read file: ${normalizedFilePath}`);
+            
+            // Check if file exists using the new helper method
+            if (!this.fileExists(normalizedFilePath)) {
+                throw new Error(`File not found: ${normalizedFilePath}`);
             }
             
             // Read file content
-            let content = fs.readFileSync(filePath, { encoding: encoding as BufferEncoding });
+            let content = fs.readFileSync(normalizedFilePath, { encoding: encoding as BufferEncoding });
             
             // Get file stats
-            const stats = fs.statSync(filePath);
+            const stats = fs.statSync(normalizedFilePath);
             
             // Handle line range if specified
             if (startLine > 0 || maxLines > 0) {
@@ -110,7 +114,7 @@ export class ReadFileTool extends BaseTool {
             }
             
             // Get file extension for language detection
-            const ext = path.extname(filePath).toLowerCase().substring(1);
+            const ext = path.extname(normalizedFilePath).toLowerCase().substring(1);
             
             // Map common extensions to languages
             const languageMap: Record<string, string> = {
@@ -141,7 +145,7 @@ export class ReadFileTool extends BaseTool {
             
             return {
                 content,
-                filePath,
+                filePath: normalizedFilePath,
                 language,
                 size: stats.size,
                 modified: stats.mtime,
