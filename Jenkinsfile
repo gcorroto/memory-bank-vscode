@@ -9,6 +9,7 @@ pipeline {
     string(name: 'DEPLOY_PATH', defaultValue: '/opt/artifacts',  description: 'Ruta destino de los .vsix')
   }
 
+
   stages {
     stage('Checkout') {
       steps {
