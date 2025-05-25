@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.builder
+    # Volcamos el .vsix generado aquí en ./out del host
+    volumes:
+      - ./out:/output
+    # Al usar el CMD del Dockerfile no es necesario volver a definir command
