@@ -29,7 +29,7 @@
         {
           "id": "grec0ai-filesystem",
           "title": "Grec0AI",
-          "icon": "resources/icons/mutuaLogo.png"
+          "icon": "resources/icons/logo_square_transparent.png"
         }
       ]
     },
@@ -293,7 +293,6 @@
             "o3-mini",
             "o4-mini",
             "codex-mini-latest"
-
           ],
           "default": "gpt-4.1-mini",
           "description": "Modelo de OpenAI a utilizar para las consultas",
@@ -401,6 +400,7 @@
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
     "gray-matter": "^4.0.3",
+    "grec0ai-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",
     "openai": "^4.103.0",

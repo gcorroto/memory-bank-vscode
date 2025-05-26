@@ -10,6 +10,7 @@ import * as ragService from '../../services/ragService';
 import * as openaiService from '../../services/openaiService';
 import * as configManager from '../../utils/configManager';
 import * as vscode from 'vscode';
+import { extractContent } from '../../types/compatibility';
 
 interface AnalysisIssue {
     description: string;
@@ -23,7 +24,8 @@ interface AnalysisResult {
     summary: string;
 }
 
-export class AnalyzeCodeTool extends BaseTool {    constructor(agent: any) {
+export class AnalyzeCodeTool extends BaseTool {
+    constructor(agent: any) {
         super(agent);
         this.name = 'AnalyzeCodeTool';
         this.description = 'Analyzes code for problems and suggests improvements';
@@ -75,10 +77,11 @@ export class AnalyzeCodeTool extends BaseTool {    constructor(agent: any) {
     }
 
     /**
-     * Analyze code in a source file
-     * @param params - Tool parameters
-     * @returns - Analysis results
-     */    async run_impl(params: Record<string, any>): Promise<any> {
+     * Analiza un archivo de código
+     * @param params Parámetros de análisis
+     * @returns Resultado del análisis
+     */
+    async run_impl(params: Record<string, any>): Promise<any> {
         let { 
             sourcePath, 
             path,
@@ -198,243 +201,87 @@ export class AnalyzeCodeTool extends BaseTool {    constructor(agent: any) {
             // Fallback de análisis básico en caso de errores
             let analysis: AnalysisResult = {
                 issues: [],
-                summary: "Code analysis completed."
+                summary: `Análisis del archivo ${normalizedSourcePath || 'código proporcionado'}`
             };
             
             try {
-                // Intentamos usar el servicio RAG para un análisis más contextualizado
-                this.logger.appendLine(`Analyzing code with RAG for ${normalizedSourcePath || 'provided code'}`);
-                
-                // Si no tenemos contexto adicional pero tenemos una ruta de archivo, intentamos obtener contexto del RAG
-                if (!additionalContext && normalizedSourcePath) {
+                // Try to use RAG service for enhanced context
+                // Verificar si tenemos acceso al workspace usando el agent directamente
+                const workspacePath = this.agent.workspaceManager?.getWorkspacePath();
+                if (workspacePath) {
+                    this.logger.appendLine(`Using RAG with workspace path: ${workspacePath}`);
                     try {
-                        // Usar RAG para analizar el código con contexto del proyecto
-                        const ragAnalysis = await ragService.analyzeCode(
-                            sourceContent,
-                            normalizedSourcePath,
-                            language
-                        );
-                        
-                        if (ragAnalysis && typeof ragAnalysis === 'object') {
-                            this.logger.appendLine('Successfully used RAG for code analysis');
-                            return {
-                                sourcePath: normalizedSourcePath || 'code-snippet',
-                                language,
-                                analysis: ragAnalysis
-                            };
+                        // Attempt to analyze with RAG
+                        const ragResult = await ragService.analyzeCode(sourceContent, normalizedSourcePath || 'inline-code', language);
+                        // Verificar que ragResult sea un objeto con propiedad content
+                        if (ragResult && typeof ragResult === 'object' && 'content' in ragResult) {
+                            this.logger.appendLine('Successfully used RAG for analysis');
+                            analysis = this.parseAnalysisResult(ragResult.content, outputFormat);
+                            return this.formatAnalysisOutput(analysis, normalizedSourcePath, language, outputFormat);
+                        } else if (typeof ragResult === 'string') {
+                            // Si es un string, parsearlo directamente
+                            this.logger.appendLine('RAG returned string result, parsing directly');
+                            analysis = this.parseAnalysisResult(ragResult, outputFormat);
+                            return this.formatAnalysisOutput(analysis, normalizedSourcePath, language, outputFormat);
                         }
                     } catch (ragError) {
-                        this.logger.appendLine(`RAG analysis failed, falling back to OpenAI: ${ragError}`);
-                        // Continuar con el análisis básico de OpenAI
+                        this.logger.appendLine(`RAG analysis failed: ${ragError.message}, falling back to direct analysis`);
+                        // Fall through to direct analysis
                     }
                 }
                 
-                // Generar el análisis con OpenAI si RAG no funcionó
-                this.logger.appendLine(`Analyzing code with OpenAI for ${normalizedSourcePath || 'provided code'}`);
+                // Fallback to direct OpenAI analysis
+                this.logger.appendLine('Using direct OpenAI analysis');
                 
-                // Generate analysis with OpenAI
-                const systemMessage = {
-                    role: 'system',
-                    content: 'You are an expert code reviewer specializing in identifying problems and suggesting improvements. Provide detailed, actionable feedback in JSON format.'
-                };
+                // Prepare analysis prompt
+                const analysisPrompt = this.prepareAnalysisPrompt(
+                    sourceContent, 
+                    language, 
+                    focus, 
+                    detailLevel, 
+                    additionalContext,
+                    normalizedSourcePath
+                );
                 
-                // Construir el prompt con o sin contexto adicional
-                let userPrompt = `
-Analyze this ${language} code:
-
-\`\`\`${language}
-${sourceContent}
-\`\`\`
-
-Look for:
-1. Errors and bugs
-2. Security vulnerabilities
-3. Performance issues
-4. Code structure and maintainability problems
-5. Violations of best practices
-`;
-
-                // Añadir contexto adicional si está disponible
-                if (additionalContext) {
-                    userPrompt = `
-${additionalContext}
-
-${userPrompt}
-`;
-                }
-
-                userPrompt += `
-For each issue, provide:
-- Description of the problem
-- Severity level (High/Medium/Low)
-- Recommended solution with code example
-
-Response format should be valid JSON with the following structure:
-{
-  "issues": [
-    {
-      "description": "Issue description",
-      "severity": "High|Medium|Low",
-      "solution": "Suggested solution",
-      "code": "Example fixed code"
-    }
-  ],
-  "summary": "Overall assessment"
-}
-`;
+                // Get model for analysis
+                const analysisModel = this.determineAppropriateModel(sourceContent.length, detailLevel);
                 
-                const userMessage = {
-                    role: 'user',
-                    content: userPrompt
-                };
-                
-                // Usar generateCompletion con taskType: 'analysis'
-                const result = await openaiService.generateCompletion(
-                    userPrompt,
+                // Call OpenAI for analysis
+                const openaiResult = await openaiService.generateCompletion(
+                    analysisPrompt,
                     {
-                        temperature: 0.3,
-                        format: 'json',
                         taskType: 'analysis',
-                        systemPrompt: 'You are an expert code reviewer specializing in identifying problems and suggesting improvements. Provide detailed, actionable feedback in JSON format.'
+                        temperature: 0.1,
+                        model: analysisModel
                     }
                 );
                 
-                // Extraer la información del modelo y el conteo de tokens
-                const modelInfo = result.modelInfo;
-                const tokenCount = result.tokenCount;
+                // Extract the content from the result
+                const analysisText = extractContent(openaiResult);
                 
-                // Si el resultado ya es un objeto (parseado como JSON), usarlo directamente
-                if (result.content && typeof result.content === 'object') {
-                    analysis = result.content;
-                    this.logger.appendLine(`Successfully received object response from OpenAI`);
-                } else {
-                    // Si es string, intentar parsearlo con manejo mejorado de errores
-                    try {
-                        const contentString = typeof result.content === 'string' ? result.content : String(result.content);
-                        this.logger.appendLine(`Attempting to parse OpenAI response: ${contentString.substring(0, 200)}...`);
-                        
-                        // Intentar extraer JSON válido si está dentro de comillas, markdown o tiene caracteres extra
-                        let jsonContent = contentString;
-                        
-                        // Buscar patrones de bloques de código JSON en markdown
-                        const jsonBlockMatch = contentString.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-                        if (jsonBlockMatch && jsonBlockMatch[1]) {
-                            jsonContent = jsonBlockMatch[1];
-                            this.logger.appendLine(`Extracted JSON from markdown code block`);
-                        }
-                        
-                        // Buscar patrón de objeto JSON directo
-                        const jsonObjectMatch = contentString.match(/(\{[\s\S]*\})/);
-                        if (!jsonBlockMatch && jsonObjectMatch && jsonObjectMatch[1]) {
-                            jsonContent = jsonObjectMatch[1];
-                            this.logger.appendLine(`Extracted JSON object from response`);
-                        }
-                        
-                        try {
-                            // Intentar parsear el JSON extraído
-                            analysis = JSON.parse(jsonContent);
-                            this.logger.appendLine(`Successfully parsed JSON response`);
-                            
-                            // Verificar que tenga la estructura esperada
-                            if (!analysis.issues) {
-                                analysis.issues = [];
-                            }
-                            if (!analysis.summary) {
-                                analysis.summary = "Analysis completed";
-                            }
-                        } catch (jsonError) {
-                            // Si falla el parsing directo, intentar normalizar el JSON
-                            this.logger.appendLine(`Initial JSON parse failed: ${jsonError}. Attempting to normalize JSON...`);
-                            
-                            // Intento de normalización de JSON malformado (comillas incorrectas, comillas faltantes, etc.)
-                            const normalizedJson = this.normalizeJsonString(jsonContent);
-                            try {
-                                analysis = JSON.parse(normalizedJson);
-                                this.logger.appendLine(`Successfully parsed normalized JSON`);
-                            } catch (normalizedError) {
-                                // Si todo falla, intentar extraer un objeto básico mediante RegExp
-                                this.logger.appendLine(`Normalized JSON parsing failed: ${normalizedError}`);
-                                throw normalizedError; // Propagar el error para usar el fallback
-                            }
-                        }
-                    } catch (parseError) {
-                        // Si falla, usar resultado genérico
-                        this.logger.appendLine(`Failed to parse OpenAI response as JSON: ${parseError}. Response was: ${String(result.content).substring(0, 500)}`);
-                        
-                        // Intentar crear un análisis básico basado en el texto de la respuesta
-                        const responseText = String(result.content);
-                        
-                        // Buscar posibles problemas mencionados en el texto
-                        const potentialIssues = this.extractIssuesFromText(responseText);
-                        
-                        if (potentialIssues.length > 0) {
-                            analysis = {
-                                issues: potentialIssues,
-                                summary: "Analysis extracted from unstructured response."
-                            };
-                            this.logger.appendLine(`Created basic analysis from unstructured response with ${potentialIssues.length} issues`);
-                        } else {
-                            analysis = {
-                                issues: [{
-                                    description: "Could not parse analysis results",
-                                    severity: "Medium" as 'Medium',
-                                    solution: "The code analyzer encountered an error parsing the results. Raw response: " + 
-                                              responseText.substring(0, 200) + (responseText.length > 200 ? "..." : ""),
-                                    code: ""
-                                }],
-                                summary: "Analysis failed to produce properly formatted results."
-                            };
-                        }
-                    }
-                }
+                // Parse analysis
+                analysis = this.parseAnalysisResult(analysisText, outputFormat);
                 
-                // Guardar la información del modelo en el resultado del análisis para el LogsView
-                this.agent.logsView?.addStepLog(
-                    `Análisis de código para ${normalizedSourcePath || 'fragmento de código'}`,
-                    "AnalyzeCodeTool",
-                    { sourcePath, focus, detailLevel, outputFormat },
-                    { analysis },
-                    true,
-                    undefined,
-                    modelInfo,
-                    [], // No hay reglas aplicadas en este ejemplo
-                    tokenCount
-                );
-            } catch (aiError: any) {
-                // Log error but continue
-                this.logger.appendLine(`Error using OpenAI: ${aiError.message}`);
-                analysis = {
-                    issues: [{
-                        description: "Error during analysis",
-                        severity: "Medium" as 'Medium',
-                        solution: "The code analyzer encountered an error: " + aiError.message,
-                        code: ""
-                    }],
-                    summary: "Analysis failed due to an error with the AI service."
-                };
+                // Format output
+                return this.formatAnalysisOutput(analysis, normalizedSourcePath, language, outputFormat);
+            } catch (analysisError) {
+                this.logger.appendLine(`Error during analysis: ${analysisError.message}`);
+                
+                // Return basic error analysis
+                analysis.issues.push({
+                    description: `Error al analizar el código: ${analysisError.message}`,
+                    severity: 'Medium',
+                    solution: 'Intente de nuevo con un fragmento de código más pequeño o una solicitud más específica',
+                    code: sourceContent.substring(0, 100) + '...'
+                });
+                
+                analysis.summary = `Error durante el análisis: ${analysisError.message}`;
+                
+                return this.formatAnalysisOutput(analysis, normalizedSourcePath, language, outputFormat);
             }
-            
-            // Format output if needed
-            if (outputFormat === 'markdown') {
-                return {
-                    sourcePath: normalizedSourcePath || 'code-snippet',
-                    analysis: this.formatAnalysisAsMarkdown(analysis, normalizedSourcePath || 'code-snippet', language)
-                };
-            } else if (outputFormat === 'text') {
-                return {
-                    sourcePath: normalizedSourcePath || 'code-snippet',
-                    analysis: this.formatAnalysisAsText(analysis, normalizedSourcePath || 'code-snippet', language)
-                };
-            } else {
-                // Default to JSON
-                return {
-                    sourcePath: normalizedSourcePath || 'code-snippet',
-                    language,
-                    analysis
-                };
-            }
-        } catch (error: any) {
-            throw new Error(`Error analyzing code: ${error.message}`);
+        } catch (error) {
+            this.logger.appendLine(`Error in AnalyzeCodeTool: ${error.message}`);
+            throw error;
         }
     }
 
@@ -530,7 +377,44 @@ Response format should be valid JSON with the following structure:
         
         return extensionMap[extension.toLowerCase()] || extension;
     }
-
+    
+    /**
+     * Formatea la salida del análisis según el formato requerido
+     * @param analysis Resultado del análisis
+     * @param sourcePath Ruta del archivo
+     * @param language Lenguaje de programación
+     * @param outputFormat Formato de salida
+     * @returns Análisis formateado
+     */
+    formatAnalysisOutput(analysis: AnalysisResult, sourcePath: string, language: string, outputFormat: string): any {
+        switch (outputFormat.toLowerCase()) {
+            case 'markdown':
+                return {
+                    analysis: analysis,
+                    formatted: this.formatAnalysisAsMarkdown(analysis, sourcePath, language),
+                    sourcePath: sourcePath,
+                    language: language,
+                    format: 'markdown'
+                };
+            case 'text':
+                return {
+                    analysis: analysis,
+                    formatted: this.formatAnalysisAsText(analysis, sourcePath, language),
+                    sourcePath: sourcePath,
+                    language: language,
+                    format: 'text'
+                };
+            case 'json':
+            default:
+                return {
+                    analysis: analysis,
+                    sourcePath: sourcePath,
+                    language: language,
+                    format: 'json'
+                };
+        }
+    }
+    
     /**
      * Intenta normalizar una cadena JSON malformada
      * @param jsonString - Cadena JSON potencialmente malformada
@@ -654,5 +538,204 @@ Response format should be valid JSON with the following structure:
         }
         
         return issues;
+    }
+
+    /**
+     * Prepara un prompt para análisis de código
+     * @param sourceCode Código fuente a analizar
+     * @param language Lenguaje de programación
+     * @param focus Área de enfoque
+     * @param detailLevel Nivel de detalle
+     * @param additionalContext Contexto adicional
+     * @param sourcePath Ruta del archivo
+     * @returns Prompt formateado
+     */
+    prepareAnalysisPrompt(
+        sourceCode: string,
+        language: string,
+        focus: string,
+        detailLevel: string,
+        additionalContext: string,
+        sourcePath: string
+    ): string {
+        // Construir un prompt específico para el análisis de código
+        let prompt = `
+### CÓDIGO A ANALIZAR:
+\`\`\`${language}
+${sourceCode}
+\`\`\`
+
+### INSTRUCCIONES:
+Analiza este código (${path.basename(sourcePath)}) y proporciona:
+`;
+
+        // Ajustar el enfoque del análisis
+        switch (focus.toLowerCase()) {
+            case 'security':
+                prompt += `
+1. Vulnerabilidades de seguridad
+2. Inyecciones potenciales
+3. Exposición de datos sensibles
+4. Problemas de autenticación o autorización
+5. Recomendaciones de seguridad
+`;
+                break;
+            case 'performance':
+                prompt += `
+1. Problemas de rendimiento
+2. Uso ineficiente de recursos
+3. Fugas de memoria potenciales
+4. Operaciones redundantes
+5. Recomendaciones de optimización
+`;
+                break;
+            case 'structure':
+                prompt += `
+1. Problemas de estructura y organización
+2. Patrones de diseño faltantes o incorrectos
+3. Deuda técnica
+4. Problemas de mantenibilidad
+5. Recomendaciones de estructura
+`;
+                break;
+            default:
+                prompt += `
+1. Errores o bugs potenciales
+2. Vulnerabilidades de seguridad
+3. Problemas de rendimiento
+4. Mejoras de legibilidad y mantenibilidad
+5. Recomendaciones generales
+`;
+        }
+
+        // Ajustar el nivel de detalle
+        switch (detailLevel.toLowerCase()) {
+            case 'high':
+                prompt += `\nProporciona un análisis exhaustivo con ejemplos de código específicos y soluciones detalladas.`;
+                break;
+            case 'low':
+                prompt += `\nProporciona un análisis conciso centrándote solo en los problemas más importantes.`;
+                break;
+            default:
+                prompt += `\nProporciona un análisis equilibrado con soluciones claras para los problemas detectados.`;
+        }
+
+        // Formato de respuesta
+        prompt += `
+        
+Responde en formato JSON con la siguiente estructura:
+{
+  "issues": [
+    {
+      "description": "Descripción del problema",
+      "severity": "High|Medium|Low",
+      "solution": "Solución propuesta",
+      "code": "Ejemplo de código corregido"
+    }
+  ],
+  "summary": "Resumen general del análisis"
+}
+`;
+
+        // Añadir contexto adicional si existe
+        if (additionalContext && additionalContext.trim()) {
+            prompt += `\n\n### CONTEXTO ADICIONAL:\n${additionalContext}\n`;
+        }
+
+        return prompt;
+    }
+
+    /**
+     * Determina el modelo más apropiado según el tamaño del código y nivel de detalle
+     * @param codeLength Longitud del código
+     * @param detailLevel Nivel de detalle
+     * @returns Nombre del modelo
+     */
+    determineAppropriateModel(codeLength: number, detailLevel: string): string {
+        // Obtener modelo de configuración o usar uno por defecto
+        const configuredModel = configManager.getOpenAIModel();
+        if (configuredModel) {
+            return configuredModel;
+        }
+        
+        // Lógica para determinar el modelo según tamaño y complejidad
+        if (codeLength > 5000 || detailLevel === 'high') {
+            return "gpt-4"; // Para código grande o análisis detallado
+        }
+        
+        // Modelo por defecto para la mayoría de casos
+        return "gpt-4.1-mini";
+    }
+
+    /**
+     * Parsea el resultado de análisis a partir de un texto
+     * @param text Texto a parsear
+     * @param outputFormat Formato esperado
+     * @returns Resultado de análisis estructurado
+     */
+    parseAnalysisResult(text: string, outputFormat: string): AnalysisResult {
+        try {
+            // Intentar parsear como JSON primero
+            if (outputFormat.toLowerCase() === 'json') {
+                try {
+                    // Intentar parsear directamente
+                    const jsonResult = JSON.parse(text);
+                    if (jsonResult.issues && jsonResult.summary) {
+                        // Validar y reparar si es necesario
+                        const issues = Array.isArray(jsonResult.issues) ? jsonResult.issues : [];
+                        return {
+                            issues: issues.map((issue: any) => ({
+                                description: issue.description || 'No description',
+                                severity: issue.severity || 'Medium',
+                                solution: issue.solution || 'No solution provided',
+                                code: issue.code || ''
+                            })),
+                            summary: jsonResult.summary || 'No summary provided'
+                        };
+                    }
+                } catch (e) {
+                    // Si falla, intentar normalizar y parsear de nuevo
+                    try {
+                        const normalized = this.normalizeJsonString(text);
+                        const jsonResult = JSON.parse(normalized);
+                        if (jsonResult.issues && jsonResult.summary) {
+                            return jsonResult;
+                        }
+                    } catch (e2) {
+                        // Si sigue fallando, extraer usando heurísticas
+                        this.logger.appendLine('Failed to parse JSON, using text extraction');
+                    }
+                }
+            }
+            
+            // Extracción basada en texto
+            const issues = this.extractIssuesFromText(text);
+            
+            // Extraer un resumen
+            let summary = 'Análisis de código';
+            const lines = text.split('\n');
+            for (const line of lines) {
+                if (line.includes('summary') || line.includes('Summary') || line.includes('SUMMARY')) {
+                    summary = line.replace(/.*[sS]ummary:?\s*/, '').trim();
+                    break;
+                }
+            }
+            
+            return {
+                issues,
+                summary
+            };
+        } catch (error) {
+            this.logger.appendLine(`Error parsing analysis result: ${error}`);
+            return {
+                issues: [{
+                    description: `Error parsing analysis result: ${error}`,
+                    severity: 'Medium',
+                    solution: 'Try again with a different format',
+                    code: ''
+                }],
+                summary: 'Error parsing analysis result'
+            };
+        }
     }
 } 

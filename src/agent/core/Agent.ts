@@ -4,23 +4,24 @@
  */
 
 import * as vscode from 'vscode';
-// TODO: El linter marca estos imports como no encontrados, pero los archivos existen.
-// Puede deberse a problemas de configuración del tsconfig o que los archivos no se han compilado aún.
-// Asegúrate de ejecutar "npm run build" para compilar el proyecto antes de probar.
-import { ContextManager } from './ContextManager';
-import { AgentToolManager } from './AgentToolManager';
-import { WorkspaceManager } from './WorkspaceManager';
-import { DatabaseManager } from './DatabaseManager';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as openaiService from '../../services/openaiService';
+import * as vectraService from '../../services/vectraService';
+import * as ragService from '../../services/ragService';
 import * as modelPricingService from '../../services/modelPricingService';
+import { AgentToolManager } from './AgentToolManager';
+import { ContextManager } from './ContextManager';
+import { WorkspaceManager } from './WorkspaceManager';
+import { DatabaseManager } from '../storage/DatabaseManager';
 import { AgentLogsView } from '../ui/logsView';
 import { EventsViewer } from '../ui/EventsViewer';
-import { Plan, PlanStep } from './interfaces';
-import * as path from 'path';
-import * as promptComposer from '../../promptComposer';
-import { PLAN_TASK_PROMPT } from './AgentPrompt';
-import { CustomCLITerminalManager } from '../terminals/CustomCLITerminalManager';
 import { FileSnapshotManager } from '../terminals/FileSnapshotManager';
+import { CustomCLITerminalManager } from '../terminals/CustomCLITerminalManager';
+import { PlanStep, Plan } from '../types/AgentTypes';
+import type { ChatMessage, CompletionResult } from '../../types/openai';
+import promptComposer from './PromptComposer';
+import { PLAN_TASK_PROMPT } from './AgentPrompt';
 
 export class Agent {
     name: string;
@@ -124,12 +125,7 @@ export class Agent {
             this.eventsViewer = new EventsViewer(this.context);
             this.logger.appendLine('Created new EventsViewer instance');
             
-            // Registrar comandos
-            this.context.subscriptions.push(
-                vscode.commands.registerCommand('grec0ai.showEventsViewer', () => {
-                    this.showEventsViewer();
-                })
-            );
+            // Ya no registramos comandos aquí, están en la estructura centralizada
         } catch (error: any) {
             this.logger.appendLine(`Error initializing EventsViewer: ${error.message}`);
         }
@@ -417,6 +413,8 @@ export class Agent {
                         }
                         
                         this.logger.appendLine(`Command step completed: ${step.description}`);
+                        // NUEVO: Indexar resultados relevantes para aprendizaje futuro
+                        await this.indexStepResults(step, stepResult);
                     } else {
                         // Para otras herramientas, usar el flujo normal
                         const stepResult = await tool.run(resolvedParams);
@@ -458,10 +456,9 @@ export class Agent {
                         }
                         
                         this.logger.appendLine(`Step completed: ${step.description}`);
+                        // NUEVO: Indexar resultados relevantes para aprendizaje futuro
+                        await this.indexStepResults(step, stepResult);
                     }
-                    
-                    // NUEVO: Indexar resultados relevantes para aprendizaje futuro
-                    await this.indexStepResults(step, stepResult);
                 } catch (error: any) {
                     this.logger.appendLine(`Error executing step: ${error.message}`);
                     
@@ -987,9 +984,8 @@ Respond in the following JSON format:
                             modelInfo: planResult.modelInfo,
                             tokenCount: planResult.tokenCount
                         };
-                        
-                        if (fallbackPlan.steps.length === 0 && planResult.content.steps) {
-                            fallbackPlan.steps = planResult.content.steps;
+                        if (fallbackPlan.steps.length === 0 && planResult.content && typeof planResult.content === 'object' && 'steps' in planResult.content) {
+                            fallbackPlan.steps = (planResult.content as { steps: any[] }).steps;
                         }
                         
                         if (fallbackPlan.steps.length > 0) {
@@ -1997,10 +1993,6 @@ Respond in the following JSON format:
      */
     private getRulesForFile(workspacePath: string, filePath: string): string {
         try {
-            // Obtener las reglas usando promptComposer
-            // Esta es una simulación del proceso porque no podemos llamar directamente a buildPrompt
-            // ya que necesitaríamos extraer solo las reglas
-            
             // Verificar si existe el archivo de reglas tradicional
             const rulesPath = path.join(workspacePath, '.cursor', 'rules');
             if (require('fs').existsSync(rulesPath)) {
@@ -2010,6 +2002,7 @@ Respond in the following JSON format:
             // Verificar si existe el archivo @rules.mdc
             const altRulesPath = path.join(workspacePath, '@rules.mdc');
             if (require('fs').existsSync(altRulesPath)) {
+               
                 const content = require('fs').readFileSync(altRulesPath, 'utf8');
                 
                 // Verificar si el archivo contiene frontmatter
@@ -2098,141 +2091,118 @@ Respond in the following JSON format:
      */
     async demoReasoningModel(userInput: string): Promise<any> {
         try {
-            this.logger.appendLine("Demostrando uso de modelo de razonamiento...");
+            this.logger.appendLine(`Demostrando modelo de razonamiento con input: ${userInput}`);
             
-            // Definir herramientas disponibles para el modelo
-            const tools = [
+            // Crear herramientas de ejemplo para la demostración
+            const demoTools = [
                 {
-                    type: "function",
+                    type: 'function',
                     function: {
-                        name: "search_files",
-                        description: "Busca archivos en el workspace que coincidan con un patrón",
+                        name: 'list_files',
+                        description: 'Listar archivos en un directorio',
                         parameters: {
-                            type: "object",
+                            type: 'object',
                             properties: {
-                                pattern: {
-                                    type: "string",
-                                    description: "Patrón de búsqueda para los archivos (puede incluir glob)"
+                                path: {
+                                    type: 'string',
+                                    description: 'Ruta del directorio a listar'
                                 }
                             },
-                            required: ["pattern"]
+                            required: ['path']
                         }
                     }
                 },
                 {
-                    type: "function",
+                    type: 'function',
                     function: {
-                        name: "read_file",
-                        description: "Lee el contenido de un archivo",
+                        name: 'search_code',
+                        description: 'Buscar en el código del proyecto',
                         parameters: {
-                            type: "object",
+                            type: 'object',
                             properties: {
-                                path: {
-                                    type: "string",
-                                    description: "Ruta del archivo a leer"
+                                query: {
+                                    type: 'string',
+                                    description: 'Término de búsqueda'
+                                },
+                                file_type: {
+                                    type: 'string',
+                                    description: 'Tipo de archivo (opcional)'
                                 }
                             },
-                            required: ["path"]
+                            required: ['query']
                         }
                     }
                 }
             ];
             
-            // Función que maneja las llamadas a herramientas
+            // Definir manejador de herramientas
             const toolCallHandler = async (toolCall: any) => {
-                const toolName = toolCall.function.name;
-                const args = JSON.parse(toolCall.function.arguments);
+                this.logger.appendLine(`Procesando llamada a herramienta: ${toolCall.function.name}`);
                 
-                this.logger.appendLine(`Ejecutando herramienta: ${toolName} con argumentos: ${JSON.stringify(args)}`);
-                
-                switch (toolName) {
-                    case "search_files":
-                        // Implementar búsqueda de archivos usando directamente vscode.workspace.findFiles
-                        const pattern = args.pattern;
-                        try {
-                            // Usar el API de vscode para buscar archivos
-                            const workspacePath = this.workspaceManager.getPrimaryWorkspacePath();
-                            const files = await vscode.workspace.findFiles(
-                                new vscode.RelativePattern(workspacePath, pattern),
-                                '**/node_modules/**' // Excluir node_modules por defecto
-                            );
-                            return {
-                                files: files.map((file) => file.fsPath)
-                            };
-                        } catch (error: any) {
-                            return {
-                                error: `Error buscando archivos: ${error.message}`,
-                                pattern: pattern
-                            };
-                        }
-                    
-                    case "read_file":
-                        // Implementar lectura de archivo
-                        const filePath = args.path;
-                        try {
-                            const content = await require('fs').promises.readFile(filePath, 'utf8');
-                            return {
-                                content,
-                                path: filePath
-                            };
-                        } catch (error: any) {
-                            return {
-                                error: `Error leyendo archivo: ${error.message}`,
-                                path: filePath
-                            };
-                        }
-                    
-                    default:
-                        return {
-                            error: `Herramienta desconocida: ${toolName}`
-                        };
+                // Simular respuestas para las herramientas de demostración
+                if (toolCall.function.name === 'list_files') {
+                    const params = JSON.parse(toolCall.function.arguments);
+                    return {
+                        files: [
+                            'example1.ts',
+                            'example2.ts',
+                            'utilities.ts',
+                            'README.md'
+                        ],
+                        path: params.path
+                    };
+                } else if (toolCall.function.name === 'search_code') {
+                    const params = JSON.parse(toolCall.function.arguments);
+                    return {
+                        results: [
+                            {
+                                file: 'example1.ts',
+                                line: 42,
+                                snippet: `function ${params.query}() { return 'example'; }`
+                            }
+                        ],
+                        query: params.query
+                    };
+                } else {
+                    return {
+                        error: `Herramienta no implementada: ${toolCall.function.name}`
+                    };
                 }
             };
             
-            // Definir mensajes iniciales
-            const messages = [
+            // Crear mensajes para la conversación
+            const messages: ChatMessage[] = [
                 {
-                    role: "developer",
-                    content: "Eres un asistente experto en analizar código. Utiliza las herramientas proporcionadas para ayudar al usuario."
+                    role: 'system',
+                    content: 'Eres un asistente de programación que puede usar herramientas para ayudar al usuario a encontrar información y analizar código. Explora el contexto disponible para dar respuestas precisas y útiles.'
                 },
                 {
-                    role: "user",
+                    role: 'user',
                     content: userInput
                 }
             ];
             
-            // Llamar al servicio con modelos de razonamiento
-            this.logger.appendLine("Llamando al modelo de razonamiento con herramientas...");
-            const result = await this.llmClient.callWithTools(
+            // Llamar al servicio de OpenAI con herramientas
+            const result = await openaiService.callWithTools(
                 messages,
-                tools,
+                demoTools,
                 toolCallHandler,
-                "o3-mini", // Usar o3-mini como modelo predeterminado
-                {
-                    reasoning_effort: "medium", // Usar esfuerzo de razonamiento medio
-                    temperature: 0.2
-                }
+                'o3-mini',
+                { reasoning_effort: 'medium' }
             );
             
-            // Registrar la respuesta
-            this.logger.appendLine(`Respuesta del modelo: ${result.message.content}`);
+            // Registro para debug
+            this.logger.appendLine(`Respuesta del modelo: ${result.choices[0].message.content}`);
             
-            // Añadir al log view si está disponible
-            if (this.logsView) {
-                const toolCallsInfo = result.tool_calls && result.tool_calls.length > 0 
-                    ? `Realizó ${result.tool_calls.length} llamadas a herramientas.` 
-                    : "No utilizó herramientas.";
-                
-                this.logsView.addReflectionLog({
-                    text: `Respuesta usando modelo de razonamiento: ${result.message.content}\n\n${toolCallsInfo}`,
-                    status: 'success',
-                    timestamp: new Date()
-                });
-            }
-            
-            return result;
-        } catch (error: any) {
-            this.logger.appendLine(`Error en demostración de modelo de razonamiento: ${error.message}`);
+            // Devolver resultado con la conversación completa para visualización
+            return {
+                message: result.choices[0].message,
+                conversation: messages.concat(result.choices[0].message),
+                tool_calls: result.tool_calls || []
+            };
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.appendLine(`Error en demoReasoningModel: ${errorMessage}`);
             throw error;
         }
     }

@@ -37,35 +37,16 @@ export class EventsViewer {
         this.fileSnapshotManager = new FileSnapshotManager();
         this.terminalManager = new CustomCLITerminalManager();
         
-        // Registrar comandos de la extensión
-        this.registerCommands();
+        // No registramos comandos aquí, están en la estructura centralizada (src/commands/categories/ui.ts)
     }
     
     /**
      * Registra comandos para interactuar con el visor de eventos
+     * @deprecated Use la estructura centralizada de comandos en su lugar
      */
     private registerCommands(): void {
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('grec0ai.showEventsViewer', () => {
-                this.show();
-            }),
-            
-            vscode.commands.registerCommand('grec0ai.clearEvents', () => {
-                this.clearEvents();
-            }),
-            
-            vscode.commands.registerCommand('grec0ai.showEventDetails', (eventId: string) => {
-                this.showEventDetails(eventId);
-            }),
-            
-            vscode.commands.registerCommand('grec0ai.showChanges', (eventId: string) => {
-                this.showEventChanges(eventId);
-            }),
-            
-            vscode.commands.registerCommand('grec0ai.toggleTerminal', () => {
-                this.toggleTerminalVisibility();
-            })
-        );
+        // Esta función ya no se usa, los comandos están en src/commands/categories/ui.ts
+        console.warn('EventsViewer.registerCommands está obsoleto. Use la estructura centralizada de comandos.');
     }
     
     /**

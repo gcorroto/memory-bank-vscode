@@ -8,6 +8,12 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as openaiService from './openaiService';
+import type { 
+  VectraLocalIndex, 
+  VectraItem, 
+  VectraMetadata,
+  VectraSearchResult
+} from '../types/vectra';
 
 // Interfaz para los resultados de búsqueda vectorial
 export interface VectorSearchResult {
@@ -21,26 +27,44 @@ export interface VectorSearchResult {
   score: number;
 }
 
+// Variable para el módulo Vectra
 let LocalIndex: any;
-try {
-  const vectra = require('vectra');
-  LocalIndex = vectra.LocalIndex;
-} catch (error) {
-  // Handle missing vectra module gracefully
-  console.error('The "vectra" module is missing. Please run "npm install" in the extension directory.');
+
+/**
+ * Carga el módulo Vectra de manera dinámica
+ */
+async function loadVectraModule(): Promise<any> {
+  try {
+    const vectra = await import('vectra');
+    return vectra.LocalIndex;
+  } catch (error) {
+    console.error('The "vectra" module is missing. Please run "npm install" in the extension directory.');
+    return undefined;
+  }
 }
 
-let index: any = null;
+// Inicializar la carga del módulo
+loadVectraModule().then(loadedIndex => {
+  LocalIndex = loadedIndex;
+});
+
+let index: VectraLocalIndex | null = null;
 let indexPath: string | null = null;
 let initialized = false;
 
 /**
  * Inicializa el servicio de búsqueda vectorial
- * @returns true si la inicialización fue exitosa, false en caso contrario
+ * @param workspacePath - Ruta del workspace (opcional)
+ * @returns Promise que se resuelve a true si la inicialización fue exitosa
  */
 export async function initialize(workspacePath?: string): Promise<boolean> {
   try {
-    // Check if Vectra module is available
+    // Si el módulo Vectra no se ha cargado, intentar cargarlo
+    if (!LocalIndex) {
+      LocalIndex = await loadVectraModule();
+    }
+
+    // Verificar que el módulo Vectra esté disponible
     if (!LocalIndex) {
       vscode.window.showErrorMessage('El módulo Vectra no está instalado. Por favor, ejecute "npm install" en el directorio de la extensión.');
       return false;
@@ -74,15 +98,17 @@ export async function initialize(workspacePath?: string): Promise<boolean> {
     
     initialized = true;
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al inicializar Vectra:', error);
-    vscode.window.showErrorMessage(`Error al inicializar el índice vectorial: ${error.message}`);
+    vscode.window.showErrorMessage(`Error al inicializar el índice vectorial: ${errorMessage}`);
     return false;
   }
 }
 
 /**
  * Asegura que el servicio esté inicializado antes de usarlo
+ * @returns Promise que se resuelve a true si el servicio está inicializado
  */
 async function ensureInitialized(): Promise<boolean> {
   if (!initialized) {
@@ -93,7 +119,8 @@ async function ensureInitialized(): Promise<boolean> {
 
 /**
  * Crea o recrea el índice vectorial para un directorio
- * @param directory Directorio a indexar
+ * @param directory - Directorio a indexar
+ * @throws Error si el servicio no está inicializado
  */
 export async function createIndex(directory: string): Promise<void> {
   if (!await ensureInitialized()) {
@@ -110,16 +137,17 @@ export async function createIndex(directory: string): Promise<void> {
     }
     
     console.log(`Index created for ${directory}`);
-  } catch (error: any) {
-    console.error(`Error creating Vectra index: ${error.message}`);
-    throw error;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Error creating Vectra index: ${errorMessage}`);
+    throw new Error(`Error creating Vectra index: ${errorMessage}`);
   }
 }
 
 /**
  * Divide el código en fragmentos más pequeños para indexar
- * @param code Código fuente a dividir
- * @param chunkSize Tamaño aproximado de cada fragmento
+ * @param code - Código fuente a dividir
+ * @param chunkSize - Tamaño aproximado de cada fragmento
  * @returns Array de fragmentos de código
  */
 function chunkCode(code: string, chunkSize: number = 1000): string[] {
@@ -147,11 +175,12 @@ function chunkCode(code: string, chunkSize: number = 1000): string[] {
 
 /**
  * Indexa código fuente en el vector store
- * @param code Código fuente a indexar
- * @param metadata Metadatos asociados al código
- * @returns true si la indexación fue exitosa
+ * @param code - Código fuente a indexar
+ * @param metadata - Metadatos asociados al código
+ * @returns Promise que se resuelve a true si la indexación fue exitosa
+ * @throws Error si el servicio no está inicializado
  */
-export async function indexCode(code: string, metadata: any): Promise<boolean> {
+export async function indexCode(code: string, metadata: VectraMetadata): Promise<boolean> {
   if (!await ensureInitialized()) {
     throw new Error('Servicio Vectra no inicializado');
   }
@@ -165,7 +194,7 @@ export async function indexCode(code: string, metadata: any): Promise<boolean> {
       const chunk = chunks[i];
       
       // Metadatos específicos para este fragmento
-      const chunkMetadata = {
+      const chunkMetadata: VectraMetadata = {
         ...metadata,
         code: chunk,
         chunkIndex: i,
@@ -175,133 +204,135 @@ export async function indexCode(code: string, metadata: any): Promise<boolean> {
       // Obtener embeddings para el fragmento
       const vector = await openaiService.generateEmbeddings(chunk);
       
-      // Insertar en el índice
-      await index.insertItem({
-        vector: vector,
-        metadata: chunkMetadata
-      });
+      // Insertar en el índice si existe
+      if (index) {
+        await index.insertItem({
+          vector: vector,
+          metadata: chunkMetadata
+        });
+      } else {
+        success = false;
+      }
     }
     
     return success;
-  } catch (error) {
-    console.error('Error al indexar código en Vectra:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error al indexar código en Vectra:', errorMessage);
     return false;
   }
 }
 
 /**
  * Realiza una búsqueda semántica basada en la consulta proporcionada
- * @param query Texto de consulta para buscar contenido relevante
- * @param limit Número máximo de resultados a devolver
- * @returns Array de resultados de la búsqueda
+ * @param query - Texto de consulta para buscar contenido relevante
+ * @param limit - Número máximo de resultados a devolver
+ * @returns Promise con array de resultados de la búsqueda
+ * @throws Error si el servicio no está inicializado
  */
 export async function query(query: string, limit: number = 5): Promise<VectorSearchResult[]> {
   if (!await ensureInitialized()) {
     throw new Error('El servicio vectorial no está inicializado');
   }
-  
+
   try {
-    // Generar embedding para la consulta
-    const queryVector = await openaiService.generateEmbeddings(query);
-    
-    // Realizar búsqueda por similitud
-    const searchResults = await index.queryItems(queryVector, limit);
-    
-    if (!searchResults || searchResults.length === 0) {
-      console.log('No se encontraron resultados para la consulta');
+    // Si no hay índice, devolver un array vacío
+    if (!index) {
       return [];
     }
+
+    // Generar embeddings para la consulta
+    const vector = await openaiService.generateEmbeddings(query);
     
-    // Mapear los resultados a un formato más útil
-    return searchResults.map((result: any) => ({
-      metadata: result.metadata || {},
-      score: result.score || 0
-    }));
-  } catch (error: any) {
-    console.error('Error en la búsqueda vectorial:', error);
+    // Realizar búsqueda con Vectra
+    const results = await index.similaritySearch(vector, { topK: limit });
     
-    // Si hay un error, devolver resultados simulados para no bloquear el desarrollo
+    // Transformar a nuestro formato de resultados
+    return results.map((result: VectraSearchResult) => {
+      // Asegurarnos de que los campos obligatorios existen
+      const metadata = result.metadata || {};
+      const filePath = metadata.filePath || '';
+      const fileName = metadata.fileName || '';
+      const extension = metadata.extension || '';
+      const code = metadata.code || '';
+      
+      return {
+        metadata: {
+          filePath,
+          fileName,
+          extension,
+          code,
+          ...metadata
+        },
+        score: result.score
+      };
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error en búsqueda vectorial:', errorMessage);
+    
+    // En modo de desarrollo, generar resultados de ejemplo para pruebas
     if (process.env.NODE_ENV === 'development') {
-      console.log('Devolviendo resultados simulados en modo desarrollo');
+      console.log('Generando resultados de ejemplo para pruebas...');
       return generateMockResults(query, limit);
     }
     
-    throw error;
+    throw new Error(`Error en búsqueda vectorial: ${errorMessage}`);
   }
 }
 
 /**
- * Genera resultados simulados para pruebas en desarrollo
+ * Genera resultados de ejemplo para pruebas
+ * @param query - Consulta para la que generar resultados
+ * @param limit - Número de resultados a generar
+ * @returns Array de resultados simulados
  */
 function generateMockResults(query: string, limit: number): VectorSearchResult[] {
-  const mockResults: VectorSearchResult[] = [
-    {
-      metadata: {
-        filePath: "src/utils/helpers.ts",
-        fileName: "helpers.ts",
-        extension: ".ts",
-        code: "// La función solicitada está en este archivo\nexport function formatDate(date: Date): string {\n  return date.toISOString().split('T')[0];\n}"
-      },
-      score: 0.95
-    },
-    {
-      metadata: {
-        filePath: "src/services/errorHandling.ts",
-        fileName: "errorHandling.ts",
-        extension: ".ts",
-        code: "// Para manejar errores, use try/catch\nexport function handleError(error: Error) {\n  logger.error(error.message);\n  return { success: false, error: error.message };\n}"
-      },
-      score: 0.87
-    },
-    {
-      metadata: {
-        filePath: "src/utils/configManager.ts",
-        fileName: "configManager.ts",
-        extension: ".ts",
-        code: "// Gestión de configuración\nexport function getConfig(key: string): any {\n  const config = vscode.workspace.getConfiguration('grec0ai');\n  return config.get(key);\n}"
-      },
-      score: 0.82
-    },
-    {
-      metadata: {
-        filePath: "src/tests/helpers.test.ts",
-        fileName: "helpers.test.ts",
-        extension: ".ts",
-        code: "// Tests con Jest\ndescribe('formatDate', () => {\n  it('formats date correctly', () => {\n    expect(formatDate(new Date('2023-01-01'))).toBe('2023-01-01');\n  });\n});"
-      },
-      score: 0.75
-    }
-  ];
+  const results: VectorSearchResult[] = [];
   
-  return mockResults.slice(0, limit);
+  for (let i = 0; i < limit; i++) {
+    results.push({
+      metadata: {
+        filePath: `ejemplo/ruta/archivo${i + 1}.ts`,
+        fileName: `archivo${i + 1}.ts`,
+        extension: '.ts',
+        code: `// Código de ejemplo relacionado con: ${query}\nfunction ejemplo${i + 1}() {\n  console.log("Esto es un ejemplo");\n}`,
+      },
+      score: 1 - (i * 0.1) // Puntuaciones decrecientes
+    });
+  }
+  
+  return results;
 }
 
 /**
- * Calcula la similitud semántica entre dos textos
- * @param text1 Primer texto para comparar
- * @param text2 Segundo texto para comparar
- * @returns Puntuación de similitud entre 0 y 1
+ * Calcula la similitud entre dos textos
+ * @param text1 - Primer texto a comparar
+ * @param text2 - Segundo texto a comparar
+ * @returns Promise con el valor de similitud (0-1)
  */
 export async function calculateSimilarity(text1: string, text2: string): Promise<number> {
-  if (!await ensureInitialized()) {
-    throw new Error('El servicio vectorial no está inicializado');
-  }
-  
   try {
     // Generar embeddings para ambos textos
-    const vector1 = await openaiService.generateEmbeddings(text1);
-    const vector2 = await openaiService.generateEmbeddings(text2);
+    const [vector1, vector2] = await Promise.all([
+      openaiService.generateEmbeddings(text1),
+      openaiService.generateEmbeddings(text2)
+    ]);
     
     // Calcular similitud del coseno
     return calculateCosineSimilarity(vector1, vector2);
-  } catch (error) {
-    console.error('Error al calcular similitud:', error);
-    return Math.random(); // Valor simulado en caso de error
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error al calcular similitud:', errorMessage);
+    return 0;
   }
 }
 
 /**
  * Calcula la similitud del coseno entre dos vectores
+ * @param vector1 - Primer vector
+ * @param vector2 - Segundo vector
+ * @returns Valor de similitud (0-1)
  */
 function calculateCosineSimilarity(vector1: number[], vector2: number[]): number {
   if (vector1.length !== vector2.length) {
@@ -329,13 +360,10 @@ function calculateCosineSimilarity(vector1: number[], vector2: number[]): number
 }
 
 /**
- * Genera embeddings para un texto dado
+ * Genera embeddings para un texto utilizando el servicio de OpenAI
+ * @param text - Texto para el que generar embeddings
+ * @returns Promise con el vector de embeddings
  */
 export async function generateEmbeddings(text: string): Promise<number[]> {
-  try {
-    return await openaiService.generateEmbeddings(text);
-  } catch (error: any) {
-    console.error(`Error generating embeddings: ${error.message}`);
-    throw error;
-  }
+  return await openaiService.generateEmbeddings(text);
 } 

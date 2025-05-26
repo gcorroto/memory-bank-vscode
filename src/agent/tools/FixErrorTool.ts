@@ -9,6 +9,9 @@ import { BaseTool } from './BaseTool';
 import * as ragService from '../../services/ragService';
 import * as openaiService from '../../services/openaiService';
 import * as configManager from '../../utils/configManager';
+import * as vscode from 'vscode';
+import type { ChatMessage } from '../../types/openai';
+import { toStandardChatMessage } from '../../types/compatibility';
 
 // Agregar la definición de la interfaz para solucionar el problema del linter
 interface ErrorSolution {
@@ -236,12 +239,12 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
 `;
             
             // Generate fix with OpenAI
-            const systemMessage = {
+            const systemMessage: ChatMessage = {
                 role: 'system',
                 content: 'You are an expert programmer. Fix the provided code to resolve the error. Return only the corrected code without any explanations.'
             };
             
-            const userMessage = {
+            const userMessage: ChatMessage = {
                 role: 'user',
                 content: prompt
             };

@@ -9,6 +9,7 @@ import * as openaiService from './openaiService';
 import * as vectraService from './vectraService';
 import * as configManager from '../utils/configManager';
 import * as path from 'path';
+import type { ChatMessage } from '../types/openai';
 
 /**
  * Inicializa el servicio RAG
@@ -65,12 +66,12 @@ Si mencionas algún fragmento de código o archivo del contexto, indica específ
     const model = determineAppropriateModel(question, searchResults);
     
     // 5. Generar respuesta con OpenAI y el contexto enriquecido
-    const systemMessage = {
+    const systemMessage: ChatMessage = {
       role: 'system',
       content: 'Eres un asistente de programación experto especializado en analizar y explicar código. Proporcionas respuestas claras, precisas y útiles basadas en el contexto del proyecto proporcionado. Cuando el contexto contenga código relevante, lo utilizarás para dar respuestas específicas y adaptadas al proyecto del usuario.'
     };
     
-    const userMessage = {
+    const userMessage: ChatMessage = {
       role: 'user',
       content: enrichedPrompt
     };

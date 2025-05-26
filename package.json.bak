@@ -28,12 +28,12 @@
         {
           "id": "kiuwan-defects",
           "title": "%activitybar.kiuwan.title%",
-          "icon": "resources/icons/mutuaLogo.png"
+          "icon": "resources/icons/logo_square_transparent.png"
         },
         {
           "id": "coverage-defects",
           "title": "%activitybar.coverage.title%",
-          "icon": "resources/icons/mutuaLogo.png"
+          "icon": "resources/icons/logo_square_transparent.png"
         }
       ]
     },

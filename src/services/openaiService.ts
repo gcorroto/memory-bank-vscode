@@ -1,31 +1,75 @@
 import * as vscode from 'vscode';
 import * as configManager from '../utils/configManager';
+import type {
+  OpenAIClient,
+  ChatMessage,
+  ChatCompletionParams,
+  ChatCompletionResponse,
+  EmbeddingResponse,
+  OpenAIClientOptions,
+  CompletionResult,
+  ModelInfo,
+  TokenCount
+} from '../types/openai';
 
+// Importar OpenAI de manera dinámica
 let OpenAI: any;
-try {
-  OpenAI = require('openai');
-} catch (error) {
-  // Handle missing openai module gracefully
-  console.error('The "openai" module is missing. Please run "npm install" in the extension directory.');
-}
-
-let client: any = null;
+let client: OpenAIClient | null = null;
 let initialized = false;
 
 // Modelos que soportan razonamiento
 const REASONING_MODELS = ['o1', 'o1-preview', 'o3-mini', 'o3-mini-high', 'o3-mini-low'];
 
-export function initialize(): boolean {
+// Definición de tipos para opciones
+interface CompletionOptions {
+  taskType?: string;
+  temperature?: number;
+  reasoning_effort?: 'low' | 'medium' | 'high';
+  model?: string;
+  tools?: any[];
+  tool_choice?: 'auto' | 'none' | any;
+  instructions?: string;
+  [key: string]: any;
+}
+
+// Interface para opciones de test
+interface TestGeneratorOptions {
+  instructions?: string;
+  [key: string]: any;
+}
+
+/**
+ * Carga el módulo OpenAI de manera dinámica
+ */
+async function loadOpenAIModule(): Promise<any> {
   try {
-    // Check if OpenAI module is available
+    const openaiModule = await import('openai');
+    return openaiModule.default;
+  } catch (error) {
+    console.error('The "openai" module is missing. Please run "npm install" in the extension directory.');
+    return undefined;
+  }
+}
+
+/**
+ * Inicializa el servicio de OpenAI
+ * @returns true si la inicialización fue exitosa
+ */
+export async function initialize(): Promise<boolean> {
+  try {
+    // Cargar módulo si aún no se ha cargado
     if (!OpenAI) {
-      vscode.window.showErrorMessage('El módulo OpenAI no está instalado. Por favor, ejecute "npm install" en el directorio de la extensión.');
-      return false;
+      OpenAI = await loadOpenAIModule();
+      // Si no se pudo cargar, mostrar error
+      if (!OpenAI) {
+        vscode.window.showErrorMessage('El módulo OpenAI no está instalado. Por favor, ejecute "npm install" en el directorio de la extensión.');
+        return false;
+      }
     }
 
     // Obtener la clave API de la configuración de VS Code
     const config = vscode.workspace.getConfiguration('grec0ai');
-    const apiKey = config.get('openai.apiKey');
+    const apiKey = config.get<string>('openai.apiKey');
     
     if (!apiKey) {
       vscode.window.showErrorMessage('La clave API de OpenAI no está configurada. Por favor, configúrela en las preferencias de Grec0AI.');
@@ -40,26 +84,40 @@ export function initialize(): boolean {
     initialized = true;
     console.log('OpenAI service initialized');
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al inicializar OpenAI:', error);
-    vscode.window.showErrorMessage(`Error al inicializar OpenAI: ${error.message}`);
+    vscode.window.showErrorMessage(`Error al inicializar OpenAI: ${errorMessage}`);
     return false;
   }
 }
 
-function ensureInitialized(): boolean {
+/**
+ * Asegura que el servicio esté inicializado
+ * @returns true si el servicio está inicializado o se inicializó correctamente
+ */
+async function ensureInitialized(): Promise<boolean> {
   if (!initialized) {
-    return initialize();
+    return await initialize();
   }
-  return true;
+  return initialized;
 }
 
+/**
+ * Llama a OpenAI con un prompt simple
+ * @param prompt Texto a enviar a OpenAI
+ * @returns Texto generado por OpenAI
+ */
 export async function callOpenAI(prompt: string): Promise<string> {
-  if (!ensureInitialized()) {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
 
   try {
+    if (!client) {
+      throw new Error('Cliente OpenAI no disponible');
+    }
+
     const completion = await client.chat.completions.create({
       model: 'gpt-4.1-mini',
       messages: [
@@ -74,15 +132,27 @@ export async function callOpenAI(prompt: string): Promise<string> {
       ]
     });
 
-    return completion.choices[0].message.content;
-  } catch (error: any) {
+    return completion.choices[0].message.content || '';
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al llamar a OpenAI:', error);
-    throw error;
+    throw new Error(`Error al llamar a OpenAI: ${errorMessage}`);
   }
 }
 
-export async function generateText(prompt: string, model: string = '', options: any = {}): Promise<string> {
-  if (!ensureInitialized()) {
+/**
+ * Genera texto utilizando OpenAI
+ * @param prompt Texto a enviar a OpenAI
+ * @param model Modelo a utilizar (opcional)
+ * @param options Opciones adicionales
+ * @returns Texto generado por OpenAI
+ */
+export async function generateText(
+  prompt: string, 
+  model: string = '', 
+  options: CompletionOptions = {}
+): Promise<string> {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
 
@@ -91,20 +161,39 @@ export async function generateText(prompt: string, model: string = '', options: 
     const taskType = detectTaskType(prompt, options.taskType);
     
     // Usar el método común con el tipo de tarea detectado
-    return await generateCompletion(prompt, {
+    const result = await generateCompletion(prompt, {
       ...options,
       taskType: taskType,
       model: model || undefined
     });
-  } catch (error: any) {
+    
+    // Devolver solo el contenido
+    return result.content;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al generar texto con OpenAI:', error);
-    throw error;
+    throw new Error(`Error al generar texto con OpenAI: ${errorMessage}`);
   }
 }
 
-export async function chatCompletion(messages: any[], model: string = 'gpt-4.1-mini', options: any = {}): Promise<any> {
-  if (!ensureInitialized()) {
+/**
+ * Realiza una llamada al API de chat completions
+ * @param messages Mensajes para la conversación
+ * @param model Modelo a utilizar
+ * @param options Opciones adicionales
+ * @returns Respuesta del API
+ */
+export async function chatCompletion(
+  messages: ChatMessage[], 
+  model: string = 'gpt-4.1-mini', 
+  options: CompletionOptions = {}
+): Promise<ChatCompletionResponse> {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
+  }
+
+  if (!client) {
+    throw new Error('Cliente OpenAI no disponible');
   }
 
   try {
@@ -112,14 +201,22 @@ export async function chatCompletion(messages: any[], model: string = 'gpt-4.1-m
     const isReasoningModel = REASONING_MODELS.some(m => model.startsWith(m));
     
     // Preparar los parámetros según el tipo de modelo
-    const requestParams: any = {
+    const requestParams: ChatCompletionParams = {
       model: model,
       messages: isReasoningModel ? 
         // Para modelos de razonamiento, usar 'developer' en lugar de 'system'
         messages.map(msg => msg.role === 'system' ? {...msg, role: 'developer'} : msg) : 
         messages,
-      ...options
     };
+    
+    // Añadir opciones generales
+    if (options.temperature !== undefined) requestParams.temperature = options.temperature;
+    if (options.max_tokens !== undefined) requestParams.max_tokens = options.max_tokens;
+    if (options.top_p !== undefined) requestParams.top_p = options.top_p;
+    if (options.frequency_penalty !== undefined) requestParams.frequency_penalty = options.frequency_penalty;
+    if (options.presence_penalty !== undefined) requestParams.presence_penalty = options.presence_penalty;
+    if (options.stop !== undefined) requestParams.stop = options.stop;
+    if (options.user !== undefined) requestParams.user = options.user;
     
     // Añadir parámetros específicos para modelos de razonamiento si corresponde
     if (isReasoningModel) {
@@ -142,20 +239,30 @@ export async function chatCompletion(messages: any[], model: string = 'gpt-4.1-m
     const completion = await client.chat.completions.create(requestParams);
 
     return completion;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al generar chat completion con OpenAI:', error);
-    throw error;
+    throw new Error(`Error al generar chat completion con OpenAI: ${errorMessage}`);
   }
 }
 
+/**
+ * Genera tests para código fuente
+ * @param sourceCode Código fuente para el que generar tests
+ * @param language Lenguaje de programación
+ * @param framework Framework de testing
+ * @param model Modelo a utilizar
+ * @param options Opciones adicionales
+ * @returns Código de tests generado
+ */
 export async function generateTests(
   sourceCode: string,
   language: string,
   framework: string,
   model: string = '',
-  options: any = {}
+  options: TestGeneratorOptions = {}
 ): Promise<string> {
-  if (!ensureInitialized()) {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
 
@@ -183,359 +290,321 @@ ${additionalInstructions}
 Genera SOLO el código de los tests, sin explicaciones adicionales.
 `;
 
-    const systemMessage = {
+    const systemMessage: ChatMessage = {
       role: 'system',
       content: 'Eres un experto en testing de software. Tu tarea es generar tests unitarios completos y efectivos que cubran todos los aspectos del código proporcionado.'
     };
 
-    const userMessage = {
+    const userMessage: ChatMessage = {
       role: 'user',
       content: prompt
     };
 
     // Configurar como tarea de generación de código
-    const completionOptions = {
+    const completionOptions: CompletionOptions = {
       ...options,
       taskType: 'codegen',
-      model: model || undefined
+      model: model || undefined,
+      temperature: 0.2  // Menor temperatura para código más determinista
     };
+
+    // Realizar la llamada al modelo usando generateCompletion
+    const result = await generateCompletion(prompt, completionOptions);
     
-    // Usar generateCompletion para aprovechar la selección de modelo por tipo de tarea
-    return await generateCompletion(prompt, completionOptions);
-  } catch (error: any) {
+    // Devolver solo el contenido
+    return result.content;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al generar tests con OpenAI:', error);
-    throw error;
-  }
-}
-
-export async function generateEmbeddings(text: string, model: string = 'text-embedding-ada-002'): Promise<number[]> {
-  if (!ensureInitialized()) {
-    throw new Error('Cliente OpenAI no inicializado');
-  }
-
-  try {
-    // Los embeddings siempre usan un modelo específico, no dependen del tipo de tarea
-    // In a real implementation, this would call the OpenAI embeddings API
-    // For now, return a simple mock embedding
-    return Array(32).fill(0).map(() => Math.random());
-  } catch (error: any) {
-    console.error('Error al generar embeddings con OpenAI:', error);
-    throw error;
+    throw new Error(`Error al generar tests con OpenAI: ${errorMessage}`);
   }
 }
 
 /**
- * Generate a completion from a prompt
- * @param prompt - The prompt to complete
- * @param options - Additional options for the completion
- * @returns The generated completion text or JSON object with metadata
+ * Genera embeddings para un texto
+ * @param text Texto para el que generar embeddings
+ * @param model Modelo a utilizar
+ * @returns Vector de embeddings
  */
-export async function generateCompletion(prompt: string, options: any = {}): Promise<any> {
-  if (!ensureInitialized()) {
+export async function generateEmbeddings(text: string, model: string = 'text-embedding-ada-002'): Promise<number[]> {
+  if (!await ensureInitialized()) {
+    throw new Error('Cliente OpenAI no inicializado');
+  }
+
+  if (!client) {
+    throw new Error('Cliente OpenAI no disponible');
+  }
+
+  try {
+    const response = await client.embeddings.create({
+      model: model,
+      input: text,
+    });
+
+    return response.data[0].embedding;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error al generar embeddings con OpenAI:', error);
+    throw new Error(`Error al generar embeddings con OpenAI: ${errorMessage}`);
+  }
+}
+
+/**
+ * Genera texto con OpenAI
+ * @param prompt Texto a enviar a OpenAI
+ * @param options Opciones de generación
+ * @returns Objeto con el texto generado y metadatos
+ */
+export async function generateCompletion(prompt: string, options: CompletionOptions = {}): Promise<CompletionResult> {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
 
   try {
-    // Seleccionar modelo según el tipo de tarea
-    const taskType = options.taskType || 'analysis'; // Default to analysis if not specified
-    const model = options.model || configManager.getModelForTask(taskType);
-    
-    // Verificar si es un modelo de razonamiento
-    const isReasoningModel = REASONING_MODELS.some(m => model.startsWith(m));
-    
-    const maxTokens = options.maxTokens || 1024;
-    const temperature = options.temperature !== undefined ? options.temperature : 0.7;
-    const format = options.format || 'text';
-    
-    // Log del modelo seleccionado (útil para debugging)
-    console.log(`Using ${model} model for task type: ${taskType}`);
-    
-    // Crear mensajes según el tipo de modelo
-    const systemRole = isReasoningModel ? 'developer' : 'system';
-    
-    const systemMessage = {
-      role: systemRole,
-      content: format === 'json' 
-        ? 'You are a helpful assistant that always responds in valid JSON format.'
-        : 'You are a helpful assistant that provides clear and concise responses.'
-    };
-
-    // Personalizar el mensaje del sistema según el tipo de tarea
-    if (taskType === 'planning') {
-      systemMessage.content = 'You are a strategic planner that breaks down tasks into logical, actionable steps. ' + 
-        (format === 'json' ? 'Always respond in valid JSON format.' : '');
-    } else if (taskType === 'codegen') {
-      systemMessage.content = 'You are an expert software engineer that writes clean, well-structured, and efficient code. ' +
-        'Focus on producing high-quality code that follows best practices and project conventions. ' +
-        (format === 'json' ? 'Always respond in valid JSON format.' : '');
-    } else if (taskType === 'analysis') {
-      systemMessage.content = 'You are an analytical assistant that helps understand code, identifies patterns, and explains concepts clearly. ' +
-        (format === 'json' ? 'Always respond in valid JSON format.' : '');
+    // Determinar la temperatura según el tipo de tarea
+    let temperature = options.temperature;
+    if (temperature === undefined) {
+      const taskType = options.taskType || detectTaskType(prompt);
+      
+      switch (taskType) {
+        case 'codegen':
+          temperature = 0.2; // Código más determinista
+          break;
+        case 'creative':
+          temperature = 0.8; // Más creatividad
+          break;
+        case 'analysis':
+          temperature = 0.3; // Menos variabilidad para análisis
+          break;
+        default:
+          temperature = 0.7; // Valor predeterminado equilibrado
+      }
     }
-
-    const userMessage = {
+    
+    // Determinar modelo a usar
+    const model = options.model || getOpenAIModel();
+    
+    // Construir los mensajes
+    const messages: ChatMessage[] = [];
+    
+    // Añadir mensaje del sistema según el tipo de tarea
+    let systemContent = '';
+    
+    switch (options.taskType) {
+      case 'codegen':
+        systemContent = 'Eres un experto programador que genera código de alta calidad, limpio y eficiente. Tu código debe ser completo, bien comentado y seguir las mejores prácticas.';
+        break;
+      case 'creative':
+        systemContent = 'Eres un asistente creativo que genera contenido original, interesante y variado. Piensas fuera de lo convencional y ofreces ideas innovadoras.';
+        break;
+      case 'analysis':
+        systemContent = 'Eres un analista experto que proporciona análisis detallados, precisos y objetivos. Evalúas la información de manera imparcial y ofreces conclusiones basadas en datos.';
+        break;
+      default:
+        systemContent = 'Eres un asistente experto que proporciona respuestas precisas, detalladas y útiles. Hablas en español pero conservas los términos técnicos en inglés cuando es apropiado.';
+    }
+    
+    messages.push({
+      role: 'system',
+      content: systemContent
+    });
+    
+    // Añadir el prompt como mensaje del usuario
+    messages.push({
       role: 'user',
       content: prompt
-    };
-
-    // Construir los parámetros de la solicitud
-    const requestParams: any = {
-      model: model,
-      messages: [systemMessage, userMessage],
-      max_tokens: maxTokens,
-      temperature: temperature,
-    };
+    });
     
-    // Añadir response_format según el formato
-    if (format === 'json') {
-      requestParams.response_format = { type: 'json_object' };
-    }
+    // Realizar la llamada al modelo
+    const response = await chatCompletion(messages, model, {
+      temperature,
+      ...options
+    });
     
-    // Añadir parámetros específicos para modelos de razonamiento
-    if (isReasoningModel) {
-      // Añadir reasoning_effort si se especifica (low, medium, high)
-      if (options.reasoning_effort) {
-        requestParams.reasoning_effort = options.reasoning_effort;
-      }
-      
-      // Añadir herramientas si se especifican
-      if (options.tools) {
-        requestParams.tools = options.tools;
-        
-        // Añadir tool_choice si se especifica (auto, required, o objeto específico)
-        if (options.tool_choice) {
-          requestParams.tool_choice = options.tool_choice;
-        }
-      }
-      
-      // Añadir response_format con json_schema si se proporciona
-      if (options.json_schema) {
-        requestParams.response_format = {
-          type: 'json_schema',
-          json_schema: options.json_schema
-        };
-      }
-    }
-
-    const completion = await client.chat.completions.create(requestParams);
-
-    const responseContent = completion.choices[0].message.content;
-    const tokenUsage = completion.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    // Extraer y devolver el texto generado con metadatos
+    const content = response.choices[0].message.content || '';
     
-    // Preparar resultado con metadatos
-    const result: {
-      content: any;
-      modelInfo: {
-        name: any;
-        taskType: any;
-      };
-      tokenCount: {
-        prompt: any;
-        completion: any;
-        total: any;
-      };
-      tool_calls?: any[];
-    } = {
-      content: responseContent,
+    // Crear objeto de respuesta con metadatos
+    const result: CompletionResult = {
+      content: content,
       modelInfo: {
         name: model,
-        taskType: taskType
+        taskType: options.taskType || detectTaskType(prompt)
       },
       tokenCount: {
-        prompt: tokenUsage.prompt_tokens,
-        completion: tokenUsage.completion_tokens,
-        total: tokenUsage.total_tokens
+        prompt: response.usage?.prompt_tokens || 0,
+        completion: response.usage?.completion_tokens || 0,
+        total: response.usage?.total_tokens || 0
       }
     };
     
-    // Verificar si hay llamadas a herramientas en la respuesta
-    if (completion.choices[0].message.tool_calls) {
-      result.tool_calls = completion.choices[0].message.tool_calls;
-    }
-    
-    // Si se solicita JSON, analizar el contenido
-    if (format === 'json' || options.json_schema) {
-      try {
-        result.content = JSON.parse(responseContent);
-      } catch (error) {
-        console.warn('Error parsing JSON response, returning raw text', error);
-      }
+    // Agregar tool_calls si existen
+    if (response.tool_calls && response.tool_calls.length > 0) {
+      result.tool_calls = response.tool_calls;
     }
     
     return result;
-  } catch (error: any) {
-    console.error('Error generating completion with OpenAI:', error);
-    
-    // Si hay un error específico con el modelo, intentar con el modelo de fallback
-    if (error.message && (error.message.includes('model') || error.message.includes('not found') || error.message.includes('unavailable'))) {
-      console.log('Error with specified model, trying with fallback model');
-      
-      // Eliminar modelo de las opciones y forzar el uso del modelo por defecto
-      const fallbackOptions = { ...options };
-      delete fallbackOptions.model;
-      delete fallbackOptions.taskType;
-      
-      // Reintentar con el modelo de fallback
-      return generateCompletion(prompt, fallbackOptions);
-    }
-    
-    throw error;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error al generar completion con OpenAI:', error);
+    throw new Error(`Error al generar completion con OpenAI: ${errorMessage}`);
   }
 }
 
 /**
- * Crea y procesa llamadas a herramientas a través de un modelo de OpenAI con razonamiento
- * @param messages - Mensajes iniciales de la conversación
- * @param tools - Definición de herramientas disponibles
- * @param toolCallHandler - Función para manejar las llamadas a herramientas
- * @param model - Modelo a utilizar (debe ser un modelo de razonamiento)
- * @param options - Opciones adicionales para la solicitud
- * @returns El resultado final de la conversación
+ * Llama a OpenAI con herramientas
+ * @param messages Mensajes para la conversación
+ * @param tools Herramientas disponibles
+ * @param toolCallHandler Manejador de llamadas a herramientas
+ * @param model Modelo a utilizar
+ * @param options Opciones adicionales
+ * @returns Respuesta completa con posibles llamadas a herramientas
  */
 export async function callWithTools(
-  messages: any[],
+  messages: ChatMessage[],
   tools: any[],
   toolCallHandler: (toolCall: any) => Promise<any>,
   model: string = 'o3-mini',
-  options: any = {}
-): Promise<any> {
-  if (!ensureInitialized()) {
+  options: CompletionOptions = {}
+): Promise<ChatCompletionResponse> {
+  if (!await ensureInitialized()) {
     throw new Error('Cliente OpenAI no inicializado');
   }
 
   try {
-    // Verificar si es un modelo de razonamiento
-    const isReasoningModel = REASONING_MODELS.some(m => model.startsWith(m));
-    if (!isReasoningModel) {
-      throw new Error(`El modelo ${model} no soporta herramientas. Debe usar un modelo de razonamiento.`);
+    // Comprobar si hay mensajes
+    if (!messages || messages.length === 0) {
+      throw new Error('Se requieren mensajes para la conversación');
     }
 
-    // Clonar mensajes para no modificar el original
-    let currentMessages = [...messages];
-    
-    // Convertir mensajes 'system' a 'developer' para modelos de razonamiento
-    currentMessages = currentMessages.map(msg => 
-      msg.role === 'system' ? {...msg, role: 'developer'} : msg
-    );
+    // Comprobar si hay herramientas
+    if (!tools || tools.length === 0) {
+      throw new Error('Se requieren herramientas para esta función');
+    }
 
-    // Configurar los parámetros para la solicitud
-    const requestParams: any = {
-      model: model,
-      messages: currentMessages,
+    // Comprobar si existe el manejador de herramientas
+    if (!toolCallHandler || typeof toolCallHandler !== 'function') {
+      throw new Error('Se requiere un manejador de llamadas a herramientas válido');
+    }
+    
+    // Realizar llamada inicial
+    const initialResponse = await chatCompletion(messages, model, {
       tools: tools,
-      tool_choice: options.tool_choice || 'auto',
-    };
+      tool_choice: 'auto',
+      ...options
+    });
     
-    // Añadir reasoning_effort si se especifica
-    if (options.reasoning_effort) {
-      requestParams.reasoning_effort = options.reasoning_effort;
+    // Verificar si hay llamadas a herramientas
+    const toolCalls = initialResponse.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+      // No hay llamadas a herramientas, devolver respuesta directamente
+      return initialResponse;
     }
     
-    // Añadir otros parámetros opcionales
-    if (options.temperature !== undefined) {
-      requestParams.temperature = options.temperature;
-    }
-    
-    if (options.max_tokens) {
-      requestParams.max_tokens = options.max_tokens;
-    }
-    
-    // Realizar la primera solicitud
-    let response = await client.chat.completions.create(requestParams);
-    let assistantMessage = response.choices[0].message;
-    
-    // Añadir la respuesta del asistente a los mensajes
-    currentMessages.push(assistantMessage);
-    
-    // Procesar llamadas a herramientas si existen
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      // Procesar cada llamada a herramienta
-      for (const toolCall of assistantMessage.tool_calls) {
-        try {
-          // Llamar al manejador de herramientas proporcionado
-          const result = await toolCallHandler(toolCall);
-          
-          // Añadir el resultado de la herramienta a los mensajes
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: typeof result === 'string' ? result : JSON.stringify(result)
-          });
-        } catch (error: any) {
-          // Si hay un error al llamar a la herramienta, añadirlo como mensaje de error
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: `Error: ${error.message}`
-          });
-        }
+    // Procesar llamadas a herramientas
+    const toolResults = await Promise.all(toolCalls.map(async (toolCall) => {
+      try {
+        // Llamar al manejador de herramientas
+        const result = await toolCallHandler(toolCall);
+        
+        // Crear mensaje con el resultado
+        return {
+          role: 'tool' as const,
+          content: typeof result === 'string' ? result : JSON.stringify(result),
+          tool_call_id: toolCall.id
+        };
+      } catch (error: unknown) {
+        // En caso de error, devolver mensaje de error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+          role: 'tool' as const,
+          content: `Error: ${errorMessage}`,
+          tool_call_id: toolCall.id
+        };
       }
-      
-      // Realizar una solicitud final sin herramientas para obtener la respuesta final
-      const finalResponse = await client.chat.completions.create({
-        model: model,
-        messages: currentMessages,
-      });
-      
-      // Construir un objeto de resultado final con la historia completa
-      return {
-        message: finalResponse.choices[0].message,
-        conversation: currentMessages,
-        tool_calls: assistantMessage.tool_calls
-      };
-    }
+    }));
     
-    // Si no hay llamadas a herramientas, devolver la respuesta directamente
-    return {
-      message: assistantMessage,
-      conversation: currentMessages,
-      tool_calls: []
-    };
-  } catch (error: any) {
-    console.error('Error al utilizar herramientas con OpenAI:', error);
-    throw error;
+    // Agregar resultados de herramientas a los mensajes
+    const updatedMessages = [
+      ...messages,
+      initialResponse.choices[0].message,
+      ...toolResults
+    ];
+    
+    // Hacer llamada final sin herramientas (para obtener respuesta final)
+    return await chatCompletion(updatedMessages, model, {
+      ...options,
+      // No permitir más llamadas a herramientas en esta ronda
+      tools: undefined,
+      tool_choice: undefined
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error al llamar a OpenAI con herramientas:', error);
+    throw new Error(`Error al llamar a OpenAI con herramientas: ${errorMessage}`);
   }
 }
 
 /**
- * Detecta el tipo de tarea basado en el contenido del prompt
- * @param prompt - El prompt a analizar
- * @param specifiedTaskType - Tipo de tarea especificado explícitamente
- * @returns El tipo de tarea detectado o especificado
+ * Obtiene el modelo de OpenAI configurado
+ * @returns Nombre del modelo
+ */
+export function getOpenAIModel(): string {
+  const config = vscode.workspace.getConfiguration('grec0ai');
+  return config.get<string>('openai.model') || 'gpt-4.1-mini';
+}
+
+/**
+ * Detecta el tipo de tarea basado en el prompt
+ * @param prompt Texto del prompt
+ * @param specifiedTaskType Tipo de tarea especificado (opcional)
+ * @returns Tipo de tarea detectado
  */
 function detectTaskType(prompt: string, specifiedTaskType?: string): string {
-  // Si se especifica explícitamente, usar ese valor
+  // Si se especifica un tipo de tarea, usarlo
   if (specifiedTaskType) {
     return specifiedTaskType;
   }
   
-  // Detectar según palabras clave en el prompt
-  const lowerPrompt = prompt.toLowerCase();
+  // Normalizar el prompt para la detección
+  const normalizedPrompt = prompt.toLowerCase();
   
-  // Detectar si es planificación
+  // Detectar tipo de tarea basado en el contenido del prompt
   if (
-    lowerPrompt.includes('plan ') || 
-    lowerPrompt.includes('steps ') ||
-    lowerPrompt.includes('breakdown') ||
-    lowerPrompt.includes('divide') ||
-    lowerPrompt.includes('strategy')
-  ) {
-    return 'planning';
-  }
-  
-  // Detectar si es generación de código
-  if (
-    lowerPrompt.includes('generate code') ||
-    lowerPrompt.includes('write code') ||
-    lowerPrompt.includes('implement') ||
-    lowerPrompt.includes('function') ||
-    lowerPrompt.includes('class') ||
-    lowerPrompt.includes('fix error') ||
-    lowerPrompt.includes('debug')
+    normalizedPrompt.includes('codigo') ||
+    normalizedPrompt.includes('código') ||
+    normalizedPrompt.includes('function') ||
+    normalizedPrompt.includes('code') ||
+    normalizedPrompt.includes('programa') ||
+    normalizedPrompt.includes('implementa') ||
+    normalizedPrompt.includes('implementar') ||
+    normalizedPrompt.includes('escribe una clase') ||
+    normalizedPrompt.includes('escribe un método')
   ) {
     return 'codegen';
+  } else if (
+    normalizedPrompt.includes('analiza') ||
+    normalizedPrompt.includes('analizar') ||
+    normalizedPrompt.includes('evalúa') ||
+    normalizedPrompt.includes('evaluar') ||
+    normalizedPrompt.includes('explica') ||
+    normalizedPrompt.includes('explicar') ||
+    normalizedPrompt.includes('revisa') ||
+    normalizedPrompt.includes('revisar')
+  ) {
+    return 'analysis';
+  } else if (
+    normalizedPrompt.includes('crea') ||
+    normalizedPrompt.includes('crear') ||
+    normalizedPrompt.includes('inventa') ||
+    normalizedPrompt.includes('inventar') ||
+    normalizedPrompt.includes('genera ideas') ||
+    normalizedPrompt.includes('genera conceptos') ||
+    normalizedPrompt.includes('escribe una historia')
+  ) {
+    return 'creative';
   }
   
-  // Por defecto, considerarlo análisis
-  return 'analysis';
+  // Por defecto, tipo general
+  return 'general';
 } 

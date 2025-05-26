@@ -156,4 +156,12 @@ export function isConfigComplete(): boolean {
 export function getConfig(key: string, defaultValue: any = undefined): any {
   const config = vscode.workspace.getConfiguration('grec0ai');
   return config.get(key, defaultValue);
+}
+
+/**
+ * Set OpenAI API key in configuration
+ * @param apiKey API key to set
+ */
+export async function setApiKey(apiKey: string): Promise<void> {
+  await setConfig('openai.apiKey', apiKey);
 } 
