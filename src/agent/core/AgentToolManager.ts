@@ -13,6 +13,7 @@ import { FixErrorTool } from '../tools/FixErrorTool';
 import { GenerateTestTool } from '../tools/GenerateTestTool';
 import { AnalyzeCodeTool } from '../tools/AnalyzeCodeTool';
 import { ExecuteCommandTool } from '../tools/ExecuteCommandTool';
+import { FindFileTool } from '../tools/FindFileTool';
 
 export interface Tool {
     name: string;
@@ -98,7 +99,8 @@ export class AgentToolManager {
                 new ExecuteCommandTool(this.agent),
                 new GenerateTestTool(this.agent),
                 new FixErrorTool(this.agent),
-                new AnalyzeCodeTool(this.agent)
+                new AnalyzeCodeTool(this.agent),
+                new FindFileTool(this.agent) // <-- Añadido aquí
             ];
             
             // Registrar cada herramienta
@@ -202,4 +204,4 @@ export class AgentToolManager {
         // Clean up resources if needed
         this.tools.clear();
     }
-} 
+}

@@ -156,7 +156,7 @@ export class Agent {
             // 1. Update context with current input and session data
             this.contextManager.update(input, context);
             this.logger.appendLine(`Handling user input: "${input.substring(0, 100)}${input.length > 100 ? '...' : ''}"`);
-            
+            this.logger.appendLine(`Context: ${JSON.stringify(context, null, 2)}`);
             // Informar al usuario que estamos procesando
             vscode.window.showInformationMessage(`Procesando: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`);
             
@@ -222,6 +222,31 @@ export class Agent {
             
             for (const step of plan.steps) {
                 this.logger.appendLine(`Executing step: ${step.description}`);
+
+                // --- INTEGRACIÓN FindFileTool ---
+                // Detectar si el paso requiere un archivo y la ruta no existe
+                const fileParamNames = ['filePath', 'sourcePath', 'path'];
+                let fileParamName = fileParamNames.find(p => step.params && step.params[p]);
+                if (fileParamName) {
+                    const fs = require('fs');
+                    const filePathValue = step.params[fileParamName];
+                    if (filePathValue && !fs.existsSync(filePathValue)) {
+                        const fileName = require('path').basename(filePathValue);
+                        // Usar FindFileTool para buscar la ruta real
+                        const findTool = this.toolManager.selectTool('FindFileTool');
+                        if (findTool) {
+                            this.logger.appendLine(`Buscando ruta real para ${fileName} usando FindFileTool...`);
+                            const findResult = await findTool.run({ pattern: `**/${fileName}`, maxResults: 1 });
+                            if (findResult && findResult.found && findResult.matches.length > 0) {
+                                const realPath = findResult.matches[0];
+                                this.logger.appendLine(`Ruta corregida para ${fileName}: ${realPath}`);
+                                step.params[fileParamName] = realPath;
+                            } else {
+                                this.logger.appendLine(`No se encontró el archivo ${fileName} en el workspace.`);
+                            }
+                        }
+                    }
+                }
                 
                 // Añadir evento al visor
                 if (this.eventsViewer) {
@@ -1271,7 +1296,7 @@ Respond in the following JSON format:
             // Process all results
             for (const result of results) {
                 // Skip if no result or not successful
-                if (!result || !result.result) continue;
+                if (!result || !result.success) continue;
                 
                 // Extract model info and token count if available
                 const modelInfo = result.result.modelInfo || 
@@ -1550,17 +1575,99 @@ Respond in the following JSON format:
                             this.logger.appendLine(`Resolving $PREVIOUS_STEP.${property} to value from previous step`);
                             return propValue;
                         }
-                    }
-                    
-                    // Detectar referencias a pasos específicos
-                    const specificStepMatch = value.match(/\$STEP\[(\d+)\]\.(\w+)/);
+                    }                    // Detectar referencias a pasos específicos con soporte para índices de arrays
+                    // Formato: $STEP[n].property o $STEP[n].property[m]
+                    const specificStepMatch = value.match(/\$STEP\[(\d+)\]\.(\w+)(?:\[(\d+)\])?/);
                     if (specificStepMatch && specificStepMatch[1] && specificStepMatch[2]) {
                         const stepIndex = parseInt(specificStepMatch[1], 10);
                         const property = specificStepMatch[2];
-                        const propValue = getPreviousStepResult(property, stepIndex);
+                        const arrayIndex = specificStepMatch[3] ? parseInt(specificStepMatch[3], 10) : undefined;
+                        
+                        // Obtener el resultado completo para debugging
+                        const stepResult = stepIndex < results.length ? results[stepIndex] : undefined;
+                        if (!stepResult) {
+                            this.logger.appendLine(`WARNING: No result found for step ${stepIndex}`);
+                            return value; // Mantener el valor original si no hay resultado
+                        }
+                        
+                        this.logger.appendLine(`Resolving variable $STEP[${stepIndex}].${property}${arrayIndex !== undefined ? `[${arrayIndex}]` : ''}`);
+                        
+                        // Log de propiedades disponibles para debugging
+                        if (stepResult && stepResult.result) {
+                            this.logger.appendLine(`Available properties in step ${stepIndex}: ${JSON.stringify(Object.keys(stepResult.result))}`);
+                        }
+                        
+                        // Intentar obtener la propiedad solicitada
+                        let propValue = getPreviousStepResult(property, stepIndex);
+                        
+                        // Si no se encuentra, intentar con propiedades alternativas comunes
+                        if (propValue === undefined && stepResult && stepResult.result) {
+                            // Mapeo de propiedades alternativas comunes
+                            const alternativeProps: Record<string, string[]> = {
+                                'paths': ['matches', 'files', 'results', 'found'],
+                                'path': ['filePath', 'sourcePath', 'file', 'matches', 'output'],
+                                'content': ['text', 'data', 'source', 'output'],
+                                'result': ['output', 'data', 'value', 'matches']
+                            };
+                            
+                            const alternatives = alternativeProps[property];
+                            if (alternatives) {
+                                for (const alt of alternatives) {
+                                    if (stepResult.result[alt] !== undefined) {
+                                        this.logger.appendLine(`Property '${property}' not found, using alternative '${alt}'`);
+                                        propValue = stepResult.result[alt];
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Si aún no encontramos una alternativa y hay una propiedad única, usarla
+                            if (propValue === undefined && Object.keys(stepResult.result).length === 1) {
+                                const onlyProp = Object.keys(stepResult.result)[0];
+                                this.logger.appendLine(`Using only available property '${onlyProp}' as alternative`);
+                                propValue = stepResult.result[onlyProp];
+                            }
+                        }
+                        
+                        // Si hay un índice de array y el valor es un array, acceder al elemento
+                        if (arrayIndex !== undefined && Array.isArray(propValue)) {
+                            if (arrayIndex < propValue.length) {
+                                const originalValue = propValue;
+                                propValue = propValue[arrayIndex];
+                                this.logger.appendLine(`Resolved $STEP[${stepIndex}].${property}[${arrayIndex}] to: ${propValue}`);
+                            } else {
+                                this.logger.appendLine(`WARNING: Array index ${arrayIndex} out of bounds for $STEP[${stepIndex}].${property} (length: ${propValue.length})`);
+                                return value; // Mantener el valor original si el índice está fuera de rango
+                            }
+                        } else if (propValue !== undefined) {
+                            // Si no hay índice pero el valor es un array con un solo elemento, usarlo directamente
+                            if (Array.isArray(propValue) && propValue.length === 1 && arrayIndex === undefined) {
+                                this.logger.appendLine(`Auto-selecting first item from array for $STEP[${stepIndex}].${property}`);
+                                propValue = propValue[0];
+                            }
+                            this.logger.appendLine(`Resolved $STEP[${stepIndex}].${property} to: ${typeof propValue === 'string' ? propValue : JSON.stringify(propValue)}`);
+                        }
+                        
                         if (propValue !== undefined) {
-                            this.logger.appendLine(`Resolving $STEP[${stepIndex}].${property} to value from specific step`);
                             return propValue;
+                        } else {
+                            this.logger.appendLine(`WARNING: Could not resolve $STEP[${stepIndex}].${property}${arrayIndex !== undefined ? `[${arrayIndex}]` : ''}`);
+                            // En caso de error, intentar la búsqueda manual
+                            if (property === 'paths' || property === 'path') {
+                                this.logger.appendLine(`Attempting to find file path from step result using all available properties`);
+                                // Intentar obtener cualquier propiedad que parezca un path
+                                const result = stepResult.result;
+                                for (const key in result) {
+                                    const val = result[key];
+                                    if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].includes('\\')) {
+                                        this.logger.appendLine(`Found potential path in property '${key}': ${val[0]}`);
+                                        return val[0];
+                                    } else if (typeof val === 'string' && val.includes('\\')) {
+                                        this.logger.appendLine(`Found potential path in property '${key}': ${val}`);
+                                        return val;
+                                    }
+                                }
+                            }
                         }
                     }
                     
@@ -1970,7 +2077,7 @@ Respond in the following JSON format:
                             rulesArray,
                             `Reglas aplicables para ${path.basename(filePath)} - ${step.tool}`
                         );
-                        this.logger.appendLine(`Registrado evento de build_rules para la herramienta ${step.tool}`);
+                                               this.logger.appendLine(`Registrado evento de build_rules para la herramienta ${step.tool}`);
                     }
                 }
             }
