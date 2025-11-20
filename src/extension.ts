@@ -297,19 +297,23 @@ async function automaticTest(reasoning?: string) {
       return;
     }
     
-    // Get file type
-    const fileExtension = path.extname(filePath);
+    // Get file type using VSCode API
+    const fileUri = vscode.Uri.file(filePath);
+    const fileName = fileUri.path.split('/').pop() || '';
+    const lastDotIndex = fileName.lastIndexOf('.');
+    const fileExtension = lastDotIndex > 0 ? fileName.substring(lastDotIndex) : '';
+    
     if (!['.js', '.ts', '.jsx', '.tsx'].includes(fileExtension)) {
       vscode.window.showInformationMessage('Automatic test generation is currently supported for JavaScript and TypeScript files only.');
       return;
     }
     
-    // Create test file path
-    const dirname = path.dirname(filePath);
-    const filename = path.basename(filePath);
-    const nameWithoutExtension = path.basename(filename, fileExtension);
+    // Create test file path using VSCode API
+    const parentUri = vscode.Uri.joinPath(fileUri, '..');
+    const nameWithoutExtension = lastDotIndex > 0 ? fileName.substring(0, lastDotIndex) : fileName;
     const testFilename = `${nameWithoutExtension}.test${fileExtension}`;
-    const testFilePath = path.join(dirname, testFilename);
+    const testFileUri = vscode.Uri.joinPath(parentUri, testFilename);
+    const testFilePath = testFileUri.fsPath;
     
     // Open or create the test file
     openTestContainers(filePath, testFilePath, null, true, reasoning);
@@ -451,19 +455,26 @@ async function openTestFile(filePath: string): Promise<void> {
 
 async function openOrCreateTestFile(filePath: string): Promise<void> {
   try {
-    // Crear el directorio si no existe
-    const dirPath = path.dirname(filePath);
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+    const fileUri = vscode.Uri.file(filePath);
+    
+    try {
+      // Intentar crear directorio padre si no existe
+      const parentUri = vscode.Uri.joinPath(fileUri, '..');
+      await vscode.workspace.fs.createDirectory(parentUri);
+    } catch {
+      // El directorio ya existe o hay otro error, continuar
     }
     
-    // Crear archivo vacío si no existe
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
+    try {
+      // Verificar si el archivo existe
+      await vscode.workspace.fs.stat(fileUri);
+    } catch {
+      // El archivo no existe, crearlo vacío
+      await vscode.workspace.fs.writeFile(fileUri, new Uint8Array());
     }
     
     // Abrir el archivo
-    const doc = await vscode.workspace.openTextDocument(filePath);
+    const doc = await vscode.workspace.openTextDocument(fileUri);
     await vscode.window.showTextDocument(doc);
   } catch (error) {
     vscode.window.showErrorMessage(`Error creating test file: ${error}`);
@@ -538,15 +549,26 @@ function callGrec0AI(pathFinal: string, pathTestFinal: string, instructions?: st
         });
         
         try {
-          // Get source file content
-          const sourceContent = await fs.promises.readFile(pathFinal, 'utf8');
+          // Get source file content using VSCode API
+          const sourceUri = vscode.Uri.file(pathFinal);
+          const sourceData = await vscode.workspace.fs.readFile(sourceUri);
+          const sourceContent = Buffer.from(sourceData).toString('utf8');
           
-          // Get test file content if it exists
-          const testContent = fs.existsSync(pathTestFinal) ? 
-            await fs.promises.readFile(pathTestFinal, 'utf8') : '';
+          // Get test file content if it exists using VSCode API
+          let testContent = '';
+          try {
+            const testUri = vscode.Uri.file(pathTestFinal);
+            const testData = await vscode.workspace.fs.readFile(testUri);
+            testContent = Buffer.from(testData).toString('utf8');
+          } catch {
+            // Test file doesn't exist yet
+            testContent = '';
+          }
           
-          // Get file extension and determine language
-          const extension = path.extname(pathFinal).substring(1);
+          // Get file extension using VSCode API
+          const sourceFileName = sourceUri.path.split('/').pop() || '';
+          const lastDotIndex = sourceFileName.lastIndexOf('.');
+          const extension = lastDotIndex > 0 ? sourceFileName.substring(lastDotIndex + 1) : '';
           const language = extension === 'ts' ? 'typescript' : 'javascript';
           
           // Determine test framework from configuration
@@ -647,10 +669,10 @@ Por favor, regenera el test corrigiendo el error mencionado.
           
           // Create directories if needed
           const dir = path.dirname(pathTestFinal);
-          await fs.promises.mkdir(dir, { recursive: true });
+          await vscode.workspace.fs.createDirectory(vscode.Uri.file(dir));
           
-          // Write test file
-          await fs.promises.writeFile(pathTestFinal, generatedTest);
+          // Write test file using VSCode API
+          await vscode.workspace.fs.writeFile(vscode.Uri.file(pathTestFinal), Buffer.from(generatedTest, 'utf8').subarray());
           
           // Add explanation
           const actionDescription = generateTestExplanation(pathFinal, reasoning);
@@ -820,13 +842,17 @@ export async function checkAndProcessAutofixerMd(forceProcess: boolean = false):
     
     // Look for autofixer.md in the root of each workspace folder
     for (const folder of workspaceFolders) {
-      const autofixerPath = path.join(folder.uri.fsPath, 'autofixer.md');
+      const autofixerUri = vscode.Uri.joinPath(folder.uri, 'autofixer.md');
       
-      if (fs.existsSync(autofixerPath)) {
+      try {
+        // Check if autofixer.md exists using VSCode API
+        await vscode.workspace.fs.stat(autofixerUri);
         logger.appendLine(`Found autofixer.md in workspace: ${folder.name}`);
         
-        // Read file content
-        const content = await fs.promises.readFile(autofixerPath, 'utf8');
+        // Read file content using VSCode API
+        const contentData = await vscode.workspace.fs.readFile(autofixerUri);
+        const content = Buffer.from(contentData).toString('utf8');
+        
         if (!content.trim()) {
           logger.appendLine('autofixer.md file is empty, skipping');
           continue;
@@ -837,83 +863,110 @@ export async function checkAndProcessAutofixerMd(forceProcess: boolean = false):
         
         // Process with agent if available
         if (currentAgent && configManager.isConfigComplete()) {
-          // Verificar que agent tenga la función handleUserInput
-          if (typeof currentAgent.handleUserInput !== 'function') {
-            logger.appendLine('Error: agent.handleUserInput is not a function');
-            logger.appendLine(`agent type: ${typeof currentAgent}`);
-            logger.appendLine(`agent properties: ${Object.keys(currentAgent).join(', ')}`);
-            vscode.window.showErrorMessage('Error al procesar autofixer.md: El agente no tiene la función handleUserInput');
-            return { found: true, processed: false, error: 'El agente no tiene la función handleUserInput' };
-          }
-          
-          // Crear una sesión específica para la ejecución de autofixer en la vista de logs
-          let sessionId = '';
-          let logsView = (global as any).agentLogsView;
-          
-          if (logsView) {
-            // Crear una nueva sesión para esta ejecución
-            sessionId = logsView.createNewSession('AutoFixer');
-            logsView.show();
-            logsView.setActiveSession(sessionId);
-            
-            // Registrar inicio de la tarea
-            logsView.addReflectionLog('Iniciando procesamiento de autofixer.md', sessionId);
-          }
-          
           try {
-            // Preparar contexto para el archivo autofixer
-            const context = {
-              taskType: 'processAutoFixerFile',
-              filePath: autofixerPath,
-              timestamp: new Date()
-            };
+            // Verificar que agent tenga la función handleUserInput
+            if (typeof currentAgent.handleUserInput !== 'function') {
+              logger.appendLine('Error: agent.handleUserInput is not a function');
+              logger.appendLine(`agent type: ${typeof currentAgent}`);
+              logger.appendLine(`agent properties: ${Object.keys(currentAgent).join(', ')}`);
+              vscode.window.showErrorMessage('Error al procesar autofixer.md: El agente no tiene la función handleUserInput');
+              return { found: true, processed: false, error: 'El agente no tiene la función handleUserInput' };
+            }
             
-            // Crear mensaje de solicitud
-            const userRequest = `Procesar instrucciones de autofixer.md`;
+            // Crear una sesión específica para la ejecución de autofixer en la vista de logs
+            let sessionId = '';
+            let logsView = (global as any).agentLogsView;
             
-            // Ejecutar la tarea y capturar el resultado usando handleUserInput
-            const result = await currentAgent.handleUserInput(userRequest, {
-              ...context,
-              content: content
+            if (logsView) {
+              // Crear una nueva sesión para esta ejecución
+              sessionId = logsView.createNewSession('AutoFixer');
+              logsView.show();
+              logsView.setActiveSession(sessionId);
+              
+              // Registrar inicio de la tarea
+              logsView.addReflectionLog('Iniciando procesamiento de autofixer.md', sessionId);
+            }
+            
+            try {
+              // Preparar contexto para el archivo autofixer
+              const context = {
+                taskType: 'processAutoFixerFile',
+                filePath: autofixerUri.fsPath,
+                timestamp: new Date()
+              };
+              
+              // Crear mensaje de solicitud
+              const userRequest = `Procesar instrucciones de autofixer.md`;
+              
+              // Ejecutar la tarea y capturar el resultado usando handleUserInput con timeout
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout: El procesamiento de autofixer.md tomó demasiado tiempo')), 1800000) // 30 minutos
+              );
+              
+              const result = await Promise.race([
+                currentAgent.handleUserInput(userRequest, {
+                  ...context,
+                  content: content
+                }),
+                timeoutPromise
+              ]);
+              vscode.window.showInformationMessage(`Finalizado el procesamiento de autofixer.md`);
+              // Registrar resultado exitoso en logs
+              if (logsView) {
+                logsView.addStepLog(
+                  'Procesar archivo AutoFixer',
+                  'handleUserInput',
+                  { contentLength: content.length },
+                  result,
+                  true,
+                  sessionId
+                );
+              }
+              
+              return { found: true, processed: true };
+            } catch (error: any) {
+              this.logger.appendLine(`Error processing autofixer.md: ${error.message}`);
+              // Registrar error en logs
+              if (logsView) {
+                logsView.addStepLog(
+                  'Procesar archivo AutoFixer',
+                  'handleUserInput',
+                  { contentLength: content.length },
+                  { error: error.message },
+                  false,
+                  sessionId
+                );
+              }
+              
+              // Registrar error en el logger
+              logger.appendLine(`Error processing autofixer.md: ${error.message}`);
+              return { found: true, processed: false, error: error.message };
+            }
+          } catch (outerError: any) {
+            // Capa adicional de protección contra crashes de la extensión
+            logger.appendLine(`Error crítico en procesamiento de autofixer: ${outerError.message}`);
+            logger.appendLine(`Stack trace: ${outerError.stack}`);
+            
+            // Mostrar notificación al usuario pero no crashear la extensión
+            vscode.window.showErrorMessage(
+              'Error al procesar autofixer.md. Consulta el Output de Grec0AI para más detalles.',
+              'Ver Output'
+            ).then(selection => {
+              if (selection === 'Ver Output') {
+                logger.show();
+              }
             });
             
-            // Registrar resultado exitoso en logs
-            if (logsView) {
-              logsView.addStepLog(
-                'Procesar archivo AutoFixer',
-                'handleUserInput',
-                { contentLength: content.length },
-                result,
-                true,
-                sessionId
-              );
-            }
-            
-            return { found: true, processed: true };
-          } catch (error: any) {
-            // Registrar error en logs
-            if (logsView) {
-              logsView.addStepLog(
-                'Procesar archivo AutoFixer',
-                'handleUserInput',
-                { contentLength: content.length },
-                { error: error.message },
-                false,
-                sessionId
-              );
-            }
-            
-            // Registrar error en el logger
-            logger.appendLine(`Error processing autofixer.md: ${error.message}`);
-            return { found: true, processed: false, error: error.message };
+            return { found: true, processed: false, error: `Error crítico: ${outerError.message}` };
           }
         } else {
           logger.appendLine('Agent not available for processing autofixer.md');
           vscode.window.showInformationMessage('Autofixer.md found but agent not available for processing.');
           return { found: true, processed: false, error: 'Agente no disponible' };
         }
-      } else {
-        logger.appendLine(`No autofixer.md found in workspace: ${folder.name}`);
+      } catch (error: any) {
+        logger.appendLine(`Error accessing autofixer.md: ${error.message}`);
+        return { found: false, processed: false, error: error.message };
       }
     }
     

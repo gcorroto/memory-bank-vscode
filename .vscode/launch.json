@@ -12,7 +12,7 @@
 			"args": [
 					"--extensionDevelopmentPath=${workspaceFolder}",
 					// Aquí especificas el path a tu workspace
-					"--folder-uri=file:///C:/workspaces/work_mutua/front-tasaciones-mobile/front-tasaciones-mobile"
+					"--folder-uri=file:///C:/workspaces/GRECOAI/Grec0AI_front_angular"
 			],
 			"outFiles": ["${workspaceFolder}/out/**/*.js"],
 			"preLaunchTask": "npm: watch"

@@ -29,12 +29,27 @@ export class FixErrorTool extends BaseTool {
             sourcePath: {
                 description: 'Path to the source file with error',
                 type: 'string',
-                required: true
+                required: false  // Made optional to handle $STEP[n] references
+            },
+            content: {
+                description: 'File content to analyze and fix (alternative to reading from sourcePath)',
+                type: 'string',
+                required: false
             },
             errorMessage: {
                 description: 'Error message or description',
                 type: 'string',
-                required: true
+                required: false  // Made optional - can be inferred
+            },
+            focus: {
+                description: 'Focus area for the fix (e.g., specific class, function, or issue)',
+                type: 'string',
+                required: false
+            },
+            description: {
+                description: 'Alternative description of the issue to fix',
+                type: 'string',
+                required: false
             },
             applyFix: {
                 description: 'Whether to apply the fix directly to the file',
@@ -62,30 +77,68 @@ export class FixErrorTool extends BaseTool {
      * @returns - Result of error fixing
      */
     async run_impl(params: Record<string, any>): Promise<any> {
-        const { 
+        let { 
             sourcePath, 
+            content,
             errorMessage, 
+            focus,
+            description,
             applyFix = false, 
             saveBackup = true,
             additionalContext = ''
         } = params;
         
         try {
-            // Normalizar ruta del archivo
-            const normalizedSourcePath = this.normalizePath(sourcePath);
-            this.logger.appendLine(`Attempting to fix error in file: ${normalizedSourcePath}`);
+            let sourceContent: string;
+            let normalizedSourcePath: string = '';
+            let language: string = 'text';
             
-            // Check if source file exists
-            if (!this.fileExists(normalizedSourcePath)) {
-                throw new Error(`Source file not found: ${normalizedSourcePath}`);
+            // Determine error message from various sources
+            if (!errorMessage) {
+                errorMessage = this.inferErrorMessage(params);
             }
             
-            // Read source file
-            const sourceContent = fs.readFileSync(normalizedSourcePath, 'utf8');
+            // Handle content vs file path scenarios
+            if (content && typeof content === 'string' && content.trim() !== '') {
+                // Use provided content
+                sourceContent = content;
+                this.logger.appendLine('FixErrorTool: Using provided content instead of reading from file');
+                
+                // Try to get language from sourcePath if available
+                if (sourcePath && typeof sourcePath === 'string' && sourcePath.trim() !== '') {
+                    try {
+                        normalizedSourcePath = this.normalizePath(sourcePath);
+                        const extension = this.safeGetExtension(normalizedSourcePath);
+                        language = this.mapExtensionToLanguage(extension);
+                    } catch (error: any) {
+                        this.logger.appendLine(`Warning: Could not normalize sourcePath for language detection: ${error.message}`);
+                    }
+                }
+            } else {
+                // Read from file
+                if (!sourcePath || typeof sourcePath !== 'string' || sourcePath.trim() === '') {
+                    throw new Error('Either sourcePath or content parameter must be provided');
+                }
+                
+                // Normalizar ruta del archivo
+                normalizedSourcePath = this.normalizePath(sourcePath);
+                this.logger.appendLine(`Attempting to fix error in file: ${normalizedSourcePath}`);
+                
+                // Check if source file exists
+                if (!this.fileExists(normalizedSourcePath)) {
+                    throw new Error(`Source file not found: ${normalizedSourcePath}`);
+                }
+                
+                // Read source file
+                sourceContent = fs.readFileSync(normalizedSourcePath, 'utf8');
+                
+                // Get file extension and determine language
+                const extension = this.safeGetExtension(normalizedSourcePath);
+                language = this.mapExtensionToLanguage(extension);
+            }
             
-            // Get file extension and determine language
-            const extension = path.extname(normalizedSourcePath).substring(1);
-            const language = this.mapExtensionToLanguage(extension);
+            this.logger.appendLine(`FixErrorTool: Processing error - ${errorMessage}`);
+            this.logger.appendLine(`FixErrorTool: Language detected - ${language}`);
             
             // Initialize RAG service
             const ragInitialized = await ragService.initialize();
@@ -95,13 +148,13 @@ export class FixErrorTool extends BaseTool {
             // Use RAG service if available
             if (ragInitialized) {
                 try {
-                    this.logger.appendLine(`Resolving error with RAG for ${normalizedSourcePath}`);
+                    this.logger.appendLine(`Resolving error with RAG for ${normalizedSourcePath || 'inline content'}`);
                     
                     // Usar el servicio RAG especializado para corrección de errores
                     const fixedCode = await ragService.fixError(
                         sourceContent,
                         errorMessage,
-                        normalizedSourcePath,
+                        normalizedSourcePath || 'inline-content',
                         language
                     );
                     
@@ -153,8 +206,8 @@ export class FixErrorTool extends BaseTool {
                 };
             }
             
-            // Apply fix if requested
-            if (applyFix && solution.fixedCode) {
+            // Apply fix if requested and we have a valid source path
+            if (applyFix && solution.fixedCode && normalizedSourcePath) {
                 // Save backup if requested
                 if (saveBackup) {
                     const backupPath = `${normalizedSourcePath}.backup.${Date.now()}`;
@@ -172,7 +225,7 @@ export class FixErrorTool extends BaseTool {
                     const metadata = {
                         filePath: normalizedSourcePath,
                         fileName: path.basename(normalizedSourcePath),
-                        extension: extension,
+                        extension: this.safeGetExtension(normalizedSourcePath),
                         errorFixed: errorMessage,
                         fixedAt: new Date().toISOString()
                     };
@@ -189,15 +242,71 @@ export class FixErrorTool extends BaseTool {
             
             return {
                 success: true,
-                sourcePath: normalizedSourcePath,
+                sourcePath: normalizedSourcePath || 'inline-content',
                 errorMessage,
                 explanation: solution.explanation,
                 solution: solution.solution,
                 fixedCode: solution.fixedCode,
-                applied: applyFix
+                applied: applyFix && !!normalizedSourcePath,
+                language: language
             };
         } catch (error: any) {
             throw new Error(`Error fixing code: ${error.message}`);
+        }
+    }
+
+    /**
+     * Infer error message from various parameter sources
+     * @param params - Tool parameters
+     * @returns - Inferred error message
+     */
+    private inferErrorMessage(params: Record<string, any>): string {
+        // Try different sources for error message
+        if (params.errorMessage && typeof params.errorMessage === 'string') {
+            return params.errorMessage;
+        }
+        
+        if (params.description && typeof params.description === 'string') {
+            return params.description;
+        }
+        
+        if (params.focus && typeof params.focus === 'string') {
+            // Convert focus to error message
+            const focus = params.focus;
+            if (focus.includes('Service') || focus.includes('Component') || focus.includes('Module')) {
+                return `Issue with ${focus} - missing import, declaration, or dependency`;
+            } else {
+                return `Fix issue related to: ${focus}`;
+            }
+        }
+        
+        // Check if there's additional context that might contain error info
+        if (params.additionalContext && typeof params.additionalContext === 'string') {
+            const context = params.additionalContext;
+            if (context.includes('error') || context.includes('Error')) {
+                return `Fix based on context: ${context.substring(0, 100)}${context.length > 100 ? '...' : ''}`;
+            }
+        }
+        
+        // Default generic error message
+        return 'Fix code issues and improve structure';
+    }
+
+    /**
+     * Safe get file extension without throwing errors
+     * @param filePath - File path
+     * @returns - File extension (without the dot) or 'text' as fallback
+     */
+    private safeGetExtension(filePath: string): string {
+        try {
+            if (!filePath || typeof filePath !== 'string' || filePath.trim() === '') {
+                return 'text';
+            }
+            const extension = path.extname(filePath).substring(1);
+            return extension.trim() === '' ? 'text' : extension;
+        } catch (error: any) {
+            this.logger.appendLine(`Warning: Could not extract extension from "${filePath}": ${error.message}`);
+            return 'text';
         }
     }
 

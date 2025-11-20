@@ -143,28 +143,36 @@ export class AnalyzeCodeTool extends BaseTool {
                 this.logger.appendLine('Using provided code parameter instead of file');
                 
                 // Try to determine language from sourcePath or default to 'text'
-                if (sourcePath) {
-                    normalizedSourcePath = this.normalizePath(sourcePath);
-                    
-                    // Validación para evitar undefined en path.extname
-                    if (normalizedSourcePath) {
-                        const extension = path.extname(normalizedSourcePath).substring(1);
-                        language = this.mapExtensionToLanguage(extension);
-                    } else {
-                        this.logger.appendLine('Warning: Could not normalize sourcePath, using default language "text"');
+                if (sourcePath && typeof sourcePath === 'string' && sourcePath.trim() !== '') {
+                    try {
+                        normalizedSourcePath = this.normalizePath(sourcePath);
+                        
+                        // Validación robusta para evitar undefined en path.extname
+                        if (normalizedSourcePath && typeof normalizedSourcePath === 'string' && normalizedSourcePath.trim() !== '') {
+                            const extension = this.safeGetExtension(normalizedSourcePath);
+                            language = this.mapExtensionToLanguage(extension);
+                        } else {
+                            this.logger.appendLine('Warning: Could not normalize sourcePath, using default language "text"');
+                        }
+                    } catch (error: any) {
+                        this.logger.appendLine(`Warning: Error normalizing sourcePath: ${error.message}, using default language "text"`);
                     }
                 }
             } else {
                 // Code parameter is a variable or not provided, read from file
-                if (!sourcePath) {
+                if (!sourcePath || typeof sourcePath !== 'string' || sourcePath.trim() === '') {
                     throw new Error('Either sourcePath or valid code parameter must be provided');
                 }
                 
-                normalizedSourcePath = this.normalizePath(sourcePath);
-                
-                // Validación explícita para evitar undefined en path.extname
-                if (!normalizedSourcePath) {
-                    throw new Error(`Could not normalize sourcePath: ${sourcePath}`);
+                try {
+                    normalizedSourcePath = this.normalizePath(sourcePath);
+                    
+                    // Validación explícita para evitar undefined en path.extname
+                    if (!normalizedSourcePath || typeof normalizedSourcePath !== 'string' || normalizedSourcePath.trim() === '') {
+                        throw new Error(`Could not normalize sourcePath: ${sourcePath}`);
+                    }
+                } catch (error: any) {
+                    throw new Error(`Error normalizing sourcePath "${sourcePath}": ${error.message}`);
                 }
                 
                 this.logger.appendLine(`Analyzing file: ${normalizedSourcePath}`);
@@ -187,8 +195,8 @@ export class AnalyzeCodeTool extends BaseTool {
                 
                 // Get file extension and determine language
                 // Asegurarse de que normalizedSourcePath existe antes de usar path.extname
-                if (normalizedSourcePath) {
-                    const extension = path.extname(normalizedSourcePath).substring(1);
+                if (normalizedSourcePath && typeof normalizedSourcePath === 'string' && normalizedSourcePath.trim() !== '') {
+                    const extension = this.safeGetExtension(normalizedSourcePath);
                     language = this.mapExtensionToLanguage(extension);
                 }
                 
@@ -286,6 +294,41 @@ export class AnalyzeCodeTool extends BaseTool {
     }
 
     /**
+     * Safe get file extension without throwing errors
+     * @param filePath - File path
+     * @returns - File extension (without the dot) or 'text' as fallback
+     */
+    private safeGetExtension(filePath: string): string {
+        try {
+            if (!filePath || typeof filePath !== 'string' || filePath.trim() === '') {
+                return 'text';
+            }
+            const extension = path.extname(filePath).substring(1);
+            return extension.trim() === '' ? 'text' : extension;
+        } catch (error: any) {
+            this.logger.appendLine(`Warning: Could not extract extension from "${filePath}": ${error.message}`);
+            return 'text';
+        }
+    }
+
+    /**
+     * Safe get file name without throwing errors
+     * @param filePath - File path
+     * @returns - File name or 'codigo-inline' as fallback
+     */
+    private safeGetFileName(filePath: string): string {
+        try {
+            if (!filePath || typeof filePath !== 'string' || filePath.trim() === '') {
+                return 'codigo-inline';
+            }
+            return path.basename(filePath);
+        } catch (error: any) {
+            this.logger.appendLine(`Warning: Could not extract filename from "${filePath}": ${error.message}`);
+            return 'codigo-inline';
+        }
+    }
+
+    /**
      * Format analysis results as markdown
      * @param analysis - Analysis results
      * @param sourcePath - Path to source file
@@ -293,7 +336,11 @@ export class AnalyzeCodeTool extends BaseTool {
      * @returns - Markdown formatted analysis
      */
     formatAnalysisAsMarkdown(analysis: AnalysisResult, sourcePath: string, language: string): string {
-        let markdown = `# Code Analysis: ${path.basename(sourcePath)}\n\n`;
+        // Manejar casos donde sourcePath puede estar vacío o undefined
+        const safeSourcePath = sourcePath || 'codigo-inline';
+        const fileName = this.safeGetFileName(safeSourcePath);
+        
+        let markdown = `# Code Analysis: ${fileName}\n\n`;
         markdown += `**Language:** ${language}\n\n`;
         markdown += `## Summary\n\n${analysis.summary}\n\n`;
         
@@ -326,7 +373,11 @@ export class AnalyzeCodeTool extends BaseTool {
      * @returns - Plain text formatted analysis
      */
     formatAnalysisAsText(analysis: AnalysisResult, sourcePath: string, language: string): string {
-        let text = `Code Analysis: ${path.basename(sourcePath)}\n`;
+        // Manejar casos donde sourcePath puede estar vacío o undefined
+        const safeSourcePath = sourcePath || 'codigo-inline';
+        const fileName = this.safeGetFileName(safeSourcePath);
+        
+        let text = `Code Analysis: ${fileName}\n`;
         text += `Language: ${language}\n\n`;
         text += `Summary: ${analysis.summary}\n\n`;
         
@@ -558,6 +609,10 @@ export class AnalyzeCodeTool extends BaseTool {
         additionalContext: string,
         sourcePath: string
     ): string {
+        // Manejar casos donde sourcePath puede estar vacío o undefined
+        const safeSourcePath = sourcePath || 'codigo-inline';
+        const fileName = this.safeGetFileName(safeSourcePath);
+        
         // Construir un prompt específico para el análisis de código
         let prompt = `
 ### CÓDIGO A ANALIZAR:
@@ -566,7 +621,7 @@ ${sourceCode}
 \`\`\`
 
 ### INSTRUCCIONES:
-Analiza este código (${path.basename(sourcePath)}) y proporciona:
+Analiza este código (${fileName}) y proporciona:
 `;
 
         // Ajustar el enfoque del análisis

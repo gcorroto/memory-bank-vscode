@@ -4,8 +4,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as openaiService from '../../services/openaiService';
 import * as vectraService from '../../services/vectraService';
 import * as ragService from '../../services/ragService';
@@ -20,7 +18,7 @@ import { FileSnapshotManager } from '../terminals/FileSnapshotManager';
 import { CustomCLITerminalManager } from '../terminals/CustomCLITerminalManager';
 import { PlanStep, Plan } from '../types/AgentTypes';
 import type { ChatMessage, CompletionResult } from '../../types/openai';
-import promptComposer from './PromptComposer';
+import * as promptComposer from '../../promptComposer';
 import { PLAN_TASK_PROMPT } from './AgentPrompt';
 
 export class Agent {
@@ -169,464 +167,630 @@ export class Agent {
                 );
             }
             
-            // 2. Plan task using LLM
-            const plan = await this.planTask(input, context);
+            // 2. Plan task using LLM (now includes validation and optimization)
+            let plan = await this.planTask(input, context);
             
-            // Log the plan
-            this.logger.appendLine("Generated plan:");
-            plan.steps.forEach((step: any, index: number) => {
-                this.logger.appendLine(`  ${index + 1}. ${step.description} [Tool: ${step.tool}]`);
-            });
-            
-            // Add to logs view if available
-            if (this.logsView) {
-                this.logsView.addPlanLog(
-                    plan.steps,
-                    undefined,
-                    plan.modelInfo,
-                    plan.appliedRules || [],
-                    plan.tokenCount,
-                    plan.modelCost
-                );
-            }
-            
-            // Guardar las reglas aplicadas (si las hay) en el contextManager para usarlas en la reflexión
-            if (plan.appliedRules) {
-                this.contextManager.addItem('appliedRules', plan.appliedRules);
-                this.logger.appendLine(`Se han registrado ${plan.appliedRules.length} reglas aplicables para este plan`);
-            }
-            
-            // Tomar snapshots de archivos que podrían verse afectados
-            let snapshotBeforeId: string | undefined;
-            if (this.fileSnapshotManager) {
-                try {
-                    // Determinar qué archivos podrían verse afectados
-                    const workspacePath = this.workspaceManager.getWorkspacePath();
-                    if (workspacePath) {
-                        const potentialFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-                        const filePaths = potentialFiles.map(file => file.fsPath);
-                        
-                        snapshotBeforeId = await this.fileSnapshotManager.createSnapshot(filePaths);
-                        this.logger.appendLine(`Created snapshot of workspace files: ${snapshotBeforeId}`);
-                    }
-                } catch (error: any) {
-                    this.logger.appendLine(`Error creating file snapshot: ${error.message}`);
-                }
-            }
-            
-            // 4. Execute each step in the plan
-            const results: any[] = [];
+            let results: any[] = [];
+            let reflection: any = {};
             let success = true;
             let stoppedAtStep: string | null = null;
             let stopReason: string | null = null;
+            let replanCount = 0;
+            const maxReplanning = vscode.workspace.getConfiguration('grec0ai.agent').get<number>('maxReplanning', 5);
             
-            for (const step of plan.steps) {
-                this.logger.appendLine(`Executing step: ${step.description}`);
+            // Main execution loop with replanning
+            while (replanCount <= maxReplanning) {
+                if (replanCount > 0) {
+                    this.logger.appendLine(`\n=== REPLANNING ATTEMPT ${replanCount} ===`);
+                    
+                    // Show replanning notification to user
+                    vscode.window.showInformationMessage(
+                        `Replanificando tarea (intento ${replanCount}/${maxReplanning})...`
+                    );
+                    
+                    // Add replanning event to viewer
+                    if (this.eventsViewer) {
+                        this.eventsViewer.addInfoEvent(
+                            `Replanificación ${replanCount}`,
+                            `Intentando un enfoque diferente debido a: ${reflection.stopReason || 'resultados subóptimos'}`,
+                            { 
+                                attempt: replanCount,
+                                maxAttempts: maxReplanning,
+                                previousFailures: results.filter(r => !r.success).length
+                            }
+                        );
+                    }
+                }
+                
+                // Log the current plan
+                this.logger.appendLine(`${replanCount === 0 ? 'Initial' : 'Replanned'} execution plan:`);
+                plan.steps.forEach((step: any, index: number) => {
+                    this.logger.appendLine(`  ${index + 1}. ${step.description} [Tool: ${step.tool}]`);
+                    if (step.params && step.params.pattern) {
+                        this.logger.appendLine(`      Pattern: ${step.params.pattern}`);
+                    }
+                });
+                
+                // Reset execution state for new attempt
+                results = [];
+                success = true;
+                stoppedAtStep = null;
+                stopReason = null;
+                
+                // 4. Execute each step in the plan
+                for (const step of plan.steps) {
+                    this.logger.appendLine(`Executing step: ${step.description}`);
+                    this.logger.appendLine(`Step tool: ${step.tool}`);
+                    this.logger.appendLine(`Step params: ${JSON.stringify(step.params, null, 2)}`);
 
-                // --- INTEGRACIÓN FindFileTool ---
-                // Detectar si el paso requiere un archivo y la ruta no existe
-                const fileParamNames = ['filePath', 'sourcePath', 'path'];
-                let fileParamName = fileParamNames.find(p => step.params && step.params[p]);
-                if (fileParamName) {
-                    const fs = require('fs');
-                    const filePathValue = step.params[fileParamName];
-                    if (filePathValue && !fs.existsSync(filePathValue)) {
-                        const fileName = require('path').basename(filePathValue);
-                        // Usar FindFileTool para buscar la ruta real
-                        const findTool = this.toolManager.selectTool('FindFileTool');
-                        if (findTool) {
-                            this.logger.appendLine(`Buscando ruta real para ${fileName} usando FindFileTool...`);
-                            const findResult = await findTool.run({ pattern: `**/${fileName}`, maxResults: 1 });
-                            if (findResult && findResult.found && findResult.matches.length > 0) {
-                                const realPath = findResult.matches[0];
-                                this.logger.appendLine(`Ruta corregida para ${fileName}: ${realPath}`);
-                                step.params[fileParamName] = realPath;
-                            } else {
-                                this.logger.appendLine(`No se encontró el archivo ${fileName} en el workspace.`);
+                    // --- INTEGRACIÓN FindFileTool ---
+                    // Detectar si el paso requiere un archivo y la ruta no existe
+                    const fileParamNames = ['filePath', 'sourcePath', 'path'];
+                    let fileParamName = fileParamNames.find(p => step.params && step.params[p]);
+                    if (fileParamName) {
+                        const filePathValue = step.params[fileParamName];
+                        if (filePathValue) {
+                            try {
+                                // Usar vscode.workspace.fs.stat en lugar de fs.promises.access
+                                const fileUri = vscode.Uri.file(filePathValue);
+                                await vscode.workspace.fs.stat(fileUri);
+                            } catch (error) {
+                                // El archivo no existe, buscar la ruta real
+                                const fileUri = vscode.Uri.file(filePathValue);
+                                const fileName = fileUri.path.split('/').pop() || '';
+                                // Usar FindFileTool para buscar la ruta real
+                                const findTool = this.toolManager.selectTool('FindFileTool');
+                                if (findTool) {
+                                    this.logger.appendLine(`Buscando ruta real para ${fileName} usando FindFileTool...`);
+                                    try {
+                                        const findResult = await findTool.run({ pattern: `**/${fileName}`, maxResults: 1 });
+                                        if (findResult && findResult.found && findResult.matches.length > 0) {
+                                            const realPath = findResult.matches[0];
+                                            this.logger.appendLine(`Ruta corregida para ${fileName}: ${realPath}`);
+                                            step.params[fileParamName] = realPath;
+                                        } else {
+                                            this.logger.appendLine(`No se encontró el archivo ${fileName} en el workspace.`);
+                                        }
+                                    } catch (findError: any) {
+                                        this.logger.appendLine(`Error al buscar archivo ${fileName}: ${findError.message}`);
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                
-                // Añadir evento al visor
-                if (this.eventsViewer) {
-                    this.eventsViewer.addInfoEvent(
-                        `Ejecutando: ${step.description}`,
-                        `Herramienta: ${step.tool}`,
-                        { 
-                            step: step,
-                            status: 'running' 
-                        }
-                    );
-                }
-                
-                // Select and execute appropriate tool
-                const tool = this.toolManager.selectTool(step.tool);
-                
-                if (!tool) {
-                    this.logger.appendLine(`Warning: Tool '${step.tool}' not found`);
-                    results.push({
-                        success: false,
-                        error: `Tool '${step.tool}' not found`,
-                        step: step
-                    });
-                    success = false;
-                    stoppedAtStep = step.description;
-                    stopReason = `La herramienta '${step.tool}' no está disponible`;
                     
-                    // Añadir evento de error al visor
+                    // Añadir evento al visor
                     if (this.eventsViewer) {
-                        this.eventsViewer.addErrorEvent(
-                            `Error: Herramienta no encontrada`,
-                            `La herramienta '${step.tool}' no está disponible`
+                        this.eventsViewer.addInfoEvent(
+                            `Ejecutando: ${step.description}`,
+                            `Herramienta: ${step.tool}`,
+                            { 
+                                step: step,
+                                status: 'running' 
+                            }
                         );
                     }
                     
-                    // Detener ejecución si no se encuentra la herramienta
-                    break;
-                }
-                
-                try {
-                    // Verificar que los parámetros requeridos estén presentes
-                    const missingParams = this.checkRequiredParams(tool, step.params);
-                    if (missingParams.length > 0) {
-                        const errorMsg = `Faltan parámetros requeridos: ${missingParams.join(', ')}`;
-                        this.logger.appendLine(`Error: ${errorMsg}`);
-                        
+                    // Select and execute appropriate tool
+                    const tool = this.toolManager.selectTool(step.tool);
+                    
+                    this.logger.appendLine(`Tool selected: ${tool ? tool.name || 'unnamed tool' : 'null'}`);
+                    
+                    if (!tool) {
+                        this.logger.appendLine(`Warning: Tool '${step.tool}' not found`);
                         results.push({
                             success: false,
-                            error: errorMsg,
+                            error: `Tool '${step.tool}' not found`,
+                            step: step
+                        });
+                        success = false;
+                        stoppedAtStep = step.description;
+                        stopReason = `La herramienta '${step.tool}' no está disponible`;
+                        
+                        // Añadir evento de error al visor
+                        if (this.eventsViewer) {
+                            this.eventsViewer.addErrorEvent(
+                                `Error: Herramienta no encontrada`,
+                                `La herramienta '${step.tool}' no está disponible`
+                            );
+                        }
+                        
+                        // Detener ejecución si no se encuentra la herramienta
+                        break;
+                    }
+                    
+                    try {
+                        // Verificar que los parámetros requeridos estén presentes
+                        const missingParams = this.checkRequiredParams(tool, step.params);
+                        if (missingParams.length > 0) {
+                            const errorMsg = `Faltan parámetros requeridos: ${missingParams.join(', ')}`;
+                            this.logger.appendLine(`Error: ${errorMsg}`);
+                            
+                            results.push({
+                                success: false,
+                                error: errorMsg,
+                                step: step
+                            });
+                            
+                            if (this.logsView) {
+                                this.logsView.addStepLog(step.description, step.tool, step.params, { error: errorMsg }, false);
+                            }
+                            
+                            // Añadir evento de error al visor
+                            if (this.eventsViewer) {
+                                this.eventsViewer.addErrorEvent(
+                                    `Error: Parámetros faltantes`,
+                                    errorMsg
+                                );
+                            }
+                            
+                            success = false;
+                            stoppedAtStep = step.description;
+                            stopReason = errorMsg;
+                            
+                            // Detener ejecución si faltan parámetros
+                            break;
+                        }
+                        
+                        // NUEVO: Enriquecer con RAG y reglas para herramientas relevantes
+                        await this.enrichStepWithRAG(step);
+                        
+                        // Si es una herramienta que genera código, asegurarse de que las reglas se apliquen
+                        const codeGenerationTools = ['WriteFileTool', 'FixErrorTool', 'GenerateTestTool'];
+                        if (codeGenerationTools.includes(step.tool)) {
+                            this.logger.appendLine(`Asegurando que las reglas se apliquen en la generación de código`);
+                            
+                            // Si no hay additionalContext (que contendría las reglas del RAG), intentar añadirlo
+                            if (!step.params.additionalContext || !step.params.additionalContext.includes('REGLAS APLICABLES')) {
+                                const workspacePath = this.workspaceManager.getWorkspacePath();
+                                const filePath = step.params.filePath || step.params.sourcePath;
+                                
+                                if (workspacePath && filePath) {
+                                    const rulesContext = await this.getRulesForFile(workspacePath, filePath);
+                                    if (rulesContext && rulesContext.length > 0) {
+                                        step.params.additionalContext = (step.params.additionalContext || '') + 
+                                            "\n\nREGLAS APLICABLES DEL WORKSPACE:\n\n" + rulesContext;
+                                        this.logger.appendLine(`Reglas del workspace añadidas a los parámetros para ${step.tool}`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Resolve variables in parameters before execution
+                        // Pasamos el array de resultados acumulados hasta ahora
+                        const resolvedParams = this.resolveVariables(step.params, results);
+                        
+                        // Registrar los parámetros después de resolver variables
+                        this.logger.appendLine(`Parámetros resueltos para ${step.tool}: ${JSON.stringify(resolvedParams, null, 2)}`);
+                        
+                        // MOVER AQUÍ: Verificación de archivos después de resolver variables
+                        // Si hay un parámetro que parece ser una ruta de archivo, verificar que existe
+                        const fileParamNames = ['filePath', 'sourcePath', 'path'];
+                        let fileParamName = fileParamNames.find(p => resolvedParams && resolvedParams[p]);
+                        if (fileParamName) {
+                            const filePathValue = resolvedParams[fileParamName];
+                            if (filePathValue && typeof filePathValue === 'string' && !filePathValue.includes('$STEP[')) {
+                                try {
+                                    // Usar vscode.workspace.fs.stat en lugar de fs.promises.access
+                                    const fileUri = vscode.Uri.file(filePathValue);
+                                    await vscode.workspace.fs.stat(fileUri);
+                                    this.logger.appendLine(`Archivo verificado: ${filePathValue}`);
+                                } catch (error) {
+                                    // El archivo no existe, buscar la ruta real
+                                    const fileUri = vscode.Uri.file(filePathValue);
+                                    const fileName = fileUri.path.split('/').pop() || '';
+                                    // Solo buscar si fileName parece ser un nombre de archivo válido
+                                    if (fileName && !fileName.includes('$') && fileName.includes('.')) {
+                                        // Usar FindFileTool para buscar la ruta real
+                                        const findTool = this.toolManager.selectTool('FindFileTool');
+                                        if (findTool) {
+                                            this.logger.appendLine(`Buscando ruta real para ${fileName} usando FindFileTool...`);
+                                            try {
+                                                const findResult = await findTool.run({ pattern: `**/${fileName}`, maxResults: 1 });
+                                                if (findResult && findResult.found && findResult.matches.length > 0) {
+                                                    const realPath = findResult.matches[0];
+                                                    this.logger.appendLine(`Ruta corregida para ${fileName}: ${realPath}`);
+                                                    resolvedParams[fileParamName] = realPath;
+                                                } else {
+                                                    this.logger.appendLine(`No se encontró el archivo ${fileName} en el workspace.`);
+                                                }
+                                            } catch (findError: any) {
+                                                this.logger.appendLine(`Error al buscar archivo ${fileName}: ${findError.message}`);
+                                            }
+                                        }
+                                    } else {
+                                        this.logger.appendLine(`Saltando búsqueda de archivo para valor inválido: ${filePathValue}`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Caso especial para ExecuteCommandTool - usar nuestra terminal personalizada
+                        if (step.tool === 'ExecuteCommandTool' && resolvedParams.command) {
+                            // Capturar snapshots de archivos antes de ejecutar el comando
+                            let cmdSnapshotBeforeId: string | undefined;
+                            if (this.fileSnapshotManager) {
+                                try {
+                                    const workspacePath = this.workspaceManager.getWorkspacePath();
+                                    if (workspacePath) {
+                                        const potentialFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+                                        const filePaths = potentialFiles.map(file => file.fsPath);
+                                        
+                                        cmdSnapshotBeforeId = await this.fileSnapshotManager.createSnapshot(filePaths);
+                                    }
+                                } catch (e) {
+                                    this.logger.appendLine(`Error creating snapshot before command: ${e}`);
+                                }
+                            }
+                            
+                            // Ejecutar el comando en nuestra terminal personalizada
+                            const workingDirectory = resolvedParams.workingDirectory || 
+                                                   resolvedParams.cwd || 
+                                                   this.workspaceManager.getWorkspacePath();
+                            
+                            // Crear una terminal o usar una existente
+                            const terminalId = this.terminalManager.createTerminal(
+                                'grec0ai-agent',
+                                'Grec0AI Agent Terminal',
+                                workingDirectory
+                            );
+                            
+                            // Ejecutar el comando
+                            const cmdResult = await this.terminalManager.executeCommand(
+                                resolvedParams.command,
+                                terminalId,
+                                true // Capturar salida
+                            );
+                            
+                            // Capturar snapshot después de ejecutar
+                            let cmdSnapshotAfterId: string | undefined;
+                            if (this.fileSnapshotManager && cmdSnapshotBeforeId) {
+                                try {
+                                    const workspacePath = this.workspaceManager.getWorkspacePath();
+                                    if (workspacePath) {
+                                        const potentialFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+                                        const filePaths = potentialFiles.map(file => file.fsPath);
+                                        
+                                        cmdSnapshotAfterId = await this.fileSnapshotManager.createSnapshot(filePaths);
+                                    }
+                                } catch (e) {
+                                    this.logger.appendLine(`Error creating snapshot after command: ${e}`);
+                                }
+                            }
+                            
+                            // Convertir el resultado a formato compatible con lo esperado
+                            const stepResult = {
+                                success: cmdResult.success,
+                                output: cmdResult.output,
+                                error: cmdResult.error,
+                                commandId: cmdResult.commandId,
+                                workingDirectory: cmdResult.workingDirectory
+                            };
+                            
+                            // Añadir evento de comando al visor
+                            if (this.eventsViewer) {
+                                this.eventsViewer.addCommandEvent(
+                                    resolvedParams.command,
+                                    cmdResult,
+                                    {
+                                        before: cmdSnapshotBeforeId,
+                                        after: cmdSnapshotAfterId
+                                    }
+                                );
+                            }
+                            
+                            // Add result to context
+                            this.contextManager.addStepResult(step, stepResult);
+                            results.push({
+                                success: true,
+                                result: stepResult,
+                                step: step
+                            });
+                            
+                            // Add to logs view if available
+                            if (this.logsView) {
+                                this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
+                            }
+                            
+                            this.logger.appendLine(`Command step completed: ${step.description}`);
+                            // NUEVO: Indexar resultados relevantes para aprendizaje futuro
+                            await this.indexStepResults(step, stepResult);
+                        } else {
+                            // Para otras herramientas, usar el flujo normal
+                            this.logger.appendLine(`About to execute tool.run() for ${step.tool}`);
+                            const stepResult = await tool.run(resolvedParams);
+                            this.logger.appendLine(`Tool.run() completed for ${step.tool}`);
+                            
+                            // Add result to context
+                            this.contextManager.addStepResult(step, stepResult);
+                            results.push({
+                                success: true,
+                                result: stepResult,
+                                step: step
+                            });
+                            
+                            // Add to logs view if available
+                            if (this.logsView) {
+                                this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
+                            }
+                            
+                            // Añadir evento específico según el tipo de herramienta
+                            if (this.eventsViewer) {
+                                if (step.tool === 'AnalyzeCodeTool' && stepResult.analysis) {
+                                    this.eventsViewer.addAnalysisEvent(
+                                        stepResult.sourcePath || 'code-snippet',
+                                        stepResult.analysis
+                                    );
+                                } else if (step.tool === 'WriteFileTool' && stepResult.filePath) {
+                                    // Añadir evento de cambio de archivo
+                                    this.eventsViewer.addFileChangeEvent(
+                                        stepResult.filePath,
+                                        stepResult.created ? 'create' : 'modify'
+                                    );
+                                } else {
+                                    // Para otras herramientas, añadir evento genérico
+                                    this.eventsViewer.addInfoEvent(
+                                        `Completado: ${step.description}`,
+                                        `Herramienta ${step.tool} ejecutada con éxito`,
+                                        { result: stepResult }
+                                    );
+                                }
+                            }
+                            
+                            this.logger.appendLine(`Step completed: ${step.description}`);
+                            // NUEVO: Indexar resultados relevantes para aprendizaje futuro
+                            await this.indexStepResults(step, stepResult);
+                        }
+                    } catch (error: any) {
+                        this.logger.appendLine(`Error executing step: ${error.message}`);
+                        
+                        // Add failure feedback to context
+                        this.contextManager.addFeedback({
+                            success: false,
+                            error: error.message,
                             step: step
                         });
                         
+                        results.push({
+                            success: false,
+                            error: error.message,
+                            step: step
+                        });
+                        
+                        // Add to logs view if available
                         if (this.logsView) {
-                            this.logsView.addStepLog(step.description, step.tool, step.params, { error: errorMsg }, false);
+                            this.logsView.addStepLog(step.description, step.tool, step.params, { error: error.message }, false);
                         }
                         
                         // Añadir evento de error al visor
                         if (this.eventsViewer) {
                             this.eventsViewer.addErrorEvent(
-                                `Error: Parámetros faltantes`,
-                                errorMsg
+                                `Error en paso: ${step.description}`,
+                                error.message
                             );
                         }
                         
-                        success = false;
-                        stoppedAtStep = step.description;
-                        stopReason = errorMsg;
+                        // Verificar si este paso es crítico para el plan
+                        const isStepCritical = this.isStepCritical(step, plan);
                         
-                        // Detener ejecución si faltan parámetros
-                        break;
-                    }
-                    
-                    // NUEVO: Enriquecer con RAG y reglas para herramientas relevantes
-                    await this.enrichStepWithRAG(step);
-                    
-                    // Si es una herramienta que genera código, asegurarse de que las reglas se apliquen
-                    const codeGenerationTools = ['WriteFileTool', 'FixErrorTool', 'GenerateTestTool'];
-                    if (codeGenerationTools.includes(step.tool)) {
-                        this.logger.appendLine(`Asegurando que las reglas se apliquen en la generación de código`);
+                        // Optional: retry with modified instructions based on error
+                        const shouldRetry = await this.shouldRetryStep(step, error);
                         
-                        // Si no hay additionalContext (que contendría las reglas del RAG), intentar añadirlo
-                        if (!step.params.additionalContext || !step.params.additionalContext.includes('REGLAS APLICABLES')) {
-                            const workspacePath = this.workspaceManager.getWorkspacePath();
-                            const filePath = step.params.filePath || step.params.sourcePath;
+                        if (shouldRetry) {
+                            const modifiedStep = await this.modifyStepAfterFailure(step, error);
+                            this.logger.appendLine(`Retrying with modified step: ${modifiedStep.description}`);
                             
-                            if (workspacePath && filePath) {
-                                const rulesContext = this.getRulesForFile(workspacePath, filePath);
-                                if (rulesContext && rulesContext.length > 0) {
-                                    step.params.additionalContext = (step.params.additionalContext || '') + 
-                                        "\n\nREGLAS APLICABLES DEL WORKSPACE:\n\n" + rulesContext;
-                                    this.logger.appendLine(`Reglas del workspace añadidas a los parámetros para ${step.tool}`);
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Resolve variables in parameters before execution
-                    // Pasamos el array de resultados acumulados hasta ahora
-                    const resolvedParams = this.resolveVariables(step.params, results);
-                    
-                    // Registrar los parámetros después de resolver variables
-                    this.logger.appendLine(`Parámetros resueltos para ${step.tool}: ${JSON.stringify(resolvedParams, null, 2)}`);
-                    
-                    // Caso especial para ExecuteCommandTool - usar nuestra terminal personalizada
-                    if (step.tool === 'ExecuteCommandTool' && resolvedParams.command) {
-                        // Capturar snapshots de archivos antes de ejecutar el comando
-                        let cmdSnapshotBeforeId: string | undefined;
-                        if (this.fileSnapshotManager) {
-                            try {
-                                const workspacePath = this.workspaceManager.getWorkspacePath();
-                                if (workspacePath) {
-                                    const potentialFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-                                    const filePaths = potentialFiles.map(file => file.fsPath);
-                                    
-                                    cmdSnapshotBeforeId = await this.fileSnapshotManager.createSnapshot(filePaths);
-                                }
-                            } catch (e) {
-                                this.logger.appendLine(`Error creating snapshot before command: ${e}`);
-                            }
-                        }
-                        
-                        // Ejecutar el comando en nuestra terminal personalizada
-                        const workingDirectory = resolvedParams.workingDirectory || 
-                                               resolvedParams.cwd || 
-                                               this.workspaceManager.getWorkspacePath();
-                        
-                        // Crear una terminal o usar una existente
-                        const terminalId = this.terminalManager.createTerminal(
-                            'grec0ai-agent',
-                            'Grec0AI Agent Terminal',
-                            workingDirectory
-                        );
-                        
-                        // Ejecutar el comando
-                        const cmdResult = await this.terminalManager.executeCommand(
-                            resolvedParams.command,
-                            terminalId,
-                            true // Capturar salida
-                        );
-                        
-                        // Capturar snapshot después de ejecutar
-                        let cmdSnapshotAfterId: string | undefined;
-                        if (this.fileSnapshotManager && cmdSnapshotBeforeId) {
-                            try {
-                                const workspacePath = this.workspaceManager.getWorkspacePath();
-                                if (workspacePath) {
-                                    const potentialFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-                                    const filePaths = potentialFiles.map(file => file.fsPath);
-                                    
-                                    cmdSnapshotAfterId = await this.fileSnapshotManager.createSnapshot(filePaths);
-                                }
-                            } catch (e) {
-                                this.logger.appendLine(`Error creating snapshot after command: ${e}`);
-                            }
-                        }
-                        
-                        // Convertir el resultado a formato compatible con lo esperado
-                        const stepResult = {
-                            success: cmdResult.success,
-                            output: cmdResult.output,
-                            error: cmdResult.error,
-                            commandId: cmdResult.commandId,
-                            workingDirectory: cmdResult.workingDirectory
-                        };
-                        
-                        // Añadir evento de comando al visor
-                        if (this.eventsViewer) {
-                            this.eventsViewer.addCommandEvent(
-                                resolvedParams.command,
-                                cmdResult,
-                                {
-                                    before: cmdSnapshotBeforeId,
-                                    after: cmdSnapshotAfterId
-                                }
-                            );
-                        }
-                        
-                        // Add result to context
-                        this.contextManager.addStepResult(step, stepResult);
-                        results.push({
-                            success: true,
-                            result: stepResult,
-                            step: step
-                        });
-                        
-                        // Add to logs view if available
-                        if (this.logsView) {
-                            this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
-                        }
-                        
-                        this.logger.appendLine(`Command step completed: ${step.description}`);
-                        // NUEVO: Indexar resultados relevantes para aprendizaje futuro
-                        await this.indexStepResults(step, stepResult);
-                    } else {
-                        // Para otras herramientas, usar el flujo normal
-                        const stepResult = await tool.run(resolvedParams);
-                        
-                        // Add result to context
-                        this.contextManager.addStepResult(step, stepResult);
-                        results.push({
-                            success: true,
-                            result: stepResult,
-                            step: step
-                        });
-                        
-                        // Add to logs view if available
-                        if (this.logsView) {
-                            this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
-                        }
-                        
-                        // Añadir evento específico según el tipo de herramienta
-                        if (this.eventsViewer) {
-                            if (step.tool === 'AnalyzeCodeTool' && stepResult.analysis) {
-                                this.eventsViewer.addAnalysisEvent(
-                                    stepResult.sourcePath || 'code-snippet',
-                                    stepResult.analysis
-                                );
-                            } else if (step.tool === 'WriteFileTool' && stepResult.filePath) {
-                                // Añadir evento de cambio de archivo
-                                this.eventsViewer.addFileChangeEvent(
-                                    stepResult.filePath,
-                                    stepResult.created ? 'create' : 'modify'
-                                );
-                            } else {
-                                // Para otras herramientas, añadir evento genérico
-                                this.eventsViewer.addInfoEvent(
-                                    `Completado: ${step.description}`,
-                                    `Herramienta ${step.tool} ejecutada con éxito`,
-                                    { result: stepResult }
-                                );
-                            }
-                        }
-                        
-                        this.logger.appendLine(`Step completed: ${step.description}`);
-                        // NUEVO: Indexar resultados relevantes para aprendizaje futuro
-                        await this.indexStepResults(step, stepResult);
-                    }
-                } catch (error: any) {
-                    this.logger.appendLine(`Error executing step: ${error.message}`);
-                    
-                    // Add failure feedback to context
-                    this.contextManager.addFeedback({
-                        success: false,
-                        error: error.message,
-                        step: step
-                    });
-                    
-                    results.push({
-                        success: false,
-                        error: error.message,
-                        step: step
-                    });
-                    
-                    // Add to logs view if available
-                    if (this.logsView) {
-                        this.logsView.addStepLog(step.description, step.tool, step.params, { error: error.message }, false);
-                    }
-                    
-                    // Añadir evento de error al visor
-                    if (this.eventsViewer) {
-                        this.eventsViewer.addErrorEvent(
-                            `Error en paso: ${step.description}`,
-                            error.message
-                        );
-                    }
-                    
-                    // Verificar si este paso es crítico para el plan
-                    const isStepCritical = this.isStepCritical(step, plan);
-                    
-                    // Optional: retry with modified instructions based on error
-                    const shouldRetry = await this.shouldRetryStep(step, error);
-                    
-                    if (shouldRetry) {
-                        const modifiedStep = await this.modifyStepAfterFailure(step, error);
-                        this.logger.appendLine(`Retrying with modified step: ${modifiedStep.description}`);
-                        
-                        // Añadir evento informativo sobre reintento
-                        if (this.eventsViewer) {
-                            this.eventsViewer.addInfoEvent(
-                                `Reintentando paso`,
-                                `Reintentando ${step.description} con parámetros modificados`
-                            );
-                        }
-                        
-                        try {
-                            const tool = this.toolManager.selectTool(modifiedStep.tool);
-                            // Resolve variables in parameters for retry
-                            // Pasamos el array de resultados acumulados hasta ahora
-                            const resolvedParams = this.resolveVariables(modifiedStep.params, results);
-                            
-                            const retryResult = await tool.run(resolvedParams);
-                            
-                            this.contextManager.addStepResult(modifiedStep, retryResult);
-                            results.push({
-                                success: true,
-                                result: retryResult,
-                                step: modifiedStep,
-                                wasRetry: true
-                            });
-                            
-                            // Añadir evento de éxito al visor
+                            // Añadir evento informativo sobre reintento
                             if (this.eventsViewer) {
                                 this.eventsViewer.addInfoEvent(
-                                    `Reintento exitoso: ${modifiedStep.description}`,
-                                    `El reintento fue exitoso`,
-                                    { result: retryResult }
+                                    `Reintentando paso`,
+                                    `Reintentando ${step.description} con parámetros modificados`
                                 );
                             }
-                        } catch (retryError: any) {
-                            this.logger.appendLine(`Retry failed: ${retryError.message}`);
+                            
+                            try {
+                                const tool = this.toolManager.selectTool(modifiedStep.tool);
+                                // Resolve variables in parameters for retry
+                                // Pasamos el array de resultados acumulados hasta ahora
+                                const resolvedParams = this.resolveVariables(modifiedStep.params, results);
+                                
+                                const retryResult = await tool.run(resolvedParams);
+                                
+                                this.contextManager.addStepResult(modifiedStep, retryResult);
+                                results.push({
+                                    success: true,
+                                    result: retryResult,
+                                    step: modifiedStep,
+                                    wasRetry: true
+                                });
+                                
+                                // Añadir evento de éxito al visor
+                                if (this.eventsViewer) {
+                                    this.eventsViewer.addInfoEvent(
+                                        `Reintento exitoso: ${modifiedStep.description}`,
+                                        `El reintento fue exitoso`,
+                                        { result: retryResult }
+                                    );
+                                }
+                            } catch (retryError: any) {
+                                this.logger.appendLine(`Retry failed: ${retryError.message}`);
+                                success = false;
+                                
+                                // Añadir evento de error al visor
+                                if (this.eventsViewer) {
+                                    this.eventsViewer.addErrorEvent(
+                                        `Fallo en reintento: ${modifiedStep.description}`,
+                                        retryError.message
+                                    );
+                                }
+                                
+                                if (isStepCritical) {
+                                    stoppedAtStep = step.description;
+                                    stopReason = `Fallo en reintento: ${retryError.message}`;
+                                    // Detener ejecución tras fallo en el reintento de un paso crítico
+                                    break;
+                                }
+                            }
+                        } else {
                             success = false;
-                            
-                            // Añadir evento de error al visor
-                            if (this.eventsViewer) {
-                                this.eventsViewer.addErrorEvent(
-                                    `Fallo en reintento: ${modifiedStep.description}`,
-                                    retryError.message
-                                );
-                            }
                             
                             if (isStepCritical) {
                                 stoppedAtStep = step.description;
-                                stopReason = `Fallo en reintento: ${retryError.message}`;
-                                // Detener ejecución tras fallo en el reintento de un paso crítico
+                                stopReason = `Error crítico: ${error.message}`;
+                                // Detener ejecución tras fallo crítico sin reintento
                                 break;
                             }
                         }
-                    } else {
-                        success = false;
+                    }
+                    
+                    // Verificar si hay dependencias bloqueantes para los siguientes pasos
+                    if (!this.canContinueExecution(step, results, plan)) {
+                        this.logger.appendLine(`Deteniendo ejecución: pasos posteriores dependen del éxito de "${step.description}"`);
+                        stoppedAtStep = step.description;
+                        stopReason = "Los pasos siguientes dependen del éxito de este paso";
                         
-                        if (isStepCritical) {
-                            stoppedAtStep = step.description;
-                            stopReason = `Error crítico: ${error.message}`;
-                            // Detener ejecución tras fallo crítico sin reintento
-                            break;
+                        // Añadir evento informativo al visor
+                        if (this.eventsViewer) {
+                            this.eventsViewer.addInfoEvent(
+                                `Ejecución detenida`,
+                                `Los pasos siguientes dependen del éxito de "${step.description}"`
+                            );
                         }
+                        
+                        break;
                     }
                 }
                 
-                // Verificar si hay dependencias bloqueantes para los siguientes pasos
-                if (!this.canContinueExecution(step, results, plan)) {
-                    this.logger.appendLine(`Deteniendo ejecución: pasos posteriores dependen del éxito de "${step.description}"`);
-                    stoppedAtStep = step.description;
-                    stopReason = "Los pasos siguientes dependen del éxito de este paso";
+                // Tomar snapshot después de la ejecución
+                let snapshotAfterId: string | undefined;
+                // NOTE: snapshotBeforeId is not available in this scope due to replanning loop restructure
+                // TODO: Implement proper snapshot management for replanning scenarios
+                // if (this.fileSnapshotManager && snapshotBeforeId) {
+                //     try {
+                //         // Usar los mismos archivos que en el snapshot inicial
+                //         const beforeSnapshots = this.fileSnapshotManager.getSnapshot(snapshotBeforeId);
+                //         if (beforeSnapshots) {
+                //             const filePaths = beforeSnapshots.map(snap => snap.path);
+                //             snapshotAfterId = await this.fileSnapshotManager.createSnapshot(filePaths);
+                //             this.logger.appendLine(`Created snapshot after execution: ${snapshotAfterId}`);
+                //         }
+                //     } catch (error: any) {
+                //         this.logger.appendLine(`Error creating after snapshot: ${error.message}`);
+                //     }
+                // }
+                
+                // 5. Final reflection on entire process
+                reflection = await this.reflectOnExecution(plan, results, stoppedAtStep, stopReason);
+                
+                // Add reflection to logs view
+                if (this.logsView) {
+                    this.logsView.addReflectionLog(reflection);
+                }
+                
+                // Add to logs view if available (for each execution attempt)
+                if (this.logsView) {
+                    this.logsView.addPlanLog(
+                        plan.steps,
+                        undefined,
+                        plan.modelInfo,
+                        plan.appliedRules || [],
+                        plan.tokenCount,
+                        plan.modelCost
+                    );
+                }
+                
+                // 6. Evaluate if replanning is needed
+                if (!success && replanCount < maxReplanning) {
+                    this.logger.appendLine("Evaluating if replanning is beneficial...");
                     
-                    // Añadir evento informativo al visor
-                    if (this.eventsViewer) {
-                        this.eventsViewer.addInfoEvent(
-                            `Ejecución detenida`,
-                            `Los pasos siguientes dependen del éxito de "${step.description}"`
-                        );
+                    const evaluation = await this.evaluateExecutionResults(input, plan, results, reflection);
+                    
+                    this.logger.appendLine(`Evaluation reasoning: ${evaluation.reasoning}`);
+                    
+                    if (evaluation.shouldReplan) {
+                        this.logger.appendLine(`Replanning recommended (confidence: ${evaluation.confidence}%)`);
+                        
+                        try {
+                            // Attempt to replan
+                            plan = await this.replanTask(input, plan, results, reflection, replanCount);
+                            replanCount++;
+                            
+                            // Continue to next iteration of the loop
+                            continue;
+                        } catch (replanError: any) {
+                            this.logger.appendLine(`Replanning failed: ${replanError.message}`);
+                            
+                            // Add error event to viewer
+                            if (this.eventsViewer) {
+                                this.eventsViewer.addErrorEvent(
+                                    `Error en replanificación`,
+                                    replanError.message
+                                );
+                            }
+                            
+                            // Exit the loop - replanning failed
+                            break;
+                        }
+                    } else {
+                        this.logger.appendLine(`Replanning not recommended: ${evaluation.reasoning}`);
+                        // Exit the loop - replanning not beneficial
+                        break;
                     }
-                    
+                } else {
+                    // Exit the loop - either successful or max replanning reached
                     break;
                 }
             }
             
-            // Tomar snapshot después de la ejecución
-            let snapshotAfterId: string | undefined;
-            if (this.fileSnapshotManager && snapshotBeforeId) {
-                try {
-                    // Usar los mismos archivos que en el snapshot inicial
-                    const beforeSnapshots = this.fileSnapshotManager.getSnapshot(snapshotBeforeId);
-                    if (beforeSnapshots) {
-                        const filePaths = beforeSnapshots.map(snap => snap.path);
-                        snapshotAfterId = await this.fileSnapshotManager.createSnapshot(filePaths);
-                        this.logger.appendLine(`Created snapshot after execution: ${snapshotAfterId}`);
-                    }
-                } catch (error: any) {
-                    this.logger.appendLine(`Error creating after snapshot: ${error.message}`);
+            // Add final events and notifications
+            if (replanCount > 0) {
+                const finalMessage = success 
+                    ? `Tarea completada exitosamente después de ${replanCount} replanificaciones`
+                    : `Tarea falló después de ${replanCount} intentos de replanificación`;
+                    
+                this.logger.appendLine(finalMessage);
+                
+                if (this.eventsViewer) {
+                    this.eventsViewer.addInfoEvent(
+                        success ? "Replanificación exitosa" : "Replanificación agotada",
+                        finalMessage,
+                        { 
+                            totalAttempts: replanCount + 1,
+                            finalSuccess: success,
+                            maxAttemptsReached: replanCount >= maxReplanning
+                        }
+                    );
                 }
             }
             
-            // 5. Final reflection on entire process
-            const reflection = await this.reflectOnExecution(plan, results, stoppedAtStep, stopReason);
+            // 7. Return aggregate result
+            return {
+                success: success,
+                results: results,
+                reflection: reflection,
+                stoppedAtStep: stoppedAtStep,
+                stopReason: stopReason,
+                replanCount: replanCount,
+                // Incluir también el coste del modelo en el resultado
+                modelCost: this.calculateModelCostFromPlan(plan)
+            };
             
-            // Add reflection to logs view
-            if (this.logsView) {
-                this.logsView.addReflectionLog(reflection);
-            }
+            // This code below should be unreachable, but keeping for safety
+            // Tomar snapshot después de la ejecución
+            let snapshotAfterId: string | undefined;
+            // if (this.fileSnapshotManager && snapshotBeforeId) {
+            //     try {
+            //         // Usar los mismos archivos que en el snapshot inicial
+            //         const beforeSnapshots = this.fileSnapshotManager.getSnapshot(snapshotBeforeId);
+            //         if (beforeSnapshots) {
+            //             const filePaths = beforeSnapshots.map(snap => snap.path);
+            //             snapshotAfterId = await this.fileSnapshotManager.createSnapshot(filePaths);
+            //             this.logger.appendLine(`Created snapshot after execution: ${snapshotAfterId}`);
+            //         }
+            //     } catch (error: any) {
+            //         this.logger.appendLine(`Error creating after snapshot: ${error.message}`);
+            //     }
+            // }
             
             // Añadir evento final al visor
             if (this.eventsViewer) {
@@ -635,16 +799,13 @@ export class Agent {
                     reflection.text,
                     { 
                         reflection: reflection,
-                        snapshots: {
-                            before: snapshotBeforeId,
-                            after: snapshotAfterId
-                        },
-                        status: success ? 'success' : 'warning'
+                        status: success ? 'success' : 'warning',
+                        replanCount: replanCount
                     }
                 );
             }
             
-            // 6. Save the event and results to database
+            // 8. Save the event and results to database
             await this.databaseManager.saveEvent({
                 type: 'userRequest',
                 input: input,
@@ -655,43 +816,29 @@ export class Agent {
                 success: success,
                 stoppedAtStep: stoppedAtStep,
                 stopReason: stopReason,
+                replanCount: replanCount,
                 // Calcular y añadir información de coste si hay datos de modelo y tokens
                 modelCost: this.calculateModelCostFromPlan(plan)
             });
             
-            // Mostrar mensaje al usuario si el plan se completó
+            // 9. Show final user notifications
             if (success) {
-                vscode.window.showInformationMessage(`Solicitud completada: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`);
-                
-                // Si hubo cambios, ofrecer mostrarlos
-                if (snapshotBeforeId && snapshotAfterId && this.fileSnapshotManager) {
-                    const diffs = await this.fileSnapshotManager.compareSnapshots(snapshotBeforeId, snapshotAfterId);
-                    const changedFiles = diffs.filter(d => d.hasChanges).length;
+                const message = replanCount > 0 
+                    ? `Solicitud completada tras ${replanCount} replanificaciones: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`
+                    : `Solicitud completada: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`;
                     
-                    if (changedFiles > 0) {
-                        const showChangesAction = "Ver cambios";
-                        const showEventsAction = "Ver eventos";
-                        
-                        vscode.window.showInformationMessage(
-                            `Se modificaron ${changedFiles} archivos`,
-                            showChangesAction,
-                            showEventsAction
-                        ).then(selection => {
-                            if (selection === showChangesAction) {
-                                this.fileSnapshotManager.showAllDiffs(diffs, "Cambios realizados");
-                            } else if (selection === showEventsAction) {
-                                this.showEventsViewer();
-                            }
-                        });
-                    }
-                }
+                vscode.window.showInformationMessage(message);
             } else {
-                vscode.window.showWarningMessage(`La solicitud se completó parcialmente: ${stopReason || 'Ocurrieron errores'}`);
+                const message = replanCount > 0
+                    ? `La solicitud falló después de ${replanCount} intentos de replanificación: ${stopReason || 'Ocurrieron errores'}`
+                    : `La solicitud se completó parcialmente: ${stopReason || 'Ocurrieron errores'}`;
+                    
+                vscode.window.showWarningMessage(message);
                 
                 // Ofrecer ver detalles
                 const showDetailsAction = "Ver detalles";
                 vscode.window.showWarningMessage(
-                    `La solicitud se completó parcialmente: ${stopReason || 'Ocurrieron errores'}`,
+                    message,
                     showDetailsAction
                 ).then(selection => {
                     if (selection === showDetailsAction) {
@@ -699,21 +846,6 @@ export class Agent {
                     }
                 });
             }
-            
-            // 7. Return aggregate result
-            return {
-                success: success,
-                results: results,
-                reflection: reflection,
-                stoppedAtStep: stoppedAtStep,
-                stopReason: stopReason,
-                // Incluir también el coste del modelo en el resultado
-                modelCost: this.calculateModelCostFromPlan(plan),
-                snapshots: {
-                    before: snapshotBeforeId,
-                    after: snapshotAfterId
-                }
-            };
         } catch (error: any) {
             this.logger.appendLine(`Error in handleUserInput: ${error.message}`);
             
@@ -758,6 +890,116 @@ export class Agent {
     async planTask(input: string, context: any): Promise<any> {
         this.logger.appendLine("Planning task...");
         
+        const maxPlanningAttempts = 3; // Máximo de intentos de planificación
+        let planningAttempt = 0;
+        let currentPlan: any = null;
+        let validationResult: any = null;
+        
+        // Bucle iterativo de planificación
+        while (planningAttempt < maxPlanningAttempts) {
+            planningAttempt++;
+            this.logger.appendLine(`\n=== PLANNING ATTEMPT ${planningAttempt}/${maxPlanningAttempts} ===`);
+            
+            try {
+                // Generar plan (inicial o mejorado)
+                if (planningAttempt === 1) {
+                    // Primer intento: plan inicial
+                    currentPlan = await this.generateInitialPlan(input, context);
+                } else {
+                    // Intentos posteriores: plan mejorado basado en feedback
+                    currentPlan = await this.generateImprovedPlan(input, context, validationResult, planningAttempt);
+                }
+                
+                if (!currentPlan) {
+                    throw new Error('Failed to generate plan');
+                }
+                
+                this.logger.appendLine(`Generated plan with ${currentPlan.steps?.length || 0} steps`);
+                
+                // Validación básica de estructura
+                if (!currentPlan.steps || !Array.isArray(currentPlan.steps)) {
+                    if (planningAttempt < maxPlanningAttempts) {
+                        this.logger.appendLine('Invalid plan structure, retrying...');
+                        validationResult = {
+                            valid: false,
+                            errors: ['Plan structure is invalid - missing or invalid steps array'],
+                            issues: [{
+                                stepIndex: 0,
+                                severity: 'high',
+                                description: 'Plan debe tener un array de steps válido',
+                                suggestion: 'Generar un plan con estructura correcta: { steps: [...] }'
+                            }]
+                        };
+                        continue;
+                    } else {
+                        throw new Error('Invalid plan structure after maximum attempts');
+                    }
+                }
+                
+                // Validación inteligente con LLM
+                this.logger.appendLine(`Validating plan attempt ${planningAttempt}...`);
+                const validation = await this.validateAndOptimizePlan(currentPlan, { ...context, userInput: input });
+                
+                if (validation.valid) {
+                    // Plan válido - usar la versión optimizada si está disponible
+                    const finalPlan = validation.optimizedPlan || currentPlan;
+                    this.logger.appendLine(`Planning completed successfully on attempt ${planningAttempt}`);
+                    
+                    if (validation.optimizedPlan) {
+                        this.logger.appendLine("Using LLM-optimized version of the plan");
+                    }
+                    
+                    return finalPlan;
+                } else {
+                    // Plan no válido - preparar feedback para siguiente intento
+                    if (planningAttempt < maxPlanningAttempts) {
+                        this.logger.appendLine(`Plan validation failed on attempt ${planningAttempt}, preparing to retry...`);
+                        validationResult = {
+                            valid: false,
+                            errors: validation.errors || ['Plan validation failed'],
+                            issues: this.extractIssuesFromValidationErrors(validation.errors || [])
+                        };
+                        continue;
+                    } else {
+                        this.logger.appendLine("Plan validation failed on final attempt");
+                        throw new Error(`Plan validation failed after ${maxPlanningAttempts} attempts: ${validation.errors?.join(', ')}`);
+                    }
+                }
+                
+            } catch (error: any) {
+                this.logger.appendLine(`Planning attempt ${planningAttempt} failed: ${error.message}`);
+                
+                if (planningAttempt >= maxPlanningAttempts) {
+                    // Último intento fallido, usar plan de fallback
+                    this.logger.appendLine("Max planning attempts reached, using fallback plan");
+                    return this.createFallbackPlan(input, context);
+                }
+                
+                // Preparar información de error para el siguiente intento
+                validationResult = {
+                    valid: false,
+                    errors: [error.message],
+                    issues: [{
+                        stepIndex: 0,
+                        severity: 'high',
+                        description: `Error en planificación: ${error.message}`,
+                        suggestion: 'Revisar y corregir la estructura del plan'
+                    }]
+                };
+            }
+        }
+        
+        // Fallback si sale del bucle sin éxito
+        return this.createFallbackPlan(input, context);
+    }
+
+    /**
+     * Generate the initial plan for a task
+     * @param input - User input to plan for
+     * @param context - Additional context
+     * @returns The initial execution plan
+     */
+    async generateInitialPlan(input: string, context: any): Promise<any> {
         try {
             // Get available tools from tool manager
             const availableTools = this.toolManager.getAvailableTools();
@@ -814,6 +1056,17 @@ IMPORTANTE: CUANDO NECESITES USAR RESULTADOS DE PASOS ANTERIORES EN TUS PARÁMET
 - Para referenciar un paso específico, usa "$STEP[n].nombrePropiedad" donde n es el índice del paso (empezando en 0)
 NUNCA uses frases como "contenido leído en el paso anterior" o "content from previous step", usa las variables específicas.
 
+IMPORTANTE PARA FINDFILETOOL:
+- SIEMPRE usa patrones recursivos: "**/*nombre*" en lugar de "*nombre*"
+- Ejemplos correctos: "**/*breadcrumb*.ts", "**/package.json", "**/*component.ts"
+- Los patrones con ** buscan en todos los subdirectorios
+- Sin ** solo busca en el directorio raíz
+
+IMPORTANTE PARA HERRAMIENTAS DE ANÁLISIS DE CÓDIGO:
+- Cuando uses AnalyzeCodeTool, FixErrorTool o cualquier herramienta que analice código, SIEMPRE pasa TANTO el contenido como la ruta del archivo.
+- Ejemplo correcto: { "content": "$STEP[0].content", "sourcePath": "$STEP[0].matches[0]", "focus": "NombreClase" }
+- El parámetro sourcePath es OBLIGATORIO para que la herramienta funcione correctamente.
+
 Crea un plan paso a paso para implementar las instrucciones del archivo autofixer.md.
 Para cada paso, especifica:
 1. Descripción clara del paso
@@ -845,97 +1098,68 @@ Responde en el siguiente formato JSON:
                 // Para tareas relacionadas con código, usar el sistema de composición de prompts avanzado
                 this.logger.appendLine("Tarea relacionada con código detectada. Usando promptComposer...");
                 
-                // Construir el prompt con el sistema de composición
-                const composedPrompt = promptComposer.buildPrompt({
-                    userQuery: input,
-                    workspacePath,
-                    attachedDocs,
-                    currentFilePath
-                });
-                
-                // Guardar información sobre las reglas aplicadas para la reflexión final
-                rulesApplied = this.extractAppliedRules(composedPrompt);
-                
-                // Guardar las reglas en el contextManager para usarlas en la reflexión
-                this.contextManager.addItem('appliedRules', rulesApplied);
-                
-                // Usar la plantilla de PLAN_TASK_PROMPT e interpolar los campos necesarios
-                const toolsList = availableTools.map((tool: any) => 
-                    `- ${tool.name}: ${tool.description}`).join('\n');
-                
-                // Añadir instrucciones sobre cómo referenciar resultados de pasos anteriores
-                const variablesInstructions = `
+                try {
+                    // Construir el prompt con el sistema de composición
+                    const composedPrompt = promptComposer.buildPrompt({
+                        userQuery: input,
+                        workspacePath,
+                        attachedDocs,
+                        currentFilePath
+                    });
+                    
+                    // Guardar información sobre las reglas aplicadas para la reflexión final
+                    rulesApplied = this.extractAppliedRules(composedPrompt);
+                    
+                    // Guardar las reglas en el contextManager para usarlas en la reflexión
+                    this.contextManager.addItem('appliedRules', rulesApplied);
+                    
+                    // Usar la plantilla de PLAN_TASK_PROMPT e interpolar los campos necesarios
+                    const toolsList = availableTools.map((tool: any) => 
+                        `- ${tool.name}: ${tool.description}`).join('\n');
+                    
+                    // Añadir instrucciones sobre cómo referenciar resultados de pasos anteriores
+                    const variablesInstructions = `
 IMPORTANTE: CUANDO NECESITES USAR RESULTADOS DE PASOS ANTERIORES EN TUS PARÁMETROS:
 - Para usar el contenido leído por ReadFileTool, usa "$PREVIOUS_STEP.content" como valor del parámetro
 - Para usar otra propiedad del resultado anterior, usa "$PREVIOUS_STEP.nombrePropiedad" 
 - Para referenciar un paso específico, usa "$STEP[n].nombrePropiedad" donde n es el índice del paso (empezando en 0)
 NUNCA uses frases como "contenido leído en el paso anterior" o "content from previous step", usa las variables específicas.
 
+IMPORTANTE PARA FINDFILETOOL:
+- SIEMPRE usa patrones recursivos: "**/*nombre*" en lugar de "*nombre*"
+- Ejemplos correctos: "**/*breadcrumb*.ts", "**/package.json", "**/*component.ts"
+- Los patrones con ** buscan en todos los subdirectorios
+- Sin ** solo busca en el directorio raíz
+
 IMPORTANTE PARA HERRAMIENTAS DE ANÁLISIS DE CÓDIGO:
 - Cuando uses AnalyzeCodeTool, FixErrorTool o cualquier herramienta que analice código, SIEMPRE pasa TANTO el contenido como la ruta del archivo.
-- Ejemplo correcto: { "content": "$STEP[0].content", "sourcePath": "$STEP[0].path", "focus": "NombreClase" }
+- Ejemplo correcto: { "content": "$STEP[0].content", "sourcePath": "$STEP[0].matches[0]", "focus": "NombreClase" }
 - El parámetro sourcePath es OBLIGATORIO para que la herramienta funcione correctamente.
 `;
-                
-                const modifiedPrompt = PLAN_TASK_PROMPT
-                    .replace('{{tools}}', toolsList)
-                    .replace('{{context}}', composedPrompt)
-                    .replace('{{input}}', input);
-                
-                // Insertar las instrucciones de variables justo antes de la sección de JSON format
-                planningPrompt = modifiedPrompt.replace(
-                    'Respond in the following JSON format:', 
-                    `${variablesInstructions}\n\nRespond in the following JSON format:`
-                );
-                
-                this.logger.appendLine("Prompt compuesto generado con reglas y contexto del workspace");
+                    
+                    const modifiedPrompt = PLAN_TASK_PROMPT
+                        .replace('{{tools}}', toolsList)
+                        .replace('{{context}}', composedPrompt)
+                        .replace('{{input}}', input);
+                    
+                    // Insertar las instrucciones de variables justo antes de la sección de JSON format
+                    planningPrompt = modifiedPrompt.replace(
+                        'Respond in the following JSON format:', 
+                        `${variablesInstructions}\n\nRespond in the following JSON format:`
+                    );
+                    
+                    this.logger.appendLine("Prompt compuesto generado con reglas y contexto del workspace");
+                } catch (promptError: any) {
+                    // Si falla la composición del prompt, hacer fallback al prompt estándar
+                    this.logger.appendLine(`Error al construir prompt con promptComposer: ${promptError.message}`);
+                    this.logger.appendLine("Usando prompt estándar como fallback...");
+                    
+                    // Fallback al prompt estándar
+                    planningPrompt = this.getStandardPlanningPrompt(input, context, availableTools);
+                }
             } else {
                 // Usar el prompt estándar para otras tareas
-                planningPrompt = `
-You are a planning assistant for the Grec0AI Agent. Your task is to break down the user's request into a series of steps that can be executed by the agent.
-
-User request: "${input}"
-
-Current context:
-File: ${context.filePath || 'None'}
-Language: ${context.language || 'Unknown'}
-Selected text: ${context.selection ? 'Yes (length: ' + context.selection.length + ')' : 'None'}
-
-Available tools:
-${availableTools.map((tool: any) => `- ${tool.name}: ${tool.description}`).join('\n')}
-
-IMPORTANT: WHEN REFERENCING RESULTS FROM PREVIOUS STEPS IN YOUR PARAMETERS:
-- To use content read by ReadFileTool, use "$PREVIOUS_STEP.content" as the parameter value
-- To use another property from the previous result, use "$PREVIOUS_STEP.propertyName"
-- To reference a specific step, use "$STEP[n].propertyName" where n is the step index (starting at 0)
-NEVER use phrases like "content read in previous step" or "content from previous step", use the specific variables.
-
-IMPORTANT FOR CODE ANALYSIS TOOLS:
-- When using AnalyzeCodeTool, FixErrorTool, or any tool that analyzes code, ALWAYS pass BOTH the content and the path of the file.
-- Correct example: { "content": "$STEP[0].content", "sourcePath": "$STEP[0].path", "focus": "ClassName" }
-- The sourcePath parameter is MANDATORY for the tool to work correctly.
-
-Create a step-by-step plan to fulfill the user's request. For each step, specify:
-1. A description of the step
-2. The tool to use
-3. Parameters for the tool
-
-Respond in the following JSON format:
-{
-  "plan": {
-    "steps": [
-      {
-        "description": "Step description",
-        "tool": "ToolName",
-        "params": {
-          "param1": "value1",
-          "param2": "value2"
-        }
-      }
-    ]
-  }
-}
-`;
+                planningPrompt = this.getStandardPlanningPrompt(input, context, availableTools);
             }
             
             // Registrar un evento de build_rules antes de invocar al LLM si hay reglas aplicadas
@@ -948,7 +1172,7 @@ Respond in the following JSON format:
             }
             
             // Call LLM to generate plan
-            this.logger.appendLine("Calling LLM to generate plan...");
+            this.logger.appendLine("Calling LLM to generate initial plan...");
             const planResult = await this.llmClient.generateCompletion(planningPrompt, {
                 maxTokens: 1024,
                 temperature: 0.2,
@@ -1022,35 +1246,205 @@ Respond in the following JSON format:
                     this.logger.appendLine(`Error en plan de fallback: ${fallbackError}`);
                 }
                 
-                // Fallback final: plan simple con la herramienta por defecto
-                return {
-                    steps: [{
-                        description: `Fallback: ${input}`,
-                        tool: this.determineDefaultTool(input, context),
-                        params: {
-                            ...context,
-                            input: input
-                        }
-                    }],
-                    modelInfo: planResult.modelInfo,
-                    tokenCount: planResult.tokenCount
-                };
+                throw parseError; // Re-throw para que se maneje en el bucle principal
             }
         } catch (error: any) {
-            this.logger.appendLine(`Error in planTask: ${error.message}`);
-            
-            // Fallback to simple plan
-            return {
-                steps: [{
-                    description: `Fallback for request: ${input}`,
-                    tool: this.determineDefaultTool(input, context),
-                    params: {
-                        ...context,
-                        input: input
-                    }
-                }]
-            };
+            this.logger.appendLine(`Error in generateInitialPlan: ${error.message}`);
+            throw error; // Re-throw para que se maneje en el bucle principal
         }
+    }
+
+    /**
+     * Generate an improved plan based on previous validation feedback
+     * @param input - User input to plan for
+     * @param context - Additional context
+     * @param validationResult - Previous validation result with feedback
+     * @param attemptNumber - Current attempt number
+     * @returns The improved execution plan
+     */
+    async generateImprovedPlan(input: string, context: any, validationResult: any, attemptNumber: number): Promise<any> {
+        try {
+            this.logger.appendLine(`Generating improved plan based on previous feedback...`);
+            
+            // Get available tools
+            const availableTools = this.toolManager.getAvailableTools();
+            const toolsList = availableTools.map((tool: any) => 
+                `- ${tool.name}: ${tool.description}`).join('\n');
+            
+            // Extract issues and suggestions from validation result
+            const issues = validationResult.issues || [];
+            const errors = validationResult.errors || [];
+            
+            // Build improvement prompt
+            const improvementPrompt = `
+You are an intelligent plan improver for a coding assistant. Your task is to create a better execution plan based on feedback from a previous attempt.
+
+ORIGINAL USER REQUEST:
+"${input}"
+
+PREVIOUS ATTEMPT FAILED WITH THESE ISSUES:
+${errors.map((error: string, i: number) => `${i + 1}. ${error}`).join('\n')}
+
+DETAILED FEEDBACK:
+${issues.map((issue: any, i: number) => `
+Issue ${i + 1} (${issue.severity}): ${issue.description}
+Suggestion: ${issue.suggestion || 'Not provided'}
+Step affected: ${issue.stepIndex !== undefined ? issue.stepIndex + 1 : 'Unknown'}
+`).join('\n')}
+
+AVAILABLE TOOLS:
+${toolsList}
+
+IMPROVEMENT GUIDELINES:
+1. Address each issue mentioned in the feedback
+2. Use the specific suggestions provided
+3. Ensure proper variable references (use $STEP[n].matches[0] for FindFileTool results)
+4. Use recursive patterns (**/*) for FindFileTool
+5. Include both content and sourcePath for analysis tools
+6. Create a more robust and reliable plan
+
+This is attempt #${attemptNumber}. Focus on fixing the specific issues identified.
+
+Respond in the following JSON format:
+{
+  "plan": {
+    "steps": [
+      {
+        "description": "Step description",
+        "tool": "ToolName",
+        "params": {
+          "param1": "value1",
+          "param2": "value2"
+        }
+      }
+    ],
+    "improvementReason": "explanation of how this addresses the previous issues"
+  }
+}
+`;
+
+            // Call LLM for improved plan
+            const planResult = await this.llmClient.generateCompletion(improvementPrompt, {
+                maxTokens: 1024,
+                temperature: 0.3,
+                format: 'json',
+                taskType: 'planning'
+            });
+
+            let plan;
+            try {
+                if (typeof planResult.content === 'string') {
+                    plan = JSON.parse(planResult.content);
+                } else {
+                    plan = planResult.content;
+                }
+                
+                if (!plan.plan || !plan.plan.steps || !Array.isArray(plan.plan.steps)) {
+                    throw new Error('Invalid improved plan structure');
+                }
+                
+                // Add metadata
+                plan.plan.modelInfo = planResult.modelInfo;
+                plan.plan.tokenCount = planResult.tokenCount;
+                plan.plan.improvementAttempt = attemptNumber;
+                plan.plan.addressedIssues = issues.length;
+                
+                this.logger.appendLine(`Generated improved plan with ${plan.plan.steps.length} steps`);
+                this.logger.appendLine(`Improvement reason: ${plan.plan.improvementReason || 'Not provided'}`);
+                
+                return plan.plan;
+            } catch (parseError: any) {
+                this.logger.appendLine(`Error parsing improved plan: ${parseError.message}`);
+                throw parseError;
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error in generateImprovedPlan: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a fallback plan when all planning attempts fail
+     * @param input - User input
+     * @param context - Additional context
+     * @returns Basic fallback plan
+     */
+    createFallbackPlan(input: string, context: any): any {
+        this.logger.appendLine("Creating fallback plan...");
+        
+        return {
+            steps: [{
+                description: `Fallback: ${input}`,
+                tool: this.determineDefaultTool(input, context),
+                params: {
+                    ...context,
+                    input: input
+                }
+            }],
+            isFallback: true,
+            fallbackReason: 'All planning attempts failed'
+        };
+    }
+
+    /**
+     * Get standard planning prompt for non-code tasks
+     * @param input - User input
+     * @param context - Additional context
+     * @param availableTools - Available tools
+     * @returns Standard planning prompt
+     */
+    private getStandardPlanningPrompt(input: string, context: any, availableTools: any[]): string {
+        return `
+You are a planning assistant for the Grec0AI Agent. Your task is to break down the user's request into a series of steps that can be executed by the agent.
+
+User request: "${input}"
+
+Current context:
+File: ${context.filePath || 'None'}
+Language: ${context.language || 'Unknown'}
+Selected text: ${context.selection ? 'Yes (length: ' + context.selection.length + ')' : 'None'}
+
+Available tools:
+${availableTools.map((tool: any) => `- ${tool.name}: ${tool.description}`).join('\n')}
+
+IMPORTANT: WHEN REFERENCING RESULTS FROM PREVIOUS STEPS IN YOUR PARAMETERS:
+- To use content read by ReadFileTool, use "$PREVIOUS_STEP.content" as the parameter value
+- To use another property from the previous result, use "$PREVIOUS_STEP.propertyName"
+- To reference a specific step, use "$STEP[n].propertyName" where n is the step index (starting at 0)
+NEVER use phrases like "content read in previous step" or "content from previous step", use the specific variables.
+
+IMPORTANT FOR FINDFILETOOL:
+- ALWAYS use recursive patterns: "**/*filename*" instead of "*filename*"
+- Correct examples: "**/*breadcrumb*.ts", "**/package.json", "**/*component.ts"
+- Patterns with ** search in all subdirectories
+- Without ** only searches in the root directory
+
+IMPORTANT FOR CODE ANALYSIS TOOLS:
+- When using AnalyzeCodeTool, FixErrorTool, or any tool that analyzes code, ALWAYS pass BOTH the content and the path of the file.
+- Correct example: { "content": "$STEP[0].content", "sourcePath": "$STEP[0].matches[0]", "focus": "ClassName" }
+- The sourcePath parameter is MANDATORY for the tool to work correctly.
+
+Create a step-by-step plan to fulfill the user's request. For each step, specify:
+1. A description of the step
+2. The tool to use
+3. Parameters for the tool
+
+Respond in the following JSON format:
+{
+  "plan": {
+    "steps": [
+      {
+        "description": "Step description",
+        "tool": "ToolName",
+        "params": {
+          "param1": "value1",
+          "param2": "value2"
+        }
+      }
+    ]
+  }
+}
+`;
     }
 
     /**
@@ -1583,10 +1977,13 @@ Respond in the following JSON format:
                         const property = specificStepMatch[2];
                         const arrayIndex = specificStepMatch[3] ? parseInt(specificStepMatch[3], 10) : undefined;
                         
+                        // Los pasos empiezan desde 0, así que $STEP[0] corresponde al índice 0 en el array results
+                        const resultIndex = stepIndex;
+                        
                         // Obtener el resultado completo para debugging
-                        const stepResult = stepIndex < results.length ? results[stepIndex] : undefined;
+                        const stepResult = resultIndex >= 0 && resultIndex < results.length ? results[resultIndex] : undefined;
                         if (!stepResult) {
-                            this.logger.appendLine(`WARNING: No result found for step ${stepIndex}`);
+                            this.logger.appendLine(`WARNING: No result found for step ${stepIndex} (looking at index ${resultIndex} in results array with length ${results.length})`);
                             return value; // Mantener el valor original si no hay resultado
                         }
                         
@@ -1598,7 +1995,7 @@ Respond in the following JSON format:
                         }
                         
                         // Intentar obtener la propiedad solicitada
-                        let propValue = getPreviousStepResult(property, stepIndex);
+                        let propValue = getPreviousStepResult(property, resultIndex);
                         
                         // Si no se encuentra, intentar con propiedades alternativas comunes
                         if (propValue === undefined && stepResult && stepResult.result) {
@@ -2005,7 +2402,7 @@ Respond in the following JSON format:
                 // Si hay una ruta de archivo, usarla para la consulta
                 if (step.params.sourcePath) {
                     const filePath = step.params.sourcePath;
-                    query = `código similar a ${path.basename(filePath)} patrones estructura`;
+                    query = `código similar a ${this.getFileName(filePath)} patrones estructura`;
                 } else if (step.params.code) {
                     // Tomar primeras 200 caracteres del código para la consulta
                     const snippet = step.params.code.substring(0, 200);
@@ -2018,13 +2415,13 @@ Respond in the following JSON format:
             } else if (step.tool === 'GenerateTestTool') {
                 // Buscar tests similares
                 if (step.params.sourcePath) {
-                    query = `tests para ${path.basename(step.params.sourcePath)}`;
+                    query = `tests para ${this.getFileName(step.params.sourcePath)}`;
                 }
                 contextCount = 5;
             } else if (step.tool === 'WriteFileTool') {
                 // Si es una herramienta de escritura, buscar archivos similares
                 if (step.params.filePath) {
-                    query = `código similar a ${path.basename(step.params.filePath)}`;
+                    query = `código similar a ${this.getFileName(step.params.filePath)}`;
                     contextCount = 5;
                 }
             }
@@ -2063,7 +2460,7 @@ Respond in the following JSON format:
             
             if (workspacePath && filePath) {
                 // Importar promptComposer para obtener reglas
-                const rulesContext = this.getRulesForFile(workspacePath, filePath);
+                const rulesContext = await this.getRulesForFile(workspacePath, filePath);
                 
                 if (rulesContext && rulesContext.length > 0) {
                     formattedContext += "\nREGLAS APLICABLES DEL WORKSPACE:\n\n";
@@ -2075,7 +2472,7 @@ Respond in the following JSON format:
                     if (rulesArray.length > 0 && this.logsView) {
                         this.logsView.addBuildRulesLog(
                             rulesArray,
-                            `Reglas aplicables para ${path.basename(filePath)} - ${step.tool}`
+                            `Reglas aplicables para ${this.getFileName(filePath)} - ${step.tool}`
                         );
                                                this.logger.appendLine(`Registrado evento de build_rules para la herramienta ${step.tool}`);
                     }
@@ -2098,58 +2495,72 @@ Respond in the following JSON format:
      * @param filePath Ruta del archivo
      * @returns Reglas en formato de texto
      */
-    private getRulesForFile(workspacePath: string, filePath: string): string {
+    private async getRulesForFile(workspacePath: string, filePath: string): Promise<string> {
         try {
             // Verificar si existe el archivo de reglas tradicional
-            const rulesPath = path.join(workspacePath, '.cursor', 'rules');
-            if (require('fs').existsSync(rulesPath)) {
-                return require('fs').readFileSync(rulesPath, 'utf8');
+            const rulesPath = this.joinPath(workspacePath, '.cursor', 'rules');
+            try {
+                const rulesUri = vscode.Uri.file(rulesPath);
+                const rulesContent = await vscode.workspace.fs.readFile(rulesUri);
+                return Buffer.from(rulesContent).toString('utf8');
+            } catch {
+                // Archivo no existe, continuar con alternativas
             }
             
             // Verificar si existe el archivo @rules.mdc
-            const altRulesPath = path.join(workspacePath, '@rules.mdc');
-            if (require('fs').existsSync(altRulesPath)) {
-               
-                const content = require('fs').readFileSync(altRulesPath, 'utf8');
+            const altRulesPath = this.joinPath(workspacePath, '@rules.mdc');
+            try {
+                const altRulesUri = vscode.Uri.file(altRulesPath);
+                const content = await vscode.workspace.fs.readFile(altRulesUri);
+                const contentStr = Buffer.from(content).toString('utf8');
                 
                 // Verificar si el archivo contiene frontmatter
-                if (content.startsWith('---')) {
+                if (contentStr.startsWith('---')) {
                     // Extraer solo el contenido (sin frontmatter)
-                    const endFrontmatter = content.indexOf('---', 3);
+                    const endFrontmatter = contentStr.indexOf('---', 3);
                     if (endFrontmatter !== -1) {
-                        return content.substring(endFrontmatter + 3).trim();
+                        return contentStr.substring(endFrontmatter + 3).trim();
                     }
                 }
                 
-                return content;
+                return contentStr;
+            } catch {
+                // Archivo no existe, continuar con directorio
             }
             
             // Verificar si existe el directorio de reglas
-            const rulesDir = path.join(workspacePath, '.cursor', 'rules.d');
-            if (require('fs').existsSync(rulesDir) && require('fs').statSync(rulesDir).isDirectory()) {
-                const files = require('fs').readdirSync(rulesDir);
-                let allRules = '';
-                
-                for (const file of files) {
-                    if (file.endsWith('.mdc')) {
-                        const filePath = path.join(rulesDir, file);
-                        const content = require('fs').readFileSync(filePath, 'utf8');
-                        
-                        // Verificar si el archivo contiene frontmatter
-                        if (content.startsWith('---')) {
-                            // Extraer solo el contenido (sin frontmatter)
-                            const endFrontmatter = content.indexOf('---', 3);
-                            if (endFrontmatter !== -1) {
-                                allRules += content.substring(endFrontmatter + 3).trim() + '\n\n';
-                                continue;
+            const rulesDir = this.joinPath(workspacePath, '.cursor', 'rules.d');
+            try {
+                const rulesDirUri = vscode.Uri.file(rulesDir);
+                const dirStat = await vscode.workspace.fs.stat(rulesDirUri);
+                if (dirStat.type === vscode.FileType.Directory) {
+                    const files = await vscode.workspace.fs.readDirectory(rulesDirUri);
+                    let allRules = '';
+                    
+                    for (const [fileName, fileType] of files) {
+                        if (fileType === vscode.FileType.File && fileName.endsWith('.mdc')) {
+                            const fileUri = vscode.Uri.joinPath(rulesDirUri, fileName);
+                            const content = await vscode.workspace.fs.readFile(fileUri);
+                            const contentStr = Buffer.from(content).toString('utf8');
+                            
+                            // Verificar si el archivo contiene frontmatter
+                            if (contentStr.startsWith('---')) {
+                                // Extraer solo el contenido (sin frontmatter)
+                                const endFrontmatter = contentStr.indexOf('---', 3);
+                                if (endFrontmatter !== -1) {
+                                    allRules += contentStr.substring(endFrontmatter + 3).trim() + '\n\n';
+                                    continue;
+                                }
                             }
+                            
+                            allRules += contentStr + '\n\n';
                         }
-                        
-                        allRules += content + '\n\n';
                     }
+                    
+                    return allRules.trim();
                 }
-                
-                return allRules.trim();
+            } catch {
+                // Directorio no existe
             }
             
             return '';
@@ -2178,8 +2589,8 @@ Respond in the following JSON format:
                 
                 const metadata = {
                     filePath: result.filePath || step.params.filePath,
-                    fileName: path.basename(result.filePath || step.params.filePath),
-                    extension: path.extname(result.filePath || step.params.filePath),
+                    fileName: this.getFileName(result.filePath || step.params.filePath),
+                    extension: this.getFileExtension(result.filePath || step.params.filePath),
                     createdAt: new Date().toISOString(),
                     stepDescription: step.description
                 };
@@ -2312,5 +2723,487 @@ Respond in the following JSON format:
             this.logger.appendLine(`Error en demoReasoningModel: ${errorMessage}`);
             throw error;
         }
+    }
+
+    /**
+     * Utility functions for path operations using VSCode API
+     */
+    private getFileName(filePath: string): string {
+        return vscode.Uri.file(filePath).path.split('/').pop() || '';
+    }
+
+    private getFileExtension(filePath: string): string {
+        const fileName = this.getFileName(filePath);
+        const lastDot = fileName.lastIndexOf('.');
+        return lastDot > 0 ? fileName.substring(lastDot) : '';
+    }
+
+    private joinPath(basePath: string, ...segments: string[]): string {
+        const baseUri = vscode.Uri.file(basePath);
+        return vscode.Uri.joinPath(baseUri, ...segments).fsPath;
+    }
+
+    /**
+     * Validate and optimize an execution plan using LLM intelligence
+     * @param plan - The execution plan to validate
+     * @param context - Additional context
+     * @returns Optimized plan or validation errors
+     */
+    async validateAndOptimizePlan(plan: any, context: any): Promise<{ valid: boolean, optimizedPlan?: any, errors?: string[] }> {
+        try {
+            this.logger.appendLine("Validating and optimizing execution plan with LLM...");
+            
+            if (!plan || !plan.steps || !Array.isArray(plan.steps)) {
+                return { valid: false, errors: ['Plan structure is invalid'] };
+            }
+
+            // Check if intelligent validation is enabled
+            const intelligentValidation = vscode.workspace.getConfiguration('grec0ai.agent').get<boolean>('intelligentValidation', true);
+            
+            if (!intelligentValidation) {
+                // Fallback to simple validation
+                this.logger.appendLine("Intelligent validation disabled, using simple validation");
+                return { valid: true, optimizedPlan: plan };
+            }
+
+            // Get available tools for context
+            const availableTools = this.toolManager.getAvailableTools();
+            const toolDescriptions = availableTools.map((tool: any) => `- ${tool.name}: ${tool.description}`).join('\n');
+
+            // Create validation prompt
+            const validationPrompt = `
+You are an intelligent plan validator for a coding assistant. Your task is to review and optimize an execution plan.
+
+ORIGINAL USER REQUEST:
+"${context.userInput || 'Not provided'}"
+
+CURRENT PLAN:
+${JSON.stringify(plan.steps, null, 2)}
+
+AVAILABLE TOOLS:
+${toolDescriptions}
+
+VALIDATION CRITERIA:
+1. Logic Flow: Do the steps follow a logical sequence?
+2. Tool Usage: Are the right tools used for each task?
+3. Parameter Quality: Are parameters well-formed and likely to work?
+4. Efficiency: Can any steps be removed, combined, or optimized?
+5. Error Prevention: Are there potential failure points that can be avoided?
+
+OPTIMIZATION RULES:
+- For FindFileTool: Use recursive patterns like "**/*filename*" instead of "*filename*"
+- For ReadFileTool: Ensure it references valid results from FindFileTool using "$STEP[n].matches[0]"
+- Remove redundant steps that do the same thing
+- Ensure proper variable references between steps
+- Check that file analysis tools have both content and sourcePath parameters
+
+Please analyze the plan and respond in JSON format:
+{
+  "valid": boolean,
+  "confidence": number (0-100),
+  "issues": [
+    {
+      "stepIndex": number,
+      "severity": "low|medium|high",
+      "description": "description of issue",
+      "suggestion": "how to fix it"
+    }
+  ],
+  "optimizedSteps": [
+    // Only include if plan needs optimization
+    // Same format as original steps but with improvements
+  ],
+  "reasoning": "explanation of your assessment"
+}
+`;
+
+            // Call LLM for validation
+            const validationResult = await this.llmClient.generateCompletion(validationPrompt, {
+                maxTokens: 2048,
+                temperature: 0.1,
+                format: 'json',
+                taskType: 'validation'
+            });
+
+            let validationData;
+            try {
+                if (typeof validationResult.content === 'string') {
+                    validationData = JSON.parse(validationResult.content);
+                } else {
+                    validationData = validationResult.content;
+                }
+            } catch (parseError: any) {
+                this.logger.appendLine(`Error parsing validation result: ${parseError.message}`);
+                return { valid: true, optimizedPlan: plan }; // Fallback to accepting the plan
+            }
+
+            this.logger.appendLine(`LLM validation confidence: ${validationData.confidence}%`);
+            this.logger.appendLine(`LLM reasoning: ${validationData.reasoning}`);
+
+            if (validationData.issues && validationData.issues.length > 0) {
+                for (const issue of validationData.issues) {
+                    this.logger.appendLine(`Issue in step ${issue.stepIndex + 1} (${issue.severity}): ${issue.description}`);
+                    if (issue.suggestion) {
+                        this.logger.appendLine(`  Suggestion: ${issue.suggestion}`);
+                    }
+                }
+            }
+
+            // Determine if plan should be accepted based on LLM assessment
+            const highSeverityIssues = validationData.issues?.filter((issue: any) => issue.severity === 'high') || [];
+            
+            // Trust LLM validation: accept if confidence is high and there are no high-severity issues
+            // Even with medium/low severity issues, trust the LLM's ability to optimize
+            const shouldAccept = validationData.valid && validationData.confidence >= 70 && highSeverityIssues.length === 0;
+            
+            // If LLM provides optimizedSteps, prioritize using them regardless of medium/low issues
+            const hasOptimizations = validationData.optimizedSteps && Array.isArray(validationData.optimizedSteps) && validationData.optimizedSteps.length > 0;
+            
+            const isValid = shouldAccept || (hasOptimizations && validationData.confidence >= 60);
+
+            if (!isValid) {
+                // Only reject if there are high-severity issues or very low confidence without optimizations
+                const errors = validationData.issues?.map((issue: any) => 
+                    `Step ${issue.stepIndex + 1}: ${issue.description}`) || ['Plan validation failed'];
+                return { valid: false, errors };
+            }
+
+            // Use optimized steps if provided, otherwise use original
+            const finalPlan = {
+                ...plan,
+                steps: validationData.optimizedSteps || plan.steps,
+                validationInfo: {
+                    confidence: validationData.confidence,
+                    reasoning: validationData.reasoning,
+                    optimized: !!validationData.optimizedSteps,
+                    issuesFound: validationData.issues?.length || 0,
+                    issuesResolved: hasOptimizations
+                }
+            };
+
+            if (validationData.optimizedSteps) {
+                this.logger.appendLine("Plan was optimized by LLM validation - using corrected version");
+                this.logger.appendLine(`Resolved ${validationData.issues?.length || 0} potential issues through optimization`);
+            } else {
+                this.logger.appendLine("Plan validation complete: no optimizations needed");
+            }
+
+            return { valid: true, optimizedPlan: finalPlan };
+            
+        } catch (error: any) {
+            this.logger.appendLine(`Error in LLM validation: ${error.message}`);
+            // Fallback to accepting the plan if validation fails
+            return { valid: true, optimizedPlan: plan };
+        }
+    }
+
+    /**
+     * Evaluate execution results to determine if replanning is needed
+     * @param originalInput - The original user input
+     * @param plan - The executed plan
+     * @param results - The execution results
+     * @param reflection - The execution reflection
+     * @returns Whether replanning is recommended and reasoning
+     */
+    async evaluateExecutionResults(
+        originalInput: string,
+        plan: any,
+        results: any[],
+        reflection: any
+    ): Promise<{ shouldReplan: boolean, reasoning: string, confidence: number }> {
+        try {
+            this.logger.appendLine("Evaluating execution results for potential replanning...");
+
+            // Check if auto-replanning is enabled
+            const autoReplanning = vscode.workspace.getConfiguration('grec0ai.agent').get<boolean>('autoReplanning', true);
+            if (!autoReplanning) {
+                this.logger.appendLine("Auto-replanning is disabled");
+                return { shouldReplan: false, reasoning: "Auto-replanning is disabled in settings", confidence: 100 };
+            }
+
+            // Create evaluation prompt
+            const evaluationPrompt = `
+You are an intelligent execution evaluator for a coding assistant. Your task is to analyze the results of a plan execution and determine if replanning would be beneficial.
+
+ORIGINAL USER REQUEST:
+"${originalInput}"
+
+EXECUTED PLAN:
+${JSON.stringify(plan.steps, null, 2)}
+
+EXECUTION RESULTS SUMMARY:
+- Total steps: ${results.length}
+- Successful steps: ${results.filter(r => r.success).length}
+- Failed steps: ${results.filter(r => !r.success).length}
+- Status: ${reflection.status}
+${reflection.stoppedAtStep ? `- Stopped at: ${reflection.stoppedAtStep}` : ''}
+${reflection.stopReason ? `- Stop reason: ${reflection.stopReason}` : ''}
+
+DETAILED RESULTS:
+${JSON.stringify(results.map((r, i) => ({
+    step: i + 1,
+    success: r.success,
+    tool: r.step?.tool,
+    description: r.step?.description,
+    error: r.error,
+    hasResult: !!r.result
+})), null, 2)}
+
+EVALUATION CRITERIA:
+1. Goal Achievement: Did the execution accomplish the user's original request?
+2. Error Analysis: Are the errors fundamental design flaws or recoverable issues?
+3. Alternative Approaches: Could a different approach be more successful?
+4. Missing Steps: Are there obvious missing steps that would improve results?
+5. Tool Selection: Were appropriate tools selected for each task?
+
+Please analyze the execution and respond in JSON format:
+{
+  "shouldReplan": boolean,
+  "confidence": number (0-100),
+  "reasoning": "detailed explanation of your assessment",
+  "failureType": "none|temporary|systematic|fundamental",
+  "suggestedImprovements": [
+    "specific suggestions for replanning"
+  ]
+}
+`;
+
+            // Call LLM for evaluation
+            const evaluationResult = await this.llmClient.generateCompletion(evaluationPrompt, {
+                maxTokens: 1024,
+                temperature: 0.2,
+                format: 'json',
+                taskType: 'evaluation'
+            });
+
+            let evaluationData;
+            try {
+                if (typeof evaluationResult.content === 'string') {
+                    evaluationData = JSON.parse(evaluationResult.content);
+                } else {
+                    evaluationData = evaluationResult.content;
+                }
+            } catch (parseError: any) {
+                this.logger.appendLine(`Error parsing evaluation result: ${parseError.message}`);
+                // Fallback: replan if there were many failures
+                const failureRate = results.filter(r => !r.success).length / results.length;
+                return {
+                    shouldReplan: failureRate > 0.3,
+                    reasoning: "Evaluation parsing failed, using simple failure rate heuristic",
+                    confidence: 50
+                };
+            }
+
+            this.logger.appendLine(`Evaluation result: ${evaluationData.shouldReplan ? 'REPLAN' : 'NO REPLAN'}`);
+            this.logger.appendLine(`Confidence: ${evaluationData.confidence}%`);
+            this.logger.appendLine(`Reasoning: ${evaluationData.reasoning}`);
+            this.logger.appendLine(`Failure type: ${evaluationData.failureType || 'unknown'}`);
+
+            if (evaluationData.suggestedImprovements) {
+                this.logger.appendLine("Suggested improvements:");
+                evaluationData.suggestedImprovements.forEach((improvement: string, i: number) => {
+                    this.logger.appendLine(`  ${i + 1}. ${improvement}`);
+                });
+            }
+
+            return {
+                shouldReplan: evaluationData.shouldReplan && evaluationData.confidence >= 60,
+                reasoning: evaluationData.reasoning,
+                confidence: evaluationData.confidence
+            };
+
+        } catch (error: any) {
+            this.logger.appendLine(`Error evaluating execution results: ${error.message}`);
+            // Fallback logic
+            const failureRate = results.filter(r => !r.success).length / results.length;
+            return {
+                shouldReplan: failureRate > 0.5,
+                reasoning: `Evaluation failed, using fallback logic. Failure rate: ${Math.round(failureRate * 100)}%`,
+                confidence: 30
+            };
+        }
+    }
+
+    /**
+     * Replan a task based on previous execution results
+     * @param originalInput - The original user input
+     * @param previousPlan - The previous plan that was executed
+     * @param previousResults - Results from the previous execution
+     * @param previousReflection - Reflection from the previous execution
+     * @param replanCount - Number of times this has been replanned
+     * @returns New execution plan
+     */
+    async replanTask(
+        originalInput: string,
+        previousPlan: any,
+        previousResults: any[],
+        previousReflection: any,
+        replanCount: number
+    ): Promise<any> {
+        try {
+            this.logger.appendLine(`Replanning task (attempt ${replanCount + 1})...`);
+
+            // Get available tools
+            const availableTools = this.toolManager.getAvailableTools();
+            const toolDescriptions = availableTools.map((tool: any) => `- ${tool.name}: ${tool.description}`).join('\n');
+
+            // Create replanning prompt
+            const replanningPrompt = `
+You are an intelligent task replanner for a coding assistant. Your task is to create a new execution plan based on the lessons learned from a previous failed or suboptimal attempt.
+
+ORIGINAL USER REQUEST:
+"${originalInput}"
+
+PREVIOUS PLAN (FAILED/SUBOPTIMAL):
+${JSON.stringify(previousPlan.steps, null, 2)}
+
+WHAT WENT WRONG:
+- Status: ${previousReflection.status}
+- Successful steps: ${previousResults.filter((r: any) => r.success).length}/${previousResults.length}
+${previousReflection.stoppedAtStep ? `- Stopped at: ${previousReflection.stoppedAtStep}` : ''}
+${previousReflection.stopReason ? `- Reason: ${previousReflection.stopReason}` : ''}
+
+DETAILED FAILURE ANALYSIS:
+${JSON.stringify(previousResults.map((r: any, i: number) => ({
+    step: i + 1,
+    success: r.success,
+    tool: r.step?.tool,
+    description: r.step?.description,
+    error: r.error
+})).filter((r: any) => !r.success), null, 2)}
+
+AVAILABLE TOOLS:
+${toolDescriptions}
+
+REPLANNING GUIDELINES:
+1. Learn from Failures: Avoid the specific issues that caused failures in the previous attempt
+2. Alternative Approach: Consider fundamentally different approaches to achieve the same goal
+3. Better Tool Selection: Choose more appropriate tools based on the failure analysis
+4. Improved Parameters: Use better parameters, especially for file paths and patterns
+5. Add Validation Steps: Include verification steps to catch issues early
+6. Simplify: Break complex steps into simpler, more reliable sub-steps
+
+SPECIFIC RULES:
+- For file operations: Always verify file existence before attempting to read/modify
+- For searches: Use more specific and reliable search patterns
+- For analysis: Ensure all required parameters are provided
+- Add error handling and fallback steps where appropriate
+
+This is replanning attempt #${replanCount + 1}. Be more conservative and reliable than previous attempts.
+
+Respond in the following JSON format:
+{
+  "plan": {
+    "steps": [
+      {
+        "description": "Step description",
+        "tool": "ToolName",
+        "params": {
+          "param1": "value1",
+          "param2": "value2"
+        }
+      }
+    ],
+    "replanningReason": "explanation of why this approach should work better",
+    "learningsApplied": [
+      "specific lessons learned from previous failure"
+    ]
+  }
+}
+`;
+
+            // Call LLM for replanning
+            const replanResult = await this.llmClient.generateCompletion(replanningPrompt, {
+                maxTokens: 2048,
+                temperature: 0.3,
+                format: 'json',
+                taskType: 'replanning'
+            });
+
+            let newPlan;
+            try {
+                if (typeof replanResult.content === 'string') {
+                    newPlan = JSON.parse(replanResult.content);
+                } else {
+                    newPlan = replanResult.content;
+                }
+            } catch (parseError: any) {
+                this.logger.appendLine(`Error parsing replan result: ${parseError.message}`);
+                throw new Error(`Failed to parse replanning result: ${parseError.message}`);
+            }
+
+            // Validate new plan structure
+            if (!newPlan.plan || !newPlan.plan.steps || !Array.isArray(newPlan.plan.steps)) {
+                throw new Error('Invalid replan structure');
+            }
+
+            // Add metadata about replanning
+            const finalPlan = {
+                ...newPlan.plan,
+                modelInfo: replanResult.modelInfo,
+                tokenCount: replanResult.tokenCount,
+                replanningInfo: {
+                    attempt: replanCount + 1,
+                    reason: newPlan.plan.replanningReason,
+                    learningsApplied: newPlan.plan.learningsApplied || [],
+                    previousFailures: previousResults.filter((r: any) => !r.success).length
+                }
+            };
+
+            this.logger.appendLine(`Replanning complete. New plan has ${finalPlan.steps.length} steps`);
+            this.logger.appendLine(`Replanning reason: ${finalPlan.replanningInfo.reason}`);
+            if (finalPlan.replanningInfo.learningsApplied.length > 0) {
+                this.logger.appendLine("Learnings applied:");
+                finalPlan.replanningInfo.learningsApplied.forEach((learning: string, i: number) => {
+                    this.logger.appendLine(`  ${i + 1}. ${learning}`);
+                });
+            }
+
+            return finalPlan;
+
+        } catch (error: any) {
+            this.logger.appendLine(`Error in replanning: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Extract issues from validation errors for planning improvement
+     * @param errors - Array of validation error messages
+     * @returns Array of structured issues
+     */
+    private extractIssuesFromValidationErrors(errors: string[]): any[] {
+        return errors.map((error, index) => {
+            // Try to extract step number from error message
+            const stepMatch = error.match(/Step (\d+):/);
+            const stepIndex = stepMatch ? parseInt(stepMatch[1], 10) - 1 : 0;
+            
+            // Determine severity based on error content
+            let severity = 'medium';
+            if (error.toLowerCase().includes('critical') || error.toLowerCase().includes('fatal')) {
+                severity = 'high';
+            } else if (error.toLowerCase().includes('warning') || error.toLowerCase().includes('minor')) {
+                severity = 'low';
+            }
+            
+            // Generate suggestions based on common error patterns
+            let suggestion = 'Review and correct the plan structure';
+            if (error.includes('$STEP[') && error.includes('paths[0]')) {
+                suggestion = 'Change variable references from $STEP[n].paths[0] to $STEP[n].matches[0]';
+            } else if (error.includes('FindFileTool')) {
+                suggestion = 'Use recursive patterns like **/*filename* for FindFileTool';
+            } else if (error.includes('sourcePath')) {
+                suggestion = 'Ensure all analysis tools have both content and sourcePath parameters';
+            } else if (error.includes('parameter')) {
+                suggestion = 'Check that all required parameters are provided';
+            }
+            
+            return {
+                stepIndex,
+                severity,
+                description: error,
+                suggestion
+            };
+        });
     }
 }
