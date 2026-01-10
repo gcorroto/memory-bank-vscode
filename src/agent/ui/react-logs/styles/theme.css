@@ -1,0 +1,129 @@
+/**
+ * Theme CSS Variables
+ * Adapts to VSCode theme (light/dark)
+ */
+
+:root {
+    /* Colors from VSCode API */
+    --vscode-font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif);
+    --vscode-font-size: var(--vscode-font-size, 13px);
+    --vscode-font-weight: var(--vscode-font-weight, 400);
+}
+
+body.vscode-light {
+    --bg-color: #ffffff;
+    --text-color: #333333;
+    --accent-color: #007acc;
+    --border-color: #eaeaea;
+    --code-bg: #f5f5f5;
+    --step-bg: #f0f7ff;
+    --step-border: #007acc;
+    --plan-bg: #fff8f0;
+    --plan-border: #ff8c00;
+    --reflection-bg: #f0fff0;
+    --reflection-border: #00cc44;
+    --reflection-success-bg: #e6ffe6;
+    --reflection-success-border: #00cc44;
+    --reflection-partial-bg: #fffde6;
+    --reflection-partial-border: #cccc00;
+    --reflection-failed-bg: #ffe6e6;
+    --reflection-failed-border: #cc0000;
+    --success-color: #00cc44;
+    --failure-color: #cc0000;
+    --warning-color: #cccc00;
+    --timestamp-color: #888888;
+    --collapsible-bg: #f1f1f1;
+    --collapsible-hover: #dddddd;
+    --tab-bg: #ececec;
+    --tab-active-bg: #ffffff;
+    --tab-hover: #f5f5f5;
+    --model-info-bg: #e6f0fa;
+    --rules-bg: #faf0e6;
+    --token-info-bg: #e6fae8;
+    --build-rules-bg: #f0f0ff;
+    --build-rules-border: #7b68ee;
+    --cost-info-bg: #e8f4ff;
+    --cost-info-border: #5a9bd5;
+    --cost-info-color: #2c5898;
+    --token-label-color: #4caf50;
+    --cost-label-color: #5a9bd5;
+}
+
+body.vscode-dark {
+    --bg-color: #1e1e1e;
+    --text-color: #e0e0e0;
+    --accent-color: #0e639c;
+    --border-color: #3e3e3e;
+    --code-bg: #2d2d2d;
+    --step-bg: #1a2535;
+    --step-border: #0e639c;
+    --plan-bg: #25231a;
+    --plan-border: #bb8c00;
+    --reflection-bg: #1a2c1a;
+    --reflection-border: #089404;
+    --reflection-success-bg: #0f2f0f;
+    --reflection-success-border: #22cc44;
+    --reflection-partial-bg: #2f2f0f;
+    --reflection-partial-border: #cccc22;
+    --reflection-failed-bg: #2f0f0f;
+    --reflection-failed-border: #cc2222;
+    --success-color: #22cc44;
+    --failure-color: #f14c4c;
+    --warning-color: #f1d14c;
+    --timestamp-color: #7d7d7d;
+    --collapsible-bg: #2a2a2a;
+    --collapsible-hover: #3a3a3a;
+    --tab-bg: #252525;
+    --tab-active-bg: #1e1e1e;
+    --tab-hover: #333333;
+    --model-info-bg: #17212b;
+    --rules-bg: #312118;
+    --token-info-bg: #1d2a1c;
+    --build-rules-bg: #1a1a35;
+    --build-rules-border: #7b68ee;
+    --cost-info-bg: #182838;
+    --cost-info-border: #3b8bd8;
+    --cost-info-color: #5dadff;
+    --token-label-color: #8bc34a;
+    --cost-label-color: #5a9bd5;
+}
+
+body.vscode-high-contrast {
+    --bg-color: #000000;
+    --text-color: #ffffff;
+    --accent-color: #00ffff;
+    --border-color: #ffffff;
+    --code-bg: #0a0a0a;
+    --step-bg: #001020;
+    --step-border: #00ffff;
+    --plan-bg: #201000;
+    --plan-border: #ffff00;
+    --reflection-bg: #002000;
+    --reflection-border: #00ff00;
+    --reflection-success-bg: #002000;
+    --reflection-success-border: #00ff00;
+    --reflection-partial-bg: #202000;
+    --reflection-partial-border: #ffff00;
+    --reflection-failed-bg: #200000;
+    --reflection-failed-border: #ff0000;
+    --success-color: #00ff00;
+    --failure-color: #ff0000;
+    --warning-color: #ffff00;
+    --timestamp-color: #cccccc;
+    --collapsible-bg: #1a1a1a;
+    --collapsible-hover: #2a2a2a;
+    --tab-bg: #0a0a0a;
+    --tab-active-bg: #000000;
+    --tab-hover: #1a1a1a;
+    --model-info-bg: #001020;
+    --rules-bg: #201000;
+    --token-info-bg: #002010;
+    --build-rules-bg: #100020;
+    --build-rules-border: #ff00ff;
+    --cost-info-bg: #001020;
+    --cost-info-border: #00ffff;
+    --cost-info-color: #00ffff;
+    --token-label-color: #00ff00;
+    --cost-label-color: #00ffff;
+}
+

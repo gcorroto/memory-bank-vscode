@@ -1,0 +1,211 @@
+/**
+ * Styles for React Flow view
+ */
+
+#root {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.flow-container {
+    flex: 1;
+    background-color: var(--bg-color);
+}
+
+.react-flow__node {
+    font-size: 12px;
+}
+
+.react-flow__node.pending {
+    border-color: var(--border-color) !important;
+    background-color: var(--bg-color) !important;
+}
+
+.react-flow__node.running {
+    border-color: var(--accent-color) !important;
+    background-color: var(--accent-color) !important;
+    color: white !important;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.react-flow__node.success {
+    border-color: var(--success-color) !important;
+    background-color: var(--success-color) !important;
+    color: white !important;
+}
+
+.react-flow__node.error {
+    border-color: var(--failure-color) !important;
+    background-color: var(--failure-color) !important;
+    color: white !important;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* Plan Node Custom Styles */
+.plan-node {
+    padding: 15px;
+    border-radius: 8px;
+    border: 2px solid var(--border-color);
+    background-color: var(--code-bg);
+    min-width: 200px;
+    max-width: 300px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.plan-node:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+}
+
+.plan-node-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.plan-node-index {
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    font-size: 11px;
+}
+
+.plan-node-tool {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    margin-left: auto;
+}
+
+.plan-node-description {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-color);
+    margin-bottom: 8px;
+}
+
+.plan-node-status {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.plan-node-status.pending {
+    background-color: var(--timestamp-color);
+    color: white;
+}
+
+.plan-node-status.running {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.plan-node-status.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.plan-node-status.error {
+    background-color: var(--failure-color);
+    color: white;
+}
+
+/* Status Overlay */
+.status-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 15px 20px;
+    border-bottom-left-radius: 8px;
+    z-index: 10;
+    min-width: 200px;
+}
+
+.status-overlay h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: var(--accent-color);
+}
+
+.status-overlay p {
+    margin: 5px 0;
+    font-size: 12px;
+}
+
+.status-overlay .stat-label {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.status-overlay .stat-value.success {
+    color: var(--success-color);
+}
+
+.status-overlay .stat-value.error {
+    color: var(--failure-color);
+}
+
+.status-overlay .stat-value.pending {
+    color: var(--timestamp-color);
+}
+
+/* Toolbar */
+.flow-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-color);
+}
+
+.flow-toolbar h2 {
+    margin: 0;
+    flex: 1;
+    font-size: 18px;
+    color: var(--accent-color);
+}
+
+.flow-toolbar button {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    margin-left: 10px;
+    cursor: pointer;
+    border: none;
+}
+
+.flow-toolbar button:hover {
+    opacity: 0.9;
+}
+
+.flow-toolbar button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+

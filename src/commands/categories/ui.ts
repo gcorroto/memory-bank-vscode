@@ -2,9 +2,13 @@ import * as vscode from 'vscode';
 import { CommandRegistration } from '../types';
 import { createCommandRegistration } from '../utils';
 import { EventsViewer } from '../../agent/ui/EventsViewer';
+import { FlowViewer } from '../../agent/ui/FlowViewer';
+import { ConfigViewer } from '../../agent/ui/ConfigViewer';
 
-// Variable para acceder a la instancia global del EventsViewer
+// Variables para acceder a las instancias globales
 let eventsViewer: EventsViewer | null = null;
+let flowViewer: FlowViewer | null = null;
+let configViewer: ConfigViewer | null = null;
 
 // Función para obtener o crear la instancia de EventsViewer
 function getEventsViewer(): EventsViewer | null {
@@ -18,8 +22,59 @@ function getEventsViewer(): EventsViewer | null {
         return eventsViewer;
     }
     
-    // No hay instancia disponible y no podemos crear una sin contexto
+    // No hay instancia disponible
     return null;
+}
+
+// Función para obtener o crear la instancia de FlowViewer
+function getFlowViewer(context?: vscode.ExtensionContext): FlowViewer | null {
+    if ((global as any).flowViewer) {
+        return (global as any).flowViewer;
+    }
+    
+    if (flowViewer) {
+        return flowViewer;
+    }
+    
+    // Crear nueva instancia si se proporciona contexto
+    if (context) {
+        flowViewer = new FlowViewer(context);
+        (global as any).flowViewer = flowViewer;
+        return flowViewer;
+    }
+    
+    return null;
+}
+
+// Función para obtener o crear la instancia de ConfigViewer
+function getConfigViewer(context?: vscode.ExtensionContext): ConfigViewer | null {
+    if ((global as any).configViewer) {
+        return (global as any).configViewer;
+    }
+    
+    if (configViewer) {
+        return configViewer;
+    }
+    
+    // Crear nueva instancia si se proporciona contexto
+    if (context) {
+        configViewer = new ConfigViewer(context);
+        (global as any).configViewer = configViewer;
+        return configViewer;
+    }
+    
+    return null;
+}
+
+// Función para inicializar los viewers con el contexto
+export function initializeViewers(context: vscode.ExtensionContext): void {
+    getFlowViewer(context);
+    getConfigViewer(context);
+}
+
+// Función para obtener el contexto de extensión desde el global
+function getExtensionContext(): vscode.ExtensionContext | null {
+    return (global as any).extensionContext || null;
 }
 
 export const uiCommands: CommandRegistration[] = [
@@ -67,5 +122,25 @@ export const uiCommands: CommandRegistration[] = [
         } else {
             vscode.window.showErrorMessage('No se puede mostrar la terminal: No hay instancia disponible');
         }
+    }),
+
+    createCommandRegistration('grec0ai.showFlowViewer', () => {
+        const context = getExtensionContext();
+        const viewer = getFlowViewer(context || undefined);
+        if (viewer) {
+            viewer.show();
+        } else {
+            vscode.window.showErrorMessage('No se puede mostrar el visualizador de flujos: No hay contexto disponible');
+        }
+    }),
+
+    createCommandRegistration('grec0ai.showConfigViewer', () => {
+        const context = getExtensionContext();
+        const viewer = getConfigViewer(context || undefined);
+        if (viewer) {
+            viewer.show();
+        } else {
+            vscode.window.showErrorMessage('No se puede mostrar el configurador: No hay contexto disponible');
+        }
     })
-]; 
+];

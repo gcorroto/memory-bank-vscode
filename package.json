@@ -162,6 +162,16 @@
       {
         "command": "grec0ai.toggleTerminal",
         "title": "Grec0AI: Mostrar/Ocultar Terminal CLI"
+      },
+      {
+        "command": "grec0ai.showFlowViewer",
+        "title": "Mostrar Visualizador de Flujos",
+        "category": "Grec0AI Agent"
+      },
+      {
+        "command": "grec0ai.showConfigViewer",
+        "title": "Mostrar Configurador Visual",
+        "category": "Grec0AI Agent"
       }
     ],
     "menus": {
@@ -416,29 +426,38 @@
     "@types/async-lock": "^1.1.1",
     "@types/bluebird": "*",
     "@types/glob": "^8.1.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/request": "*",
     "acorn": "^8.14.0",
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
+    "dagre": "^0.8.5",
     "glob": "^10.4.5",
     "gray-matter": "^4.0.3",
     "grec0ai-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",
     "openai": "^4.103.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "reactflow": "^11.10.0",
     "request": "^2.81.0",
     "ts-log-debug": "^4.0.4",
     "vectra": "^0.11.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/dagre": "^0.7.52",
     "@types/jest": "^29.5.14",
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.0",
     "@types/vscode": "^1.26.0",
     "@types/webpack-env": "^1.18.0",
     "copy-webpack-plugin": "^13.0.0",
+    "css-loader": "^6.8.1",
     "eslint": "^8.40.0",
+    "style-loader": "^3.3.3",
     "ts-loader": "^9.4.2",
     "typescript": "^5.0.4",
     "webpack": "^5.82.0",

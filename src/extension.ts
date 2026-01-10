@@ -112,6 +112,9 @@ export function activate(context: vscode.ExtensionContext) {
  * Continues activation after dynamic modules are loaded
  */
 function continueActivation(context: vscode.ExtensionContext) {
+  // Store context globally for commands access
+  (global as any).extensionContext = context;
+  
   // No ejecutamos aquí el autofixer.md, lo haremos después de inicializar el agente
   // para evitar ejecuciones duplicadas
   
@@ -119,6 +122,9 @@ function continueActivation(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider('grec0ai-filesystem-tree', fileTreeProvider);
   vscode.window.registerTreeDataProvider('grec0ai-coverage-summary', coverageSummaryProvider);
   vscode.window.registerTreeDataProvider('grec0ai-coverage-details', coverageDetailsProvider);
+
+  // Initialize UI viewers
+  initializeUIViewers(context);
 
   // Register all commands using the new structure
   const commandDisposables = registerAllCommands();
@@ -141,6 +147,21 @@ function continueActivation(context: vscode.ExtensionContext) {
   // y eventualmente se eliminarán por completo durante la refactorización.
   // Por ahora, se mantienen para garantizar la compatibilidad con código existente
   // que referencia las variables agent y context de este archivo.
+}
+
+/**
+ * Initialize UI viewers (React-based webviews)
+ */
+function initializeUIViewers(context: vscode.ExtensionContext) {
+  try {
+    // Import and initialize viewers
+    import('./commands/categories/ui').then(uiModule => {
+      uiModule.initializeViewers(context);
+      logger.appendLine('UI viewers initialized successfully');
+    });
+  } catch (error: any) {
+    logger.appendLine(`Error initializing UI viewers: ${error.message}`);
+  }
 }
 
 /**

@@ -243,8 +243,8 @@ export async function query(query: string, limit: number = 5): Promise<VectorSea
     // Generar embeddings para la consulta
     const vector = await openaiService.generateEmbeddings(query);
     
-    // Realizar búsqueda con Vectra
-    const results = await index.similaritySearch(vector, { topK: limit });
+    // Realizar búsqueda con Vectra (método correcto: queryItems)
+    const results = await index.queryItems(vector, limit);
     
     // Transformar a nuestro formato de resultados
     return results.map((result: VectraSearchResult) => {

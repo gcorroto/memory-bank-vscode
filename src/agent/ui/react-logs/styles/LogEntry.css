@@ -1,0 +1,372 @@
+/**
+ * Styles for Log Entry components
+ */
+
+.log-entry {
+    margin-bottom: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.log-entry:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.log-header:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.log-timestamp {
+    color: var(--timestamp-color);
+    margin-right: 12px;
+    font-size: 0.9em;
+    font-weight: normal;
+}
+
+.log-icon {
+    margin-right: 12px;
+    font-size: 1.3em;
+    flex-shrink: 0;
+}
+
+.log-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-tool,
+.log-model {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-left: 10px;
+    font-size: 0.85em;
+    font-weight: normal;
+    flex-shrink: 0;
+}
+
+.log-content {
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.log-entry.expanded .log-content {
+    padding: 16px;
+    max-height: 5000px;
+}
+
+.log-section {
+    margin-bottom: 16px;
+}
+
+.log-section:last-child {
+    margin-bottom: 0;
+}
+
+.log-section h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: var(--accent-color);
+    font-size: 1em;
+}
+
+.code-block {
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    overflow: auto;
+    max-height: 400px;
+}
+
+/* Step Log Styles */
+.step-log {
+    background-color: var(--step-bg);
+    border-left: 4px solid var(--step-border);
+}
+
+.step-log.success .log-header {
+    border-bottom: 2px solid var(--success-color);
+}
+
+.step-log.error .log-header {
+    border-bottom: 2px solid var(--failure-color);
+}
+
+/* Plan Log Styles */
+.plan-log {
+    background-color: var(--plan-bg);
+    border-left: 4px solid var(--plan-border);
+}
+
+.steps-list {
+    margin: 0;
+    padding: 0 0 0 20px;
+    list-style-type: decimal;
+}
+
+.steps-list li {
+    margin-bottom: 12px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.02);
+    border-radius: 4px;
+}
+
+.step-info {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.step-description {
+    flex: 1;
+    font-weight: 500;
+}
+
+.step-tool {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 10px;
+    font-size: 0.85em;
+    font-weight: normal;
+}
+
+.step-params {
+    font-size: 0.9em;
+    margin-left: 0;
+    padding: 10px;
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    max-height: 200px;
+    overflow: auto;
+}
+
+/* Reflection Log Styles */
+.reflection-log {
+    background-color: var(--reflection-bg);
+    border-left: 4px solid var(--reflection-border);
+}
+
+.reflection-success {
+    background-color: var(--reflection-success-bg);
+    border-left: 4px solid var(--reflection-success-border);
+}
+
+.reflection-partial {
+    background-color: var(--reflection-partial-bg);
+    border-left: 4px solid var(--reflection-partial-border);
+}
+
+.reflection-failed {
+    background-color: var(--reflection-failed-bg);
+    border-left: 4px solid var(--reflection-failed-border);
+}
+
+.reflection-stats {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 12px;
+}
+
+.reflection-stats p {
+    margin: 6px 0;
+}
+
+.success-count {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.failed-count {
+    color: var(--failure-color);
+    font-weight: bold;
+}
+
+.stopped-step,
+.stop-reason {
+    font-weight: bold;
+    color: var(--warning-color);
+}
+
+.reflection-recommendations {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 12px;
+}
+
+.recommendations-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.recommendation-item {
+    margin-bottom: 8px;
+}
+
+.reflection-text p {
+    margin: 0 0 10px 0;
+}
+
+.reflection-text p:last-child {
+    margin-bottom: 0;
+}
+
+/* Build Rules Log Styles */
+.build-rules-log {
+    background-color: var(--build-rules-bg);
+    border-left: 4px solid var(--build-rules-border);
+}
+
+.rules-list {
+    list-style-type: disc;
+    padding-left: 20px;
+    margin: 0;
+}
+
+.rules-list li {
+    margin-bottom: 6px;
+}
+
+.no-rules {
+    font-style: italic;
+    color: var(--timestamp-color);
+    padding: 8px;
+}
+
+/* Model Info Styles */
+.model-info {
+    background-color: var(--model-info-bg);
+    border-radius: 4px;
+    padding: 14px;
+    margin-top: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.model-section-header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.15);
+    margin: -14px -14px 12px -14px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--accent-color);
+    user-select: none;
+}
+
+.model-section-header:hover {
+    background-color: rgba(0, 0, 0, 0.25);
+}
+
+.model-content {
+    display: none;
+}
+
+.model-info.expanded .model-content {
+    display: block;
+}
+
+.model-details p {
+    margin: 6px 0;
+}
+
+.token-usage,
+.cost-info {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 3px solid var(--border-color);
+}
+
+.token-usage {
+    background-color: var(--token-info-bg);
+    border-left-color: var(--reflection-border);
+}
+
+.cost-info {
+    background-color: var(--cost-info-bg);
+    border-left-color: var(--cost-info-border);
+}
+
+.token-usage h5,
+.cost-info h5 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: var(--accent-color);
+    font-size: 0.95em;
+}
+
+.token-usage p,
+.cost-info p {
+    margin: 6px 0;
+    font-size: 0.9em;
+}
+
+.cost-info strong {
+    color: var(--cost-info-color);
+}
+
+.token-label {
+    color: var(--token-label-color);
+    font-weight: 500;
+}
+
+.cost-label {
+    color: var(--cost-label-color);
+    font-weight: 500;
+}
+
+.desglose-label {
+    color: var(--timestamp-color);
+    font-size: 0.85em;
+}
+
+/* Model Usage Table */
+.model-usage-container {
+    margin-top: 12px;
+}
+
+.model-usage-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+    margin-top: 10px;
+}
+
+.model-usage-table th,
+.model-usage-table td {
+    border: 1px solid var(--border-color);
+    padding: 8px;
+    text-align: left;
+}
+
+.model-usage-table th {
+    background-color: rgba(0, 0, 0, 0.1);
+    font-weight: 600;
+}
+
+.model-usage-table .total-row {
+    font-weight: bold;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+

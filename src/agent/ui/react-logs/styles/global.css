@@ -1,0 +1,110 @@
+/**
+ * Global styles for React Logs Webview
+ */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    line-height: 1.6;
+    padding: 0;
+    margin: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    overflow-x: hidden;
+}
+
+#root {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 0;
+    color: var(--text-color);
+}
+
+h1 {
+    color: var(--accent-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+pre {
+    background-color: var(--code-bg);
+    padding: 10px;
+    border-radius: 5px;
+    overflow: auto;
+    max-width: 100%;
+}
+
+code {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+}
+
+button {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    cursor: pointer;
+    border: none;
+    outline: none;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input, textarea, select {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    background-color: var(--code-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 6px 10px;
+    border-radius: 4px;
+}
+
+input:focus, textarea:focus, select:focus {
+    outline: 1px solid var(--accent-color);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-color);
+}
+
+/* Utility classes */
+.success {
+    color: var(--success-color);
+}
+
+.error {
+    color: var(--failure-color);
+}
+
+.warning {
+    color: var(--warning-color);
+}
+

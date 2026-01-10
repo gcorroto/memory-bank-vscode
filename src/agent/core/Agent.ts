@@ -14,6 +14,7 @@ import { WorkspaceManager } from './WorkspaceManager';
 import { DatabaseManager } from '../storage/DatabaseManager';
 import { AgentLogsView } from '../ui/logsView';
 import { EventsViewer } from '../ui/EventsViewer';
+import { FlowViewer } from '../ui/FlowViewer';
 import { FileSnapshotManager } from '../terminals/FileSnapshotManager';
 import { CustomCLITerminalManager } from '../terminals/CustomCLITerminalManager';
 import { PlanStep, Plan } from '../types/AgentTypes';
@@ -32,6 +33,7 @@ export class Agent {
     llmClient: typeof openaiService;
     logsView: AgentLogsView | null = null;
     eventsViewer: EventsViewer | null = null;
+    flowViewer: FlowViewer | null = null;
     terminalManager: CustomCLITerminalManager;
     fileSnapshotManager: FileSnapshotManager;
 
@@ -82,6 +84,9 @@ export class Agent {
             // Inicializar y configurar EventsViewer
             this.initializeEventsViewer();
             
+            // Inicializar FlowViewer
+            this.initializeFlowViewer();
+            
             this.logger.appendLine(`Agent ${this.name} initialized`);
             return true;
         } catch (error: any) {
@@ -128,6 +133,18 @@ export class Agent {
             this.logger.appendLine(`Error initializing EventsViewer: ${error.message}`);
         }
     }
+
+    /**
+     * Initialize the flow viewer
+     */
+    private initializeFlowViewer(): void {
+        try {
+            this.flowViewer = new FlowViewer(this.context);
+            this.logger.appendLine('Created new FlowViewer instance');
+        } catch (error: any) {
+            this.logger.appendLine(`Error initializing FlowViewer: ${error.message}`);
+        }
+    }
     
     /**
      * Muestra el visor de eventos
@@ -144,6 +161,27 @@ export class Agent {
     }
 
     /**
+     * Muestra todas las vistas (Logs, Flow)
+     */
+    showViews(): void {
+        try {
+            // Mostrar vista de logs
+            if (this.logsView) {
+                this.logsView.show();
+                this.logger.appendLine('Logs view shown');
+            }
+            
+            // Mostrar vista de flujo
+            if (this.flowViewer) {
+                this.flowViewer.show();
+                this.logger.appendLine('Flow view shown');
+            }
+        } catch (error: any) {
+            this.logger.appendLine(`Error showing views: ${error.message}`);
+        }
+    }
+
+    /**
      * Handle user input and execute the appropriate actions
      * @param input - User input or request
      * @param context - Additional context (file, selection, etc.)
@@ -151,6 +189,9 @@ export class Agent {
      */
     async handleUserInput(input: string, context: any = {}): Promise<any> {
         try {
+            // Mostrar las vistas automáticamente al iniciar una tarea
+            this.showViews();
+            
             // 1. Update context with current input and session data
             this.contextManager.update(input, context);
             this.logger.appendLine(`Handling user input: "${input.substring(0, 100)}${input.length > 100 ? '...' : ''}"`);
@@ -169,6 +210,12 @@ export class Agent {
             
             // 2. Plan task using LLM (now includes validation and optimization)
             let plan = await this.planTask(input, context);
+            
+            // Actualizar FlowViewer con el plan generado
+            if (this.flowViewer && plan) {
+                this.flowViewer.updatePlan(plan);
+                this.logger.appendLine('Plan sent to Flow viewer');
+            }
             
             let results: any[] = [];
             let reflection: any = {};
@@ -218,10 +265,16 @@ export class Agent {
                 stopReason = null;
                 
                 // 4. Execute each step in the plan
-                for (const step of plan.steps) {
-                    this.logger.appendLine(`Executing step: ${step.description}`);
+                for (let stepIndex = 0; stepIndex < plan.steps.length; stepIndex++) {
+                    const step = plan.steps[stepIndex];
+                    this.logger.appendLine(`Executing step ${stepIndex + 1}/${plan.steps.length}: ${step.description}`);
                     this.logger.appendLine(`Step tool: ${step.tool}`);
                     this.logger.appendLine(`Step params: ${JSON.stringify(step.params, null, 2)}`);
+
+                    // Update FlowViewer: step started
+                    if (this.flowViewer) {
+                        this.flowViewer.updateStepStatus(stepIndex, 'running');
+                    }
 
                     // --- INTEGRACIÓN FindFileTool ---
                     // Detectar si el paso requiere un archivo y la ruta no existe
@@ -492,6 +545,11 @@ export class Agent {
                                 this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
                             }
                             
+                            // Update FlowViewer: step completed successfully
+                            if (this.flowViewer) {
+                                this.flowViewer.updateStepStatus(stepIndex, 'success', { result: stepResult });
+                            }
+                            
                             this.logger.appendLine(`Command step completed: ${step.description}`);
                             // NUEVO: Indexar resultados relevantes para aprendizaje futuro
                             await this.indexStepResults(step, stepResult);
@@ -512,6 +570,11 @@ export class Agent {
                             // Add to logs view if available
                             if (this.logsView) {
                                 this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
+                            }
+                            
+                            // Update FlowViewer: step completed successfully
+                            if (this.flowViewer) {
+                                this.flowViewer.updateStepStatus(stepIndex, 'success', { result: stepResult });
                             }
                             
                             // Añadir evento específico según el tipo de herramienta
@@ -543,6 +606,11 @@ export class Agent {
                         }
                     } catch (error: any) {
                         this.logger.appendLine(`Error executing step: ${error.message}`);
+                        
+                        // Update FlowViewer: step failed
+                        if (this.flowViewer) {
+                            this.flowViewer.updateStepStatus(stepIndex, 'error', { error: error.message });
+                        }
                         
                         // Add failure feedback to context
                         this.contextManager.addFeedback({
@@ -947,6 +1015,11 @@ export class Agent {
                     
                     if (validation.optimizedPlan) {
                         this.logger.appendLine("Using LLM-optimized version of the plan");
+                    }
+                    
+                    // Send plan to FlowViewer
+                    if (this.flowViewer) {
+                        this.flowViewer.updatePlan(finalPlan);
                     }
                     
                     return finalPlan;

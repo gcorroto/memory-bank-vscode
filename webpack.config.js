@@ -6,7 +6,7 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 
 /**@type {import('webpack').Configuration}*/
-const config = {
+const extensionConfig = {
   target: 'node', // VS Code extensions run in a Node.js-context
   mode: 'none', // this leaves the source code as close as possible to the original (when packaging we set this to 'production')
 
@@ -53,4 +53,47 @@ const config = {
     })
   ]
 };
-module.exports = config; 
+
+/**@type {import('webpack').Configuration}*/
+const webviewConfig = {
+  target: 'web',
+  mode: 'none',
+  entry: {
+    'logs-webview': './src/agent/ui/react-logs/index.tsx',
+    'flow-webview': './src/agent/ui/react-flow/index.tsx',
+    'config-webview': './src/agent/ui/react-config/index.tsx'
+  },
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].js',
+    libraryTarget: 'window'
+  },
+  devtool: 'nosources-source-map',
+  resolve: {
+    extensions: ['.tsx', '.ts', '.js', '.css']
+  },
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        exclude: /node_modules/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              compilerOptions: {
+                module: 'esnext'
+              }
+            }
+          }
+        ]
+      },
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader']
+      }
+    ]
+  }
+};
+
+module.exports = [extensionConfig, webviewConfig]; 

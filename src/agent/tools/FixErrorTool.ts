@@ -171,39 +171,60 @@ export class FixErrorTool extends BaseTool {
                     }
                 } catch (ragError: any) {
                     this.logger.appendLine(`Error resolving with RAG: ${ragError.message}`);
+                    this.logger.appendLine(`Falling back to OpenAI-only solution`);
                     
-                    // Fallback to a simpler solution with OpenAI and additional context
-                    const combinedContext = additionalContext 
-                        ? `${additionalContext}\n\nError to fix: ${errorMessage}`
-                        : `Error to fix: ${errorMessage}`;
-                    
-                    const fixedCode = await this.generateFixWithContext(
+                    // Fallback to a simpler solution with OpenAI only
+                    try {
+                        const fixedCode = await this.generateSimpleFix(
+                            errorMessage, 
+                            sourceContent,
+                            language,
+                            additionalContext
+                        );
+                        
+                        solution = {
+                            explanation: `Error: ${errorMessage}`,
+                            solution: 'Generated fix using OpenAI (RAG unavailable)',
+                            fixedCode: fixedCode
+                        };
+                    } catch (fallbackError: any) {
+                        this.logger.appendLine(`Fallback also failed: ${fallbackError.message}`);
+                        
+                        // Último recurso: devolver el código original con comentario
+                        solution = {
+                            explanation: `Error: ${errorMessage}`,
+                            solution: 'Could not generate automatic fix. Manual review required.',
+                            fixedCode: `// ERROR: ${errorMessage}\n// RAG and fallback services unavailable\n// TODO: Manual fix required\n\n${sourceContent}`
+                        };
+                    }
+                }
+            } else {
+                // Use simple fix if RAG is not available
+                this.logger.appendLine(`RAG not available, using OpenAI directly`);
+                
+                try {
+                    const fixedCode = await this.generateSimpleFix(
                         errorMessage, 
                         sourceContent,
                         language,
-                        combinedContext
+                        additionalContext
                     );
                     
                     solution = {
                         explanation: `Error: ${errorMessage}`,
-                        solution: 'Generated fix based on error message and available context',
+                        solution: 'Generated fix using OpenAI (RAG not available)',
                         fixedCode: fixedCode
                     };
+                } catch (fixError: any) {
+                    this.logger.appendLine(`Failed to generate fix: ${fixError.message}`);
+                    
+                    // Último recurso
+                    solution = {
+                        explanation: `Error: ${errorMessage}`,
+                        solution: 'Could not generate automatic fix. Manual review required.',
+                        fixedCode: `// ERROR: ${errorMessage}\n// Automatic fix unavailable\n// TODO: Manual fix required\n\n${sourceContent}`
+                    };
                 }
-            } else {
-                // Use simple fix if RAG is not available
-                const fixedCode = await this.generateFixWithContext(
-                    errorMessage, 
-                    sourceContent,
-                    language,
-                    additionalContext
-                );
-                
-                solution = {
-                    explanation: `Error: ${errorMessage}`,
-                    solution: 'Generated fix based on error message',
-                    fixedCode: fixedCode
-                };
             }
             
             // Apply fix if requested and we have a valid source path
@@ -251,7 +272,21 @@ export class FixErrorTool extends BaseTool {
                 language: language
             };
         } catch (error: any) {
-            throw new Error(`Error fixing code: ${error.message}`);
+            // NO crashear - devolver un resultado válido con el error
+            this.logger.appendLine(`Critical error in FixErrorTool: ${error.message}`);
+            this.logger.appendLine(`Stack trace: ${error.stack}`);
+            
+            return {
+                success: false,
+                sourcePath: params.sourcePath || 'unknown',
+                errorMessage: params.errorMessage || params.description || 'Unknown error',
+                explanation: `Failed to fix error: ${error.message}`,
+                solution: 'Manual review required',
+                fixedCode: params.content || '// Error during fix generation',
+                applied: false,
+                language: 'text',
+                error: error.message
+            };
         }
     }
 
@@ -372,6 +407,60 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
         } catch (error: any) {
             this.logger.appendLine(`Error generating fix: ${error.message}`);
             throw error;
+        }
+    }
+
+    /**
+     * Generate a simple fix using only OpenAI (no RAG)
+     * @param errorMessage - Error message
+     * @param sourceContent - Source code content
+     * @param language - Programming language
+     * @param additionalContext - Additional context
+     * @returns - Fixed code
+     */
+    private async generateSimpleFix(
+        errorMessage: string,
+        sourceContent: string,
+        language: string,
+        additionalContext?: string
+    ): Promise<string> {
+        try {
+            this.logger.appendLine(`Generating simple fix with OpenAI for error: ${errorMessage}`);
+            
+            let prompt = `Fix the following ${language} code to resolve this error:\n\n`;
+            prompt += `Error: ${errorMessage}\n\n`;
+            
+            if (additionalContext) {
+                prompt += `Additional Context:\n${additionalContext}\n\n`;
+            }
+            
+            prompt += `Code:\n\`\`\`${language}\n${sourceContent}\n\`\`\`\n\n`;
+            prompt += `Provide ONLY the corrected code without explanations or markdown formatting.`;
+            
+            const systemMessage: ChatMessage = {
+                role: 'system',
+                content: 'You are an expert programmer. Fix code errors precisely and return only the corrected code.'
+            };
+            
+            const userMessage: ChatMessage = {
+                role: 'user',
+                content: prompt
+            };
+            
+            const modelToUse = configManager.getOpenAIModel() || "gpt-4.1-mini";
+            
+            const completion = await openaiService.chatCompletion(
+                [systemMessage, userMessage], 
+                modelToUse
+            );
+            
+            const fixedCode = completion.choices[0].message.content.trim();
+            this.logger.appendLine(`Simple fix generated successfully`);
+            
+            return fixedCode;
+        } catch (error: any) {
+            this.logger.appendLine(`Error in generateSimpleFix: ${error.message}`);
+            throw new Error(`Failed to generate simple fix: ${error.message}`);
         }
     }
 

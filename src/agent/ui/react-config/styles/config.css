@@ -1,0 +1,396 @@
+/**
+ * Styles for React Config Webview
+ */
+
+.config-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.config-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-color);
+}
+
+.config-header h1 {
+    margin: 0;
+    font-size: 20px;
+    color: var(--accent-color);
+}
+
+.config-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--tab-bg);
+    padding: 0 20px;
+}
+
+.config-tab {
+    padding: 12px 20px;
+    cursor: pointer;
+    background-color: transparent;
+    border: none;
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.config-tab:hover {
+    background-color: var(--tab-hover);
+}
+
+.config-tab.active {
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
+    background-color: var(--bg-color);
+}
+
+.config-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Plan Editor Styles */
+.plan-editor {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.plan-editor-header {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.plan-editor-header input {
+    flex: 1;
+    padding: 10px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.plan-editor-header button {
+    padding: 10px 20px;
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-weight: 500;
+}
+
+.plan-editor-layout {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 20px;
+}
+
+.tool-palette {
+    background-color: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 15px;
+    height: fit-content;
+    position: sticky;
+    top: 20px;
+}
+
+.tool-palette h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: var(--accent-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tool-item {
+    padding: 10px;
+    margin-bottom: 8px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: move;
+    transition: all 0.2s ease;
+}
+
+.tool-item:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tool-item-name {
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.tool-item-desc {
+    font-size: 11px;
+    color: var(--timestamp-color);
+}
+
+.plan-canvas {
+    background-color: var(--code-bg);
+    border: 2px dashed var(--border-color);
+    border-radius: 6px;
+    min-height: 500px;
+    padding: 20px;
+}
+
+.plan-canvas.drag-over {
+    border-color: var(--accent-color);
+    background-color: rgba(14, 99, 156, 0.05);
+}
+
+.plan-canvas-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--timestamp-color);
+    font-size: 14px;
+}
+
+.plan-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.plan-step-card {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-color);
+    border-radius: 4px;
+    padding: 15px;
+    transition: all 0.2s ease;
+}
+
+.plan-step-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.plan-step-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.plan-step-number {
+    width: 28px;
+    height: 28px;
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 13px;
+    margin-right: 12px;
+}
+
+.plan-step-tool {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: auto;
+}
+
+.plan-step-description {
+    margin-bottom: 10px;
+}
+
+.plan-step-description input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.plan-step-params {
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 12px;
+}
+
+.plan-step-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.plan-step-actions button {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+.plan-step-actions button:hover {
+    background-color: var(--collapsible-hover);
+}
+
+.plan-step-actions button.delete {
+    color: var(--failure-color);
+    border-color: var(--failure-color);
+}
+
+/* Rules Editor Styles */
+.rules-editor {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.rules-header button {
+    padding: 10px 20px;
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+}
+
+.rules-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.rule-card {
+    background-color: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.rule-card:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.rule-card-name {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.rule-card-preview {
+    font-size: 12px;
+    color: var(--timestamp-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rule-editor {
+    background-color: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 20px;
+}
+
+.rule-editor input,
+.rule-editor textarea {
+    width: 100%;
+    margin-bottom: 15px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: inherit;
+}
+
+.rule-editor textarea {
+    min-height: 200px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+}
+
+.rule-editor-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.rule-editor-actions button {
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-weight: 500;
+}
+
+.rule-editor-actions .save {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.rule-editor-actions .cancel {
+    background-color: var(--border-color);
+    color: var(--text-color);
+}
+
+/* Prompts Editor Styles */
+.prompts-editor {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.prompts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.prompts-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 15px;
+}
+
+.prompt-card {
+    background-color: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.prompt-card:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.prompt-card-name {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.prompt-card-variables {
+    font-size: 12px;
+    color: var(--timestamp-color);
+}
+
