@@ -151,20 +151,20 @@ export class FixErrorTool extends BaseTool {
                     this.logger.appendLine(`Resolving error with RAG for ${normalizedSourcePath || 'inline content'}`);
                     
                     // Usar el servicio RAG especializado para corrección de errores
-                    const fixedCode = await ragService.fixError(
+                    const ragResult = await ragService.fixError(
                         sourceContent,
                         errorMessage,
                         normalizedSourcePath || 'inline-content',
                         language
                     );
                     
-                    if (fixedCode && fixedCode.length > 0) {
+                    if (ragResult && ragResult.content && ragResult.content.length > 0) {
                         this.logger.appendLine(`RAG service provided a fix for the error`);
                         
                         solution = {
                             explanation: `Error fixed: ${errorMessage}`,
                             solution: 'Generated fix based on project context and error patterns',
-                            fixedCode: fixedCode
+                            fixedCode: ragResult.content
                         };
                     } else {
                         throw new Error('RAG service did not provide a valid fix');
@@ -240,24 +240,14 @@ export class FixErrorTool extends BaseTool {
                 fs.writeFileSync(normalizedSourcePath, solution.fixedCode);
                 this.logger.appendLine(`Fixed code written to: ${normalizedSourcePath}`);
                 
-                // Indexar el archivo corregido en Vectra para futuras consultas
+                // Nota: La indexación de código corregido ahora se realiza externamente por el Memory Bank MCP
+                // El archivo será indexado la próxima vez que se ejecute memorybank_index_code
+                this.logger.appendLine(`Fixed code saved - will be indexed by Memory Bank MCP`);
                 try {
+                    // Inicializar ragService para futuros usos
                     await ragService.initialize();
-                    const metadata = {
-                        filePath: normalizedSourcePath,
-                        fileName: path.basename(normalizedSourcePath),
-                        extension: this.safeGetExtension(normalizedSourcePath),
-                        errorFixed: errorMessage,
-                        fixedAt: new Date().toISOString()
-                    };
-                    
-                    // Intentar indexar el código corregido
-                    const vectraService = require('../../services/vectraService');
-                    await vectraService.indexCode(solution.fixedCode, metadata);
-                    this.logger.appendLine(`Indexed fixed code in vector store for future reference`);
-                } catch (indexError) {
-                    this.logger.appendLine(`Warning: Could not index fixed code: ${indexError}`);
-                    // No interrumpir el flujo principal por un error de indexación
+                } catch (initError) {
+                    this.logger.appendLine(`Note: RAG service not available: ${initError}`);
                 }
             }
             
@@ -395,7 +385,7 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
             
             // Obtener el modelo configurado o usar uno predeterminado
             const configuredModel = configManager.getOpenAIModel();
-            const modelToUse = configuredModel || "gpt-4.1-mini";
+            const modelToUse = configuredModel || "gpt-5-mini";
             
             // Usamos el método chatCompletion del servicio de OpenAI
             const completion = await openaiService.chatCompletion(
@@ -447,7 +437,7 @@ Provide ONLY the corrected code without any explanations or markdown formatting.
                 content: prompt
             };
             
-            const modelToUse = configManager.getOpenAIModel() || "gpt-4.1-mini";
+            const modelToUse = configManager.getOpenAIModel() || "gpt-5-mini";
             
             const completion = await openaiService.chatCompletion(
                 [systemMessage, userMessage], 

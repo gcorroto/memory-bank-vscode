@@ -35,7 +35,7 @@ export function runLogsViewExample(context: vscode.ExtensionContext): void {
     logsView.addStepLog(
         'Generando casos de test',
         'generateTests',
-        { filePath: 'src/example.ts', coverage: 'high' },
+        { filePath: 'src/example.ts', status: 'success' },
         { generatedTests: 'src/example.test.ts' },
         true,
         session2Id
@@ -65,7 +65,7 @@ export function runLogsViewExample(context: vscode.ExtensionContext): void {
     
     // Agregar información de ejemplo sobre el modelo y tokens
     const exampleModelInfo = {
-        name: 'gpt-4.1-mini',
+        name: 'gpt-5.2',
         taskType: 'planning'
     };
     
@@ -194,7 +194,7 @@ export function exampleMainUsage(context: vscode.ExtensionContext): void {
     (global as any).agentLogsView = globalLogsView;
     
     // Registrar comando para mostrar logs
-    const disposable = vscode.commands.registerCommand('grec0ai.agent.showLogs', () => {
+    const disposable = vscode.commands.registerCommand('memorybank.agent.showLogs', () => {
         globalLogsView.show();
     });
     
@@ -203,7 +203,7 @@ export function exampleMainUsage(context: vscode.ExtensionContext): void {
     // Ejemplo de cómo usar la vista al crear múltiples agentes
     const mockAgent1: LoggableAgent = { 
         name: 'TestGenerator',
-        lastModelInfo: { name: 'gpt-4.1-mini', taskType: 'codegen' },
+        lastModelInfo: { name: 'gpt-5.1-codex', taskType: 'codegen' },
         lastAppliedRules: ['Usar assertions específicas', 'Incluir casos de error'],
         lastTokenCount: { prompt: 320, completion: 150, total: 470 },
         onPlan: () => {},
@@ -212,7 +212,7 @@ export function exampleMainUsage(context: vscode.ExtensionContext): void {
     };
     const mockAgent2: LoggableAgent = { 
         name: 'CodeFixer',
-        lastModelInfo: { name: 'gpt-4.1-mini', taskType: 'analysis' },
+        lastModelInfo: { name: 'gpt-5.2', taskType: 'analysis' },
         lastAppliedRules: ['Evitar side effects', 'Mantener compatibilidad API'],
         lastTokenCount: { prompt: 280, completion: 90, total: 370 },
         onPlan: () => {},

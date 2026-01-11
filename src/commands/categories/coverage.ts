@@ -2,22 +2,11 @@ import * as vscode from 'vscode';
 import { CommandRegistration } from '../types';
 import { createCommandRegistration } from '../utils';
 
-export const coverageCommands: CommandRegistration[] = [
-    createCommandRegistration('grec0ai.coverage.refresh', async () => {
-        try {
-            // Implementar lógica de refresh de cobertura
-            vscode.window.showInformationMessage('Coverage data refreshed');
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh coverage: ${error}`);
-        }
-    }),
+// Memory Bank commands (replacing old coverage commands)
+// Note: Main Memory Bank commands are registered in extension.ts
+// This file is kept for compatibility but commands are now minimal
 
-    createCommandRegistration('grec0ai.coverage.details.refresh', async () => {
-        try {
-            // Implementar lógica de refresh de detalles de cobertura
-            vscode.window.showInformationMessage('Coverage details refreshed');
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh coverage details: ${error}`);
-        }
-    })
-]; 
+export const coverageCommands: CommandRegistration[] = [
+    // Empty - Memory Bank commands are registered directly in extension.ts
+    // This array is kept for backwards compatibility with the command registration system
+];

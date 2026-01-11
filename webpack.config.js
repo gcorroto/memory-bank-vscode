@@ -4,6 +4,7 @@
 
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
+const webpack = require('webpack');
 
 /**@type {import('webpack').Configuration}*/
 const extensionConfig = {
@@ -19,7 +20,8 @@ const extensionConfig = {
   },
   devtool: 'nosources-source-map',
   externals: {
-    vscode: 'commonjs vscode' // the vscode-module is created on-the-fly and must be excluded
+    vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded
+    '@lancedb/lancedb': 'commonjs @lancedb/lancedb', // LanceDB has native modules that can't be bundled
   },
   resolve: {
     // support reading TypeScript and JavaScript files
@@ -61,7 +63,9 @@ const webviewConfig = {
   entry: {
     'logs-webview': './src/agent/ui/react-logs/index.tsx',
     'flow-webview': './src/agent/ui/react-flow/index.tsx',
-    'config-webview': './src/agent/ui/react-config/index.tsx'
+    'config-webview': './src/agent/ui/react-config/index.tsx',
+    'dashboard': './src/agent/ui/react-agent-dashboard/index.tsx',
+    'relations-webview': './src/agent/ui/react-relations/index.tsx'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -93,7 +97,13 @@ const webviewConfig = {
         use: ['style-loader', 'css-loader']
       }
     ]
-  }
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'process': JSON.stringify({})
+    })
+  ]
 };
 
 module.exports = [extensionConfig, webviewConfig]; 

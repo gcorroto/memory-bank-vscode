@@ -315,11 +315,23 @@ function loadStaticPrompts(): void {
   }
 
   try {
-    const extension = vscode.extensions.getExtension("grec0ai.grec0ai-vscode");
-    const extensionPath = extension ? extension.extensionPath : undefined;
-
+    // Try multiple ways to find the extension path
+    let extensionPath: string | undefined;
+    
+    // Method 1: Try by extension ID (works when installed from marketplace)
+    const extension = vscode.extensions.getExtension("grec0.memory-bank-vscode");
+    if (extension) {
+      extensionPath = extension.extensionPath;
+    }
+    
+    // Method 2: Use __dirname to find the extension root (works in development)
     if (!extensionPath) {
-      throw new Error("Extension path not found");
+      // __dirname will be in dist/ folder, so we go up one level
+      extensionPath = path.resolve(__dirname, '..');
+    }
+
+    if (!extensionPath || !fs.existsSync(path.join(extensionPath, 'resources'))) {
+      throw new Error("Extension path not found or resources folder missing");
     }
 
     const systemPromptPath = path.join(

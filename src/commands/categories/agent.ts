@@ -4,7 +4,7 @@ import { createCommandRegistration } from '../utils';
 import { getGlobalAgent } from '../../extension';
 
 export const agentCommands: CommandRegistration[] = [
-    createCommandRegistration('grec0ai.createAgent', async () => {
+    createCommandRegistration('memorybank.createAgent', async () => {
         try {
             const agent = await getGlobalAgent(true);
             vscode.window.showInformationMessage('Agent created successfully');
@@ -13,14 +13,14 @@ export const agentCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.getAgent', () => {
+    createCommandRegistration('memorybank.getAgent', () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
         }
     }),
 
-    createCommandRegistration('grec0ai.ask', async () => {
+    createCommandRegistration('memorybank.ask', async () => {
         const agent = getGlobalAgent(true);
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
@@ -46,7 +46,7 @@ export const agentCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.agent.showLogs', () => {
+    createCommandRegistration('memorybank.agent.showLogs', () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
@@ -55,17 +55,17 @@ export const agentCommands: CommandRegistration[] = [
         agent.showLogsView();
     }),
 
-    createCommandRegistration('grec0ai.agent.generateTest', async () => {
+    createCommandRegistration('memorybank.agent.generateTest', async () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
             return;
         }
         
-        await vscode.commands.executeCommand('grec0ai.automaticTest');
+        await vscode.commands.executeCommand('memorybank.automaticTest');
     }),
 
-    createCommandRegistration('grec0ai.agent.analyzeCode', async () => {
+    createCommandRegistration('memorybank.agent.analyzeCode', async () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
@@ -86,7 +86,7 @@ export const agentCommands: CommandRegistration[] = [
         await agent.handleUserInput(`Analyze this code: ${selectedText}`);
     }),
 
-    createCommandRegistration('grec0ai.agent.fixError', async () => {
+    createCommandRegistration('memorybank.agent.fixError', async () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
@@ -115,7 +115,7 @@ export const agentCommands: CommandRegistration[] = [
         await agent.handleUserInput(`Fix this error: "${errorMessage}" in code: "${lineText}"`);
     }),
 
-    createCommandRegistration('grec0ai.agent.explain', async () => {
+    createCommandRegistration('memorybank.agent.explain', async () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');
@@ -136,7 +136,7 @@ export const agentCommands: CommandRegistration[] = [
         await agent.handleUserInput(`Explain this code: ${selectedText}`);
     }),
 
-    createCommandRegistration('grec0ai.agent.testReasoningModel', async () => {
+    createCommandRegistration('memorybank.agent.testReasoningModel', async () => {
         const agent = getGlobalAgent();
         if (!agent) {
             vscode.window.showWarningMessage('No agent instance found');

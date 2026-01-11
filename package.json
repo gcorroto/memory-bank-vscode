@@ -1,12 +1,12 @@
 {
-  "name": "grec0ai-vscode",
+  "name": "memory-bank-vscode",
   "version": "3.0.0",
   "icon": "resources/icons/logo_transparent.png",
   "private": true,
-  "displayName": "Grec0AI for Developers",
-  "description": "The Grec0AI for Developers extension allows you to generate tests, fix issues, and analyze code quality directly in Visual Studio Code.",
+  "displayName": "Memory Bank Inspector",
+  "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
   "license": "MIT",
-  "publisher": "grec0ai",
+  "publisher": "grec0",
   "repository": {
     "type": "git",
     "url": "https://github.com/gcorroto/autofixer_extension.git"
@@ -27,25 +27,29 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "grec0ai-filesystem",
-          "title": "Grec0AI",
+          "id": "memorybank-sidebar",
+          "title": "Memory Bank",
           "icon": "resources/icons/logo_square_transparent.png"
         }
       ]
     },
     "views": {
-      "grec0ai-filesystem": [
+      "memorybank-sidebar": [
         {
-          "id": "grec0ai-filesystem-tree",
-          "name": "Project Files"
+          "id": "memorybank-projects",
+          "name": "Proyectos"
         },
         {
-          "id": "grec0ai-coverage-summary",
-          "name": "Coverage Summary"
+          "id": "memorybank-files",
+          "name": "Archivos Indexados"
         },
         {
-          "id": "grec0ai-coverage-details",
-          "name": "Details"
+          "id": "memorybank-docs",
+          "name": "Documentación"
+        },
+        {
+          "id": "memorybank-relations",
+          "name": "Code Relations"
         }
       ]
     },
@@ -53,212 +57,281 @@
       {
         "command": "git.connectionSettings.initializeGitRepository",
         "title": "Initialize Git Repository",
-        "category": "Grec0AI"
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.filesystem.refresh",
+        "command": "memorybank.filesystem.refresh",
         "title": "Refresh File Tree",
-        "category": "Grec0AI",
+        "category": "Memory Bank",
         "icon": {
           "dark": "resources/icons/dark/refresh.svg",
           "light": "resources/icons/light/refresh.svg"
         }
       },
       {
-        "command": "grec0ai.automaticTest",
+        "command": "memorybank.automaticTest",
         "title": "Automatic Test",
-        "category": "Grec0AI",
+        "category": "Memory Bank",
         "icon": {
           "dark": "resources/icons/dark/frame_sink.png",
           "light": "resources/icons/light/frame_sink.png"
         }
       },
       {
-        "command": "grec0ai.coverage.refresh",
-        "title": "Refresh Coverage",
-        "category": "Grec0AI",
+        "command": "memorybank.refresh",
+        "title": "Refrescar Memory Bank",
+        "category": "Memory Bank",
         "icon": {
           "dark": "resources/icons/dark/refresh.svg",
           "light": "resources/icons/light/refresh.svg"
         }
       },
       {
-        "command": "grec0ai.coverage.details.refresh",
-        "title": "Refresh Details",
-        "category": "Grec0AI",
-        "icon": {
-          "dark": "resources/icons/dark/refresh.svg",
-          "light": "resources/icons/light/refresh.svg"
-        }
+        "command": "memorybank.configure",
+        "title": "Configurar ruta de Memory Bank",
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.explain",
+        "command": "memorybank.selectProject",
+        "title": "Seleccionar Proyecto",
+        "category": "Memory Bank"
+      },
+      {
+        "command": "memorybank.deleteProject",
+        "title": "Eliminar Proyecto",
+        "category": "Memory Bank",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "memorybank.openDoc",
+        "title": "Abrir Documento",
+        "category": "Memory Bank"
+      },
+      {
+        "command": "memorybank.openIndexedFile",
+        "title": "Abrir Archivo Indexado",
+        "category": "Memory Bank"
+      },
+      {
+        "command": "memorybank.relations.analyze",
+        "title": "Analizar Relaciones del Proyecto",
+        "category": "Memory Bank",
+        "icon": "$(play)"
+      },
+      {
+        "command": "memorybank.relations.showFlow",
+        "title": "Ver Dataflow de Relaciones",
+        "category": "Memory Bank",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "memorybank.relations.refresh",
+        "title": "Actualizar Vista de Relaciones",
+        "category": "Memory Bank",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "memorybank.relations.openFile",
+        "title": "Abrir Archivo",
+        "category": "Memory Bank"
+      },
+      {
+        "command": "memorybank.explain",
         "title": "Explain Code",
-        "category": "Grec0AI"
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.fix",
-        "title": "Fix with Grec0AI",
-        "category": "Grec0AI"
+        "command": "memorybank.fix",
+        "title": "Fix Code",
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.openai.configure",
+        "command": "memorybank.openai.configure",
         "title": "Configure OpenAI API Key",
-        "category": "Grec0AI"
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.vectra.indexProject",
+        "command": "memorybank.indexProject",
         "title": "Index Project for RAG",
-        "category": "Grec0AI"
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.ask.macgyver",
-        "title": "Preguntar a MacGyver",
-        "category": "Grec0AI"
+        "command": "memorybank.ask",
+        "title": "Preguntar al Asistente",
+        "category": "Memory Bank"
       },
       {
-        "command": "grec0ai.agent.generateTest",
+        "command": "memorybank.agent.generateTest",
         "title": "Generate Test (Agent)",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.agent.analyzeCode",
+        "command": "memorybank.agent.analyzeCode",
         "title": "Analyze Code (Agent)",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.agent.fixError",
+        "command": "memorybank.agent.fixError",
         "title": "Fix Error (Agent)",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.agent.explain",
+        "command": "memorybank.agent.explain",
         "title": "Explain Code (Agent)",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.agent.showLogs",
+        "command": "memorybank.agent.showLogs",
         "title": "Show Agent Logs",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.agent.testReasoningModel",
+        "command": "memorybank.agent.testReasoningModel",
         "title": "Test Reasoning Model",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.runAutofixer",
+        "command": "memorybank.runAutofixer",
         "title": "Ejecutar Autofixer",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.showEventsViewer",
-        "title": "Grec0AI: Mostrar Visor de Eventos y Cambios"
+        "command": "memorybank.showEventsViewer",
+        "title": "Memory Bank: Mostrar Visor de Eventos y Cambios"
       },
       {
-        "command": "grec0ai.clearEvents",
-        "title": "Grec0AI: Limpiar Eventos"
+        "command": "memorybank.clearEvents",
+        "title": "Memory Bank: Limpiar Eventos"
       },
       {
-        "command": "grec0ai.toggleTerminal",
-        "title": "Grec0AI: Mostrar/Ocultar Terminal CLI"
+        "command": "memorybank.toggleTerminal",
+        "title": "Memory Bank: Mostrar/Ocultar Terminal CLI"
       },
       {
-        "command": "grec0ai.showFlowViewer",
+        "command": "memorybank.showFlowViewer",
         "title": "Mostrar Visualizador de Flujos",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
       },
       {
-        "command": "grec0ai.showConfigViewer",
+        "command": "memorybank.showConfigViewer",
         "title": "Mostrar Configurador Visual",
-        "category": "Grec0AI Agent"
+        "category": "Memory Bank Agent"
+      },
+      {
+        "command": "memorybank.showDashboard",
+        "title": "Mostrar Dashboard de Agente",
+        "category": "Memory Bank Agent"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "grec0ai.filesystem.refresh",
-          "when": "view == grec0ai-filesystem-tree",
+          "command": "memorybank.refresh",
+          "when": "view == memorybank-projects",
           "group": "navigation"
         },
         {
-          "command": "grec0ai.automaticTest",
-          "when": "view == grec0ai-filesystem-tree",
-          "group": "navigation",
-          "icon": "$(rocket)"
-        },
-        {
-          "command": "grec0ai.coverage.refresh",
-          "when": "view == grec0ai-coverage-summary",
+          "command": "memorybank.configure",
+          "when": "view == memorybank-projects",
           "group": "navigation"
         },
         {
-          "command": "grec0ai.coverage.details.refresh",
-          "when": "view == grec0ai-coverage-details",
+          "command": "memorybank.refresh",
+          "when": "view == memorybank-files",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.refresh",
+          "when": "view == memorybank-docs",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.relations.analyze",
+          "when": "view == memorybank-relations",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.relations.showFlow",
+          "when": "view == memorybank-relations",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.relations.refresh",
+          "when": "view == memorybank-relations",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "grec0ai.automaticTest",
-          "group": "grec0ai"
+          "command": "memorybank.automaticTest",
+          "group": "memorybank"
         },
         {
-          "command": "grec0ai.explain",
-          "group": "grec0ai"
+          "command": "memorybank.explain",
+          "group": "memorybank"
         },
         {
-          "command": "grec0ai.fix",
-          "group": "grec0ai"
+          "command": "memorybank.fix",
+          "group": "memorybank"
         },
         {
-          "command": "grec0ai.ask.macgyver",
-          "group": "grec0ai"
+          "command": "memorybank.ask",
+          "group": "memorybank"
         },
         {
-          "command": "grec0ai.agent.generateTest",
-          "group": "grec0ai-agent"
+          "command": "memorybank.agent.generateTest",
+          "group": "memorybank-agent"
         },
         {
-          "command": "grec0ai.agent.analyzeCode",
-          "group": "grec0ai-agent"
+          "command": "memorybank.agent.analyzeCode",
+          "group": "memorybank-agent"
         },
         {
-          "command": "grec0ai.agent.fixError",
-          "group": "grec0ai-agent"
+          "command": "memorybank.agent.fixError",
+          "group": "memorybank-agent"
         },
         {
-          "command": "grec0ai.agent.explain",
-          "group": "grec0ai-agent"
+          "command": "memorybank.agent.explain",
+          "group": "memorybank-agent"
         },
         {
-          "command": "grec0ai.agent.testReasoningModel",
-          "group": "grec0ai-agent"
+          "command": "memorybank.agent.testReasoningModel",
+          "group": "memorybank-agent"
         },
         {
-          "command": "grec0ai.runAutofixer",
-          "group": "grec0ai-agent"
+          "command": "memorybank.runAutofixer",
+          "group": "memorybank-agent"
         }
       ],
       "view/item/context": [
         {
-          "command": "git.connectionSettings.initializeGitRepository",
-          "when": "view == grec0ai-filesystem-tree",
+          "command": "memorybank.openDoc",
+          "when": "view == memorybank-docs && viewItem == memorybank-doc",
           "group": "navigation"
+        },
+        {
+          "command": "memorybank.openIndexedFile",
+          "when": "view == memorybank-files && viewItem == memorybank-indexed-file",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.deleteProject",
+          "when": "view == memorybank-projects && viewItem == memorybank-project",
+          "group": "danger@1"
         }
       ]
     },
     "configuration": {
       "type": "object",
-      "title": "Grec0AI",
+      "title": "Memory Bank",
       "properties": {
-        "grec0ai.filesystem.projectFolder": {
+        "memorybank.filesystem.projectFolder": {
           "type": "string",
           "default": "",
           "description": "Project folder relative to workspace root",
           "scope": "application"
         },
-        "grec0ai.filesystem.excludePatterns": {
+        "memorybank.filesystem.excludePatterns": {
           "type": "array",
           "items": {
             "type": "string"
@@ -272,7 +345,19 @@
           "description": "Patterns to exclude from file tree (in addition to .gitignore)",
           "scope": "application"
         },
-        "grec0ai.test.framework": {
+        "memorybank.path": {
+          "type": "string",
+          "default": "C:\\Users\\goyoc\\.memorybank",
+          "description": "Ruta a la carpeta del Memory Bank (relativa al workspace o absoluta)",
+          "scope": "resource"
+        },
+        "memorybank.defaultProject": {
+          "type": "string",
+          "default": "",
+          "description": "ID del proyecto por defecto para RAG (si vacío, usa el primer proyecto disponible)",
+          "scope": "resource"
+        },
+        "memorybank.test.framework": {
           "type": "string",
           "enum": [
             "jasmine",
@@ -283,93 +368,76 @@
           "description": "Test framework to use for generated tests",
           "scope": "application"
         },
-        "grec0ai.test.coverage.minimumThreshold": {
-          "type": "number",
-          "default": 70,
-          "description": "Minimum coverage threshold (percentage)",
-          "scope": "application"
-        },
-        "grec0ai.openai.apiKey": {
+        "memorybank.openai.apiKey": {
           "type": "string",
-          "default": "",
+          "default": "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",
           "description": "OpenAI API Key para acceder a los servicios de IA",
           "scope": "application"
         },
-        "grec0ai.openai.model": {
+        "memorybank.openai.model": {
           "type": "string",
           "enum": [
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o3-mini",
-            "o4-mini",
-            "codex-mini-latest"
+            "gpt-5-mini",
+            "gpt-5.2",
+            "gpt-5.1-codex",
+            "o4-mini"
           ],
-          "default": "gpt-4.1-mini",
+          "default": "gpt-5-mini",
           "description": "Modelo de OpenAI a utilizar para las consultas",
           "scope": "application"
         },
-        "grec0ai.openai.models.planning": {
+        "memorybank.openai.models.planning": {
           "type": "string",
           "enum": [
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o3-mini",
+            "gpt-5.2",
+            "gpt-5-mini",
             "o4-mini"
           ],
-          "default": "o4-mini",
+          "default": "gpt-5.2",
           "description": "Modelo de OpenAI a utilizar para tareas de planificación",
           "scope": "application"
         },
-        "grec0ai.openai.models.analysis": {
+        "memorybank.openai.models.analysis": {
           "type": "string",
           "enum": [
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o3-mini",
+            "gpt-5.2",
+            "gpt-5-mini",
             "o4-mini"
           ],
-          "default": "gpt-4.1-mini",
+          "default": "gpt-5.2",
           "description": "Modelo de OpenAI a utilizar para tareas de análisis",
           "scope": "application"
         },
-        "grec0ai.openai.models.codegen": {
+        "memorybank.openai.models.codegen": {
           "type": "string",
           "enum": [
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o3-mini",
-            "o4-mini",
-            "codex-mini-latest"
+            "gpt-5.1-codex",
+            "gpt-5.2",
+            "gpt-5-mini"
           ],
-          "default": "gpt-4.1-mini",
+          "default": "gpt-5.1-codex",
           "description": "Modelo de OpenAI a utilizar para tareas de generación de código",
           "scope": "application"
         },
-        "grec0ai.vectra.indexPath": {
-          "type": "string",
-          "default": "",
-          "description": "Ruta personalizada para el índice Vectra (por defecto: .grec0ai/vectra-index)",
-          "scope": "application"
-        },
-        "grec0ai.rag.similarityThreshold": {
+        "memorybank.rag.similarityThreshold": {
           "type": "number",
           "default": 0.7,
           "description": "Umbral de similitud para consultas RAG (entre 0 y 1)",
           "scope": "application"
         },
-        "grec0ai.rag.contextCount": {
+        "memorybank.rag.contextCount": {
           "type": "number",
           "default": 3,
           "description": "Número de fragmentos de contexto a recuperar para RAG",
           "scope": "application"
         },
-        "grec0ai.autofixer.enabled": {
+        "memorybank.autofixer.enabled": {
           "type": "boolean",
           "default": false,
           "description": "Enable automatic execution of instructions from autofixer.md file on startup",
           "scope": "application"
         },
-        "grec0ai.agent.maxReplanning": {
+        "memorybank.agent.maxReplanning": {
           "type": "number",
           "default": 5,
           "minimum": 0,
@@ -377,22 +445,17 @@
           "description": "Maximum number of times the agent can replan a task if it fails (0 disables replanning)",
           "scope": "application"
         },
-        "grec0ai.agent.intelligentValidation": {
+        "memorybank.agent.intelligentValidation": {
           "type": "boolean",
           "default": true,
           "description": "Use LLM for intelligent plan validation instead of rule-based validation",
           "scope": "application"
         },
-        "grec0ai.agent.autoReplanning": {
+        "memorybank.agent.autoReplanning": {
           "type": "boolean",
           "default": true,
           "description": "Automatically replan tasks when they fail or produce suboptimal results",
           "scope": "application"
-        },
-        "git.connectionSettings.jira": {
-          "type": "string",
-          "default": "",
-          "description": "Associated Jira ticket ID"
         },
         "git.connectionSettings.gitRepoUrl": {
           "type": "string",
@@ -423,6 +486,7 @@
     "test": "node ./out/test/runTest.js"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.15.0",
     "@types/async-lock": "^1.1.1",
     "@types/bluebird": "*",
     "@types/glob": "^8.1.0",
@@ -432,10 +496,10 @@
     "acorn": "^8.14.0",
     "async-lock": "^1.1.4",
     "bluebird": "^3.5.0",
-    "dagre": "^0.8.5",
+    "dagre": "0.8.5",
     "glob": "^10.4.5",
     "gray-matter": "^4.0.3",
-    "grec0ai-vscode": "file:",
+    "memory-bank-vscode": "file:",
     "immutable": "^4.0.0-rc.12",
     "java-parser": "^2.3.2",
     "openai": "^4.103.0",
@@ -444,11 +508,10 @@
     "reactflow": "^11.10.0",
     "request": "^2.81.0",
     "ts-log-debug": "^4.0.4",
-    "vectra": "^0.11.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/dagre": "^0.7.52",
+    "@types/dagre": "0.7.53",
     "@types/jest": "^29.5.14",
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.0",

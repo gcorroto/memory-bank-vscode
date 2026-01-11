@@ -17,8 +17,11 @@ let OpenAI: any;
 let client: OpenAIClient | null = null;
 let initialized = false;
 
-// Modelos que soportan razonamiento
-const REASONING_MODELS = ['o1', 'o1-preview', 'o3-mini', 'o3-mini-high', 'o3-mini-low'];
+// Modelos que soportan razonamiento (legacy)
+const REASONING_MODELS = ['o1', 'o1-preview', 'o3-mini', 'o3-mini-high', 'o3-mini-low', 'o4-mini'];
+
+// Modelos GPT-5.x que usan el nuevo Responses API
+const RESPONSES_API_MODELS = ['gpt-5-mini', 'gpt-5.2', 'gpt-5.1-codex'];
 
 // Definición de tipos para opciones
 interface CompletionOptions {
@@ -68,11 +71,11 @@ export async function initialize(): Promise<boolean> {
     }
 
     // Obtener la clave API de la configuración de VS Code
-    const config = vscode.workspace.getConfiguration('grec0ai');
+    const config = vscode.workspace.getConfiguration('memorybank');
     const apiKey = config.get<string>('openai.apiKey');
     
     if (!apiKey) {
-      vscode.window.showErrorMessage('La clave API de OpenAI no está configurada. Por favor, configúrela en las preferencias de Grec0AI.');
+      vscode.window.showErrorMessage('La clave API de OpenAI no está configurada. Por favor, configúrela en las preferencias de Memory Bank.');
       return false;
     }
 
@@ -119,7 +122,7 @@ export async function callOpenAI(prompt: string): Promise<string> {
     }
 
     const completion = await client.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-5-mini',
       messages: [
         { 
           role: 'system', 
@@ -185,7 +188,7 @@ export async function generateText(
  */
 export async function chatCompletion(
   messages: ChatMessage[], 
-  model: string = 'gpt-4.1-mini', 
+  model: string = 'gpt-5-mini', 
   options: CompletionOptions = {}
 ): Promise<ChatCompletionResponse> {
   if (!await ensureInitialized()) {
@@ -244,6 +247,91 @@ export async function chatCompletion(
     console.error('Error al generar chat completion con OpenAI:', error);
     throw new Error(`Error al generar chat completion con OpenAI: ${errorMessage}`);
   }
+}
+
+/**
+ * Llama al nuevo Responses API de OpenAI (para modelos GPT-5.x)
+ * @param prompt Texto a enviar
+ * @param options Opciones de completado
+ * @returns Resultado del completado
+ */
+async function callResponsesAPI(prompt: string, options: CompletionOptions = {}): Promise<CompletionResult> {
+  if (!client) {
+    throw new Error('Cliente OpenAI no disponible');
+  }
+
+  const model = options.model || getOpenAIModel();
+  
+  try {
+    // Usar el nuevo Responses API con soporte de reasoning
+    const response = await (client as any).responses.create({
+      model: model,
+      reasoning: {
+        effort: options.reasoning_effort || 'medium',
+      },
+      input: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      max_output_tokens: options.max_tokens || 16000,
+    });
+
+    // Extraer contenido del nuevo formato de respuesta
+    let content = '';
+    let reasoningSummary = '';
+
+    for (const item of response.output || []) {
+      if (item.type === 'message' && item.content) {
+        for (const contentItem of item.content) {
+          if (contentItem.type === 'output_text') {
+            content += contentItem.text;
+          }
+        }
+      } else if (item.type === 'reasoning' && item.summary) {
+        for (const summaryItem of item.summary) {
+          if (summaryItem.type === 'summary_text') {
+            reasoningSummary += summaryItem.text;
+          }
+        }
+      }
+    }
+
+    // Extraer tokens de uso
+    const reasoningTokens = response.usage?.output_tokens_details?.reasoning_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const inputTokens = response.usage?.input_tokens || 0;
+
+    return {
+      content,
+      modelInfo: {
+        name: model,
+        taskType: options.taskType || 'general',
+      },
+      tokenCount: {
+        prompt: inputTokens,
+        completion: outputTokens,
+        total: inputTokens + outputTokens,
+        reasoning: reasoningTokens,
+      },
+      reasoningSummary: reasoningSummary || undefined,
+    };
+  } catch (error: any) {
+    // Si el Responses API no está disponible, lanzar error para que el caller use fallback
+    if (error?.status === 404 || error?.code === 'model_not_found') {
+      console.log(`Responses API not available for model ${model}, falling back to Chat Completions`);
+      throw new Error('RESPONSES_API_NOT_AVAILABLE');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Verifica si un modelo soporta el Responses API
+ */
+function supportsResponsesAPI(model: string): boolean {
+  return RESPONSES_API_MODELS.some(m => model.startsWith(m) || model.includes(m));
 }
 
 /**
@@ -361,94 +449,121 @@ export async function generateCompletion(prompt: string, options: CompletionOpti
   }
 
   try {
-    // Determinar la temperatura según el tipo de tarea
-    let temperature = options.temperature;
-    if (temperature === undefined) {
-      const taskType = options.taskType || detectTaskType(prompt);
-      
-      switch (taskType) {
-        case 'codegen':
-          temperature = 0.2; // Código más determinista
-          break;
-        case 'creative':
-          temperature = 0.8; // Más creatividad
-          break;
-        case 'analysis':
-          temperature = 0.3; // Menos variabilidad para análisis
-          break;
-        default:
-          temperature = 0.7; // Valor predeterminado equilibrado
-      }
-    }
-    
     // Determinar modelo a usar
     const model = options.model || getOpenAIModel();
     
-    // Construir los mensajes
-    const messages: ChatMessage[] = [];
-    
-    // Añadir mensaje del sistema según el tipo de tarea
-    let systemContent = '';
-    
-    switch (options.taskType) {
-      case 'codegen':
-        systemContent = 'Eres un experto programador que genera código de alta calidad, limpio y eficiente. Tu código debe ser completo, bien comentado y seguir las mejores prácticas.';
-        break;
-      case 'creative':
-        systemContent = 'Eres un asistente creativo que genera contenido original, interesante y variado. Piensas fuera de lo convencional y ofreces ideas innovadoras.';
-        break;
-      case 'analysis':
-        systemContent = 'Eres un analista experto que proporciona análisis detallados, precisos y objetivos. Evalúas la información de manera imparcial y ofreces conclusiones basadas en datos.';
-        break;
-      default:
-        systemContent = 'Eres un asistente experto que proporciona respuestas precisas, detalladas y útiles. Hablas en español pero conservas los términos técnicos en inglés cuando es apropiado.';
-    }
-    
-    messages.push({
-      role: 'system',
-      content: systemContent
-    });
-    
-    // Añadir el prompt como mensaje del usuario
-    messages.push({
-      role: 'user',
-      content: prompt
-    });
-    
-    // Realizar la llamada al modelo
-    const response = await chatCompletion(messages, model, {
-      temperature,
-      ...options
-    });
-    
-    // Extraer y devolver el texto generado con metadatos
-    const content = response.choices[0].message.content || '';
-    
-    // Crear objeto de respuesta con metadatos
-    const result: CompletionResult = {
-      content: content,
-      modelInfo: {
-        name: model,
-        taskType: options.taskType || detectTaskType(prompt)
-      },
-      tokenCount: {
-        prompt: response.usage?.prompt_tokens || 0,
-        completion: response.usage?.completion_tokens || 0,
-        total: response.usage?.total_tokens || 0
+    // Intentar usar Responses API si el modelo lo soporta
+    if (supportsResponsesAPI(model)) {
+      try {
+        console.log(`[OpenAI] Using Responses API for model: ${model}`);
+        return await callResponsesAPI(prompt, { ...options, model });
+      } catch (error: any) {
+        // Si el Responses API no está disponible, usar fallback
+        if (error.message === 'RESPONSES_API_NOT_AVAILABLE') {
+          console.log(`[OpenAI] Responses API not available, falling back to Chat Completions`);
+        } else {
+          throw error;
+        }
       }
-    };
-    
-    // Agregar tool_calls si existen
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      result.tool_calls = response.tool_calls;
     }
     
-    return result;
+    // Fallback: usar Chat Completions API
+    return await generateCompletionWithChatAPI(prompt, model, options);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al generar completion con OpenAI:', error);
     throw new Error(`Error al generar completion con OpenAI: ${errorMessage}`);
   }
+}
+
+/**
+ * Genera texto usando Chat Completions API (fallback para modelos sin Responses API)
+ */
+async function generateCompletionWithChatAPI(
+  prompt: string, 
+  model: string, 
+  options: CompletionOptions
+): Promise<CompletionResult> {
+  // Determinar la temperatura según el tipo de tarea
+  let temperature = options.temperature;
+  if (temperature === undefined) {
+    const taskType = options.taskType || detectTaskType(prompt);
+    
+    switch (taskType) {
+      case 'codegen':
+        temperature = 0.2; // Código más determinista
+        break;
+      case 'creative':
+        temperature = 0.8; // Más creatividad
+        break;
+      case 'analysis':
+        temperature = 0.3; // Menos variabilidad para análisis
+        break;
+      default:
+        temperature = 0.7; // Valor predeterminado equilibrado
+    }
+  }
+  
+  // Construir los mensajes
+  const messages: ChatMessage[] = [];
+  
+  // Añadir mensaje del sistema según el tipo de tarea
+  let systemContent = '';
+  
+  switch (options.taskType) {
+    case 'codegen':
+      systemContent = 'Eres un experto programador que genera código de alta calidad, limpio y eficiente. Tu código debe ser completo, bien comentado y seguir las mejores prácticas.';
+      break;
+    case 'creative':
+      systemContent = 'Eres un asistente creativo que genera contenido original, interesante y variado. Piensas fuera de lo convencional y ofreces ideas innovadoras.';
+      break;
+    case 'analysis':
+      systemContent = 'Eres un analista experto que proporciona análisis detallados, precisos y objetivos. Evalúas la información de manera imparcial y ofreces conclusiones basadas en datos.';
+      break;
+    default:
+      systemContent = 'Eres un asistente experto que proporciona respuestas precisas, detalladas y útiles. Hablas en español pero conservas los términos técnicos en inglés cuando es apropiado.';
+  }
+  
+  messages.push({
+    role: 'system',
+    content: systemContent
+  });
+  
+  // Añadir el prompt como mensaje del usuario
+  messages.push({
+    role: 'user',
+    content: prompt
+  });
+  
+  // Realizar la llamada al modelo
+  const response = await chatCompletion(messages, model, {
+    temperature,
+    ...options
+  });
+  
+  // Extraer y devolver el texto generado con metadatos
+  const content = response.choices[0].message.content || '';
+  
+  // Crear objeto de respuesta con metadatos
+  const result: CompletionResult = {
+    content: content,
+    modelInfo: {
+      name: model,
+      taskType: options.taskType || detectTaskType(prompt)
+    },
+    tokenCount: {
+      prompt: response.usage?.prompt_tokens || 0,
+      completion: response.usage?.completion_tokens || 0,
+      total: response.usage?.total_tokens || 0
+    }
+  };
+  
+  // Agregar tool_calls si existen
+  if (response.tool_calls && response.tool_calls.length > 0) {
+    result.tool_calls = response.tool_calls;
+  }
+  
+  return result;
 }
 
 /**
@@ -550,8 +665,8 @@ export async function callWithTools(
  * @returns Nombre del modelo
  */
 export function getOpenAIModel(): string {
-  const config = vscode.workspace.getConfiguration('grec0ai');
-  return config.get<string>('openai.model') || 'gpt-4.1-mini';
+  const config = vscode.workspace.getConfiguration('memorybank');
+  return config.get<string>('openai.model') || 'gpt-5-mini';
 }
 
 /**

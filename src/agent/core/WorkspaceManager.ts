@@ -67,7 +67,7 @@ export class WorkspaceManager {
             const extensionContext = this.agent.context;
             const basePath = extensionContext.globalStorageUri ? 
                 extensionContext.globalStorageUri.fsPath : 
-                path.join(this.getTempDir(), 'grec0ai_agent');
+                path.join(this.getTempDir(), 'memorybank_agent');
             
             // Create specific workspace for this session
             const workspacePath = path.join(basePath, this.sessionId);
@@ -92,7 +92,7 @@ export class WorkspaceManager {
         } catch (error: any) {
             this.logger.appendLine(`Error creating workspace: ${error.message}`);
             // Fallback to system temp directory
-            const fallbackPath = path.join(this.getTempDir(), 'grec0ai_agent', this.sessionId);
+            const fallbackPath = path.join(this.getTempDir(), 'memorybank_agent', this.sessionId);
             if (!fs.existsSync(fallbackPath)) {
                 fs.mkdirSync(fallbackPath, { recursive: true });
             }
@@ -106,7 +106,7 @@ export class WorkspaceManager {
      * @returns Path to temporary directory
      */
     private getTempDir(): string {
-        return fs.mkdtempSync(path.join(os.tmpdir(), 'grec0ai_'));
+        return fs.mkdtempSync(path.join(os.tmpdir(), 'memorybank_'));
     }
 
     /**
@@ -183,7 +183,7 @@ export class WorkspaceManager {
             const extensionContext = this.agent.context;
             const basePath = extensionContext.globalStorageUri ? 
                 extensionContext.globalStorageUri.fsPath : 
-                path.join(os.tmpdir(), 'grec0ai_agent');
+                path.join(os.tmpdir(), 'memorybank_agent');
             
             if (!fs.existsSync(basePath)) {
                 return 0;

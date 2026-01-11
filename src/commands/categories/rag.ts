@@ -3,7 +3,7 @@ import { CommandRegistration } from '../types';
 import { createCommandRegistration } from '../utils';
 
 export const ragCommands: CommandRegistration[] = [
-    createCommandRegistration('grec0ai.rag.initialize', async () => {
+    createCommandRegistration('memorybank.rag.initialize', async () => {
         try {
             // Implementar lógica de inicialización de RAG
             vscode.window.showInformationMessage('RAG system initialized');
@@ -12,7 +12,7 @@ export const ragCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.vectra.reindexProject', async () => {
+    createCommandRegistration('memorybank.reindexProject', async () => {
         try {
             // Implementar lógica de reindexación
             vscode.window.showInformationMessage('Project reindexed successfully');
@@ -21,7 +21,7 @@ export const ragCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.vectra.indexProject', async () => {
+    createCommandRegistration('memorybank.indexProject', async () => {
         try {
             // Implementar lógica de indexación
             vscode.window.showInformationMessage('Project indexed successfully');
@@ -30,7 +30,7 @@ export const ragCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.vectra.search', async () => {
+    createCommandRegistration('memorybank.search', async () => {
         try {
             const query = await vscode.window.showInputBox({
                 prompt: 'Enter your search query',

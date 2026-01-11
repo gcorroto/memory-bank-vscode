@@ -135,6 +135,7 @@ export interface TokenCount {
   prompt: number;
   completion: number;
   total: number;
+  reasoning?: number;  // Tokens usados para razonamiento (Responses API)
 }
 
 export interface CompletionResult {
@@ -142,4 +143,5 @@ export interface CompletionResult {
   modelInfo: ModelInfo;
   tokenCount: TokenCount;
   tool_calls?: ToolCall[];
+  reasoningSummary?: string;  // Resumen del razonamiento (Responses API)
 } 

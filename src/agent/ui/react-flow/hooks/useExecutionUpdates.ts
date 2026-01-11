@@ -20,9 +20,16 @@ export const useExecutionUpdates = (
                     }
                     break;
 
+                // Support both legacy and current message formats
                 case 'executionUpdate':
                     if (message.executionUpdate) {
                         onExecutionUpdate(message.executionUpdate);
+                    }
+                    break;
+
+                case 'updateExecution':
+                    if (message.update) {
+                        onExecutionUpdate(message.update);
                     }
                     break;
             }

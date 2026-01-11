@@ -29,13 +29,15 @@ export class FlowViewer {
     public show(): void {
         if (this.panel) {
             this.panel.reveal();
+            // Rehidratar estado al revelar la vista
+            this.syncStateToWebview();
             return;
         }
 
         // Create the webview panel
         this.panel = vscode.window.createWebviewPanel(
-            'grec0aiFlowViewer',
-            'Grec0AI: Visualizador de Flujos',
+            'memorybankFlowViewer',
+            'Memory Bank: Visualizador de Flujos',
             vscode.ViewColumn.Two,
             {
                 enableScripts: true,
@@ -48,6 +50,9 @@ export class FlowViewer {
 
         // Set initial HTML content
         this.updateContent();
+
+        // Enviar estado inicial tras cargar el HTML
+        this.syncStateToWebview();
 
         // Handle panel close
         this.panel.onDidDispose(() => {
@@ -69,6 +74,31 @@ export class FlowViewer {
             undefined,
             this.context.subscriptions
         );
+    }
+
+    /**
+     * Reenvía el estado actual (plan y updates) a la webview para rehidratación
+     */
+    private syncStateToWebview(): void {
+        if (!this.panel) return;
+
+        // Reenviar plan si existe
+        if (this.currentPlan) {
+            this.panel.webview.postMessage({
+                command: 'updatePlan',
+                plan: this.currentPlan,
+            });
+        }
+
+        // Reenviar actualizaciones de ejecución acumuladas
+        if (this.executionUpdates && this.executionUpdates.length > 0) {
+            this.executionUpdates.forEach((update) => {
+                this.panel!.webview.postMessage({
+                    command: 'updateExecution',
+                    update,
+                });
+            });
+        }
     }
 
     /**
@@ -182,8 +212,8 @@ export class FlowViewer {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>Grec0AI Flow Viewer</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${this.panel.webview.cspSource}; connect-src ${this.panel.webview.cspSource};">
+    <title>Memory Bank: Flow Viewer</title>
     <style>
         body {
             margin: 0;

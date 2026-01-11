@@ -4,29 +4,25 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-
-console.log('Logs Webview: Entry point ejecutándose');
-
-// VERSION SIMPLE PARA DEBUG
-import { App } from './App-simple';
+import { App } from './App';
 
 try {
-    console.log('Logs Webview: Buscando container root');
-    
     // Mount React app
     const container = document.getElementById('root');
     if (container) {
-        console.log('Logs Webview: Container encontrado, creando root');
+        // Get initial state from webview
+        const initialState = (window as any).initialState || {
+            sessions: [],
+            activeSessionId: '',
+            theme: 'dark'
+        };
+        
         const root = createRoot(container);
-        
-        console.log('Logs Webview: Renderizando App simple');
-        root.render(<App />);
-        
-        console.log('Logs Webview: ✅ React montado exitosamente');
+        root.render(<App initialState={initialState} />);
     } else {
-        console.error('Logs Webview: ❌ No se encontró el elemento #root');
+        console.error('Logs Webview: No se encontró el elemento #root');
     }
 } catch (error) {
-    console.error('Logs Webview: ❌ Error al montar React:', error);
+    console.error('Logs Webview: Error al montar React:', error);
 }
 

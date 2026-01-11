@@ -715,11 +715,11 @@ Responde en formato JSON con la siguiente estructura:
         
         // Lógica para determinar el modelo según tamaño y complejidad
         if (codeLength > 5000 || detailLevel === 'high') {
-            return "gpt-4"; // Para código grande o análisis detallado
+            return "gpt-5.2"; // Para código grande o análisis detallado
         }
         
         // Modelo por defecto para la mayoría de casos
-        return "gpt-4.1-mini";
+        return "gpt-5-mini";
     }
 
     /**

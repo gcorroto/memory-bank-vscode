@@ -31,7 +31,7 @@ export class FileSnapshotManager {
 
     constructor() {
         this.snapshots = new Map();
-        this.tempDir = path.join(os.tmpdir(), 'grec0ai-snapshots');
+        this.tempDir = path.join(os.tmpdir(), 'memorybank-snapshots');
         
         // Asegurar que el directorio temporal existe
         if (!fs.existsSync(this.tempDir)) {

@@ -1,6 +1,6 @@
-# Vista de Logs para Agentes Grec0AI
+# Vista de Logs para Agentes Memory Bank
 
-Este componente proporciona una interfaz visual para mostrar los logs y el razonamiento de los agentes de Grec0AI en tiempo real. La vista de logs permite seguir el proceso de pensamiento y las acciones de los agentes mientras ejecutan tareas.
+Este componente proporciona una interfaz visual para mostrar los logs y el razonamiento de los agentes de Memory Bank en tiempo real. La vista de logs permite seguir el proceso de pensamiento y las acciones de los agentes mientras ejecutan tareas.
 
 ## Características
 
@@ -117,7 +117,7 @@ const globalLogsView = new AgentLogsView(context);
 (global as any).agentLogsView = globalLogsView;
 
 // Registrar comando para mostrar logs
-const disposable = vscode.commands.registerCommand('grec0ai.agent.showLogs', () => {
+const disposable = vscode.commands.registerCommand('memorybank.agent.showLogs', () => {
     globalLogsView.show();
 });
 ```

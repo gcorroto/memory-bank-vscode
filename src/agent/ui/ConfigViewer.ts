@@ -56,8 +56,8 @@ export class ConfigViewer {
 
         // Create the webview panel
         this.panel = vscode.window.createWebviewPanel(
-            'grec0aiConfigViewer',
-            'Grec0AI: Configurador Visual',
+            'memorybankConfigViewer',
+            'Memory Bank: Configurador Visual',
             vscode.ViewColumn.Two,
             {
                 enableScripts: true,
@@ -130,7 +130,7 @@ export class ConfigViewer {
             this.savedPlans.push(savedPlan);
             
             // Save to workspace state
-            await this.context.workspaceState.update('grec0ai.savedPlans', this.savedPlans);
+            await this.context.workspaceState.update('memorybank.savedPlans', this.savedPlans);
             
             vscode.window.showInformationMessage(`Plan "${savedPlan.name}" guardado exitosamente`);
             
@@ -161,7 +161,7 @@ export class ConfigViewer {
             }
             
             // Save to workspace state
-            await this.context.workspaceState.update('grec0ai.rules', this.rules);
+            await this.context.workspaceState.update('memorybank.rules', this.rules);
             
             vscode.window.showInformationMessage(`Regla "${rule.name}" guardada exitosamente`);
         } catch (error: any) {
@@ -184,7 +184,7 @@ export class ConfigViewer {
             }
             
             // Save to workspace state
-            await this.context.workspaceState.update('grec0ai.promptTemplates', this.promptTemplates);
+            await this.context.workspaceState.update('memorybank.promptTemplates', this.promptTemplates);
             
             vscode.window.showInformationMessage(`Template "${template.name}" guardado exitosamente`);
         } catch (error: any) {
@@ -197,7 +197,7 @@ export class ConfigViewer {
      */
     private async loadSavedPlans(): Promise<void> {
         try {
-            const plans = this.context.workspaceState.get<SavedPlan[]>('grec0ai.savedPlans', []);
+            const plans = this.context.workspaceState.get<SavedPlan[]>('memorybank.savedPlans', []);
             this.savedPlans = plans;
             
             if (this.panel) {
@@ -253,8 +253,8 @@ export class ConfigViewer {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>Grec0AI Config Viewer</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${this.panel.webview.cspSource}; connect-src ${this.panel.webview.cspSource};">
+    <title>Memory Bank: Config Viewer</title>
     <style>
         body {
             margin: 0;

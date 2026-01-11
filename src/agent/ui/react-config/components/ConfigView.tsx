@@ -22,7 +22,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ tools, plans, rules, pro
     return (
         <div className="config-container">
             <div className="config-header">
-                <h1>Grec0AI: Configurador Visual</h1>
+                <h1>Memory Bank: Configurador Visual</h1>
             </div>
 
             <div className="config-tabs">

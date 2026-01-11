@@ -12,7 +12,7 @@ interface ToolbarProps {
 export const Toolbar: React.FC<ToolbarProps> = ({ onReset, onExport }) => {
     return (
         <div className="flow-toolbar">
-            <h2>Grec0AI: Visualización de Flujo de Decisiones</h2>
+            <h2>Memory Bank: Visualización de Flujo de Decisiones</h2>
             <button onClick={onReset}>Reiniciar Vista</button>
             <button onClick={onExport}>Exportar Imagen</button>
         </div>

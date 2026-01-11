@@ -12,7 +12,7 @@ export const App: React.FC = () => {
             fontFamily: 'var(--vscode-font-family)'
         }}>
             <h1>✅ React Flow funcionando correctamente</h1>
-            <p>Grec0AI Flow Viewer - Vista React Cargada</p>
+            <p>Memory Bank Flow Viewer - Vista React Cargada</p>
             <div style={{
                 marginTop: '20px',
                 padding: '10px',

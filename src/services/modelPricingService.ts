@@ -3,6 +3,9 @@
  */
 
 export type Model =
+  | 'gpt-5-mini'
+  | 'gpt-5.2'
+  | 'gpt-5.1-codex'
   | 'gpt-4.1'
   | 'gpt-4.1-mini'
   | 'gpt-4.1-nano'
@@ -27,9 +30,15 @@ export interface CostBreakdown {
 
 // Precios por millón de tokens
 const modelPrices: Record<string, Price> = {
+  // GPT-5.x models (Responses API)
+  'gpt-5-mini': { input: 0.50, output: 2.00 },
+  'gpt-5.2': { input: 3.00, output: 12.00 },
+  'gpt-5.1-codex': { input: 2.50, output: 10.00 },
+  // Legacy GPT-4.1 models (Chat Completions API)
   'gpt-4.1': { input: 2.00, output: 8.00 },
   'gpt-4.1-mini': { input: 0.40, output: 1.60 },
   'gpt-4.1-nano': { input: 0.10, output: 0.40 },
+  // o-series models
   'o3': { input: 10.00, output: 40.00 },
   'o4-mini': { input: 1.10, output: 4.40 },
   // Fallback para modelos desconocidos

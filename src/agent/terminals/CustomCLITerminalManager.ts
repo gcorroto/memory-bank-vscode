@@ -1,5 +1,5 @@
 /**
- * Gestor de terminales personalizadas para Grec0AI
+ * Gestor de terminales personalizadas para Memory Bank
  * Gestiona la creación, visualización y ejecución de comandos en terminales VSCode
  */
 
@@ -100,10 +100,10 @@ export class CustomCLITerminalManager {
      * @param cwd - Directorio de trabajo (opcional)
      * @returns El ID de la terminal creada
      */
-    createTerminal(id: string = 'grec0ai-cli', name: string = 'Grec0AI CLI', cwd?: string): string {
+    createTerminal(id: string = 'memorybank-cli', name: string = 'Memory Bank CLI', cwd?: string): string {
         // Usar un ID único si no se proporciona uno o si ya existe
         if (!id || this.terminals.has(id)) {
-            id = `grec0ai-cli-${Date.now()}`;
+            id = `memorybank-cli-${Date.now()}`;
         }
         
         // Crear un canal de salida para capturar los resultados
@@ -132,7 +132,7 @@ export class CustomCLITerminalManager {
      * Muestra la terminal identificada por ID
      * @param id - ID de la terminal a mostrar
      */
-    showTerminal(id: string = 'grec0ai-cli'): void {
+    showTerminal(id: string = 'memorybank-cli'): void {
         const terminal = this.terminals.get(id);
         if (terminal) {
             terminal.show();
@@ -147,7 +147,7 @@ export class CustomCLITerminalManager {
      * Oculta la terminal identificada por ID
      * @param id - ID de la terminal a ocultar
      */
-    hideTerminal(id: string = 'grec0ai-cli'): void {
+    hideTerminal(id: string = 'memorybank-cli'): void {
         // En VSCode API no hay un método directo para ocultar,
         // podemos usar el workbench.action.terminal.toggleTerminal command
         vscode.commands.executeCommand('workbench.action.togglePanel');
@@ -198,15 +198,15 @@ export class CustomCLITerminalManager {
         // Si queremos capturar la salida, modificar el comando para redirigir a un archivo temporal
         if (captureOutput) {
             const tmpDir = os.tmpdir();
-            const outputFile = path.join(tmpDir, `grec0ai-output-${executionId}.txt`);
-            const errorFile = path.join(tmpDir, `grec0ai-error-${executionId}.txt`);
+            const outputFile = path.join(tmpDir, `memorybank-output-${executionId}.txt`);
+            const errorFile = path.join(tmpDir, `memorybank-error-${executionId}.txt`);
             
             // Guardar el directorio de trabajo actual
-            const pwdCommand = `pwd > "${path.join(tmpDir, `grec0ai-pwd-${executionId}.txt`)}"`;
+            const pwdCommand = `pwd > "${path.join(tmpDir, `memorybank-pwd-${executionId}.txt`)}"`;
             terminal.sendText(pwdCommand);
             
             // Modificar el comando para capturar la salida y errores
-            const modifiedCommand = `{ ${command}; } > "${outputFile}" 2> "${errorFile}" && echo "GREC0AI_COMMAND_FINISHED:${executionId}"`;
+            const modifiedCommand = `{ ${command}; } > "${outputFile}" 2> "${errorFile}" && echo "MEMORYBANK_COMMAND_FINISHED:${executionId}"`;
             terminal.sendText(modifiedCommand);
             
             // Esperar a que el comando termine y leer los archivos
@@ -233,7 +233,7 @@ export class CustomCLITerminalManager {
                 }
                 
                 // Leer directorio de trabajo
-                const pwdFile = path.join(tmpDir, `grec0ai-pwd-${executionId}.txt`);
+                const pwdFile = path.join(tmpDir, `memorybank-pwd-${executionId}.txt`);
                 if (fs.existsSync(pwdFile)) {
                     executionResult.workingDirectory = fs.readFileSync(pwdFile, 'utf8').trim();
                 }
@@ -292,12 +292,12 @@ export class CustomCLITerminalManager {
             const checkInterval = setInterval(() => {
                 const fs = require('fs');
                 const tmpDir = os.tmpdir();
-                const outputFile = path.join(tmpDir, `grec0ai-output-${executionId}.txt`);
+                const outputFile = path.join(tmpDir, `memorybank-output-${executionId}.txt`);
                 
                 // Verificar si el archivo existe y contiene el marcador de finalización
                 if (fs.existsSync(outputFile)) {
                     const content = fs.readFileSync(outputFile, 'utf8');
-                    if (content.includes(`GREC0AI_COMMAND_FINISHED:${executionId}`)) {
+                    if (content.includes(`MEMORYBANK_COMMAND_FINISHED:${executionId}`)) {
                         clearInterval(checkInterval);
                         resolve();
                         return;

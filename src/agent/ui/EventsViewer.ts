@@ -60,8 +60,8 @@ export class EventsViewer {
         
         // Crear el panel webview
         this.view = vscode.window.createWebviewPanel(
-            'grec0aiEventsViewer',
-            'Grec0AI: Eventos y Cambios',
+            'memorybankEventsViewer',
+            'Memory Bank: Eventos y Cambios',
             vscode.ViewColumn.Two,
             {
                 enableScripts: true,
@@ -224,7 +224,7 @@ export class EventsViewer {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Grec0AI: Eventos y Cambios</title>
+            <title>Memory Bank: Eventos y Cambios</title>
             <link href="${styleUri}" rel="stylesheet">
             <link href="https://cdn.jsdelivr.net/npm/vscode-codicons/dist/codicon.css" rel="stylesheet">
             <script src="${scriptUri}"></script>
@@ -587,7 +587,7 @@ export class EventsViewer {
             const snapshotBeforeId = await this.fileSnapshotManager.createSnapshot(filePaths);
             
             // Ejecutar comando
-            const terminalId = this.terminalManager.createTerminal('grec0ai-user', 'Grec0AI User Terminal', workspacePath);
+            const terminalId = this.terminalManager.createTerminal('memorybank-user', 'Memory Bank User Terminal', workspacePath);
             const result = await this.terminalManager.executeCommand(command, terminalId, true);
             
             // Capturar snapshot después

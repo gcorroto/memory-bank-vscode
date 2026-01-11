@@ -143,13 +143,80 @@
     padding: 15px 20px;
     border-bottom-left-radius: 8px;
     z-index: 10;
-    min-width: 200px;
+    min-width: 220px;
 }
 
 .status-overlay h3 {
-    margin: 0 0 10px 0;
+    margin: 0 0 12px 0;
     font-size: 14px;
     color: var(--accent-color);
+}
+
+.stats-badges {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.badge:hover {
+    transform: translateX(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.badge-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.badge-value {
+    font-size: 14px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.badge-total {
+    background-color: rgba(100, 100, 100, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.badge-success {
+    background-color: rgba(34, 204, 68, 0.3);
+    border: 1px solid var(--success-color);
+}
+
+.badge-running {
+    background-color: rgba(14, 99, 156, 0.3);
+    border: 1px solid var(--accent-color);
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.badge-error {
+    background-color: rgba(241, 76, 76, 0.3);
+    border: 1px solid var(--failure-color);
+}
+
+.badge-pending {
+    background-color: rgba(125, 125, 125, 0.3);
+    border: 1px solid var(--timestamp-color);
+}
+
+@keyframes badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
 .status-overlay p {

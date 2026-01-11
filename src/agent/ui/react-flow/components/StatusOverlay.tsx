@@ -24,30 +24,40 @@ export const StatusOverlay: React.FC<StatusOverlayProps> = ({ stats, modelInfo }
         <div className="status-overlay">
             <h3>📊 Estado de Ejecución</h3>
             
-            <p>
-                <span className="stat-label">Total pasos:</span>
-                <span className="stat-value">{stats.total}</span>
-            </p>
-
-            <p>
-                <span className="stat-label">Completados:</span>
-                <span className="stat-value success">{stats.completed}</span>
-            </p>
-
-            <p>
-                <span className="stat-label">Fallidos:</span>
-                <span className="stat-value error">{stats.failed}</span>
-            </p>
-
-            <p>
-                <span className="stat-label">En ejecución:</span>
-                <span className="stat-value pending">{stats.running}</span>
-            </p>
-
-            <p>
-                <span className="stat-label">Pendientes:</span>
-                <span className="stat-value pending">{stats.pending}</span>
-            </p>
+            <div className="stats-badges">
+                <div className="badge badge-total">
+                    <span className="badge-label">Total</span>
+                    <span className="badge-value">{stats.total}</span>
+                </div>
+                
+                {stats.completed > 0 && (
+                    <div className="badge badge-success">
+                        <span className="badge-label">✓ Completados</span>
+                        <span className="badge-value">{stats.completed}</span>
+                    </div>
+                )}
+                
+                {stats.running > 0 && (
+                    <div className="badge badge-running">
+                        <span className="badge-label">▶ Ejecutando</span>
+                        <span className="badge-value">{stats.running}</span>
+                    </div>
+                )}
+                
+                {stats.failed > 0 && (
+                    <div className="badge badge-error">
+                        <span className="badge-label">✗ Fallidos</span>
+                        <span className="badge-value">{stats.failed}</span>
+                    </div>
+                )}
+                
+                {stats.pending > 0 && (
+                    <div className="badge badge-pending">
+                        <span className="badge-label">⋯ Pendientes</span>
+                        <span className="badge-value">{stats.pending}</span>
+                    </div>
+                )}
+            </div>
 
             {modelInfo && (
                 <>

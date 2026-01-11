@@ -1,5 +1,5 @@
 /**
- * Grec0AI Agent System
+ * Memory Bank Agent System
  * Main entry point for the agent architecture
  */
 

@@ -3,7 +3,7 @@ import { CommandRegistration } from '../types';
 import { createCommandRegistration } from '../utils';
 
 export const filesystemCommands: CommandRegistration[] = [
-    createCommandRegistration('grec0ai.runAutofixer', async () => {
+    createCommandRegistration('memorybank.runAutofixer', async () => {
         try {
             // Importar la función checkAndProcessAutofixerMd desde extension.ts
             // Aquí estamos usando require para evitar problemas de importación circular
@@ -27,7 +27,7 @@ export const filesystemCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.filesystem.refresh', async () => {
+    createCommandRegistration('memorybank.filesystem.refresh', async () => {
         try {
             // Implementar lógica de refresh
             vscode.window.showInformationMessage('File system refreshed');
@@ -36,7 +36,7 @@ export const filesystemCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.filesystem.showFileDetails', async () => {
+    createCommandRegistration('memorybank.filesystem.showFileDetails', async () => {
         try {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
@@ -58,7 +58,7 @@ export const filesystemCommands: CommandRegistration[] = [
         }
     }),
 
-    createCommandRegistration('grec0ai.filesystem.openFileAtLine', async () => {
+    createCommandRegistration('memorybank.filesystem.openFileAtLine', async () => {
         try {
             const input = await vscode.window.showInputBox({
                 prompt: 'Enter file path and line number (e.g., src/file.ts:42)',

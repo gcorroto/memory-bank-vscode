@@ -77,7 +77,7 @@ export const App: React.FC<AppProps> = ({ initialState }) => {
     return (
         <>
             <h1 style={{ padding: '20px', paddingBottom: '10px', margin: 0 }}>
-                Grec0AI Agent Logs
+                Memory Bank Agent Logs
             </h1>
 
             <Toolbar

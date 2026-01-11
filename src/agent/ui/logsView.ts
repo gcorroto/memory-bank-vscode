@@ -205,7 +205,7 @@ export class AgentLogsView {
             // Create a new panel
             this.panel = vscode.window.createWebviewPanel(
                 'agentLogsView',
-                'Grec0AI Agent Logs',
+                'Memory Bank: Agent Logs',
                 vscode.ViewColumn.Beside,
                 {
                     enableScripts: true,
@@ -577,8 +577,8 @@ export class AgentLogsView {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>Grec0AI Agent Logs</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${this.panel.webview.cspSource}; connect-src ${this.panel.webview.cspSource};">
+    <title>Memory Bank: Agent Logs</title>
     <style>
         body {
             margin: 0;

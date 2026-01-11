@@ -5,7 +5,6 @@
 
 import * as vscode from 'vscode';
 import * as openaiService from '../../services/openaiService';
-import * as vectraService from '../../services/vectraService';
 import * as ragService from '../../services/ragService';
 import * as modelPricingService from '../../services/modelPricingService';
 import { AgentToolManager } from './AgentToolManager';
@@ -17,7 +16,7 @@ import { EventsViewer } from '../ui/EventsViewer';
 import { FlowViewer } from '../ui/FlowViewer';
 import { FileSnapshotManager } from '../terminals/FileSnapshotManager';
 import { CustomCLITerminalManager } from '../terminals/CustomCLITerminalManager';
-import { PlanStep, Plan } from '../types/AgentTypes';
+import { PlanStep, Plan, AgentEvent } from '../types/AgentTypes';
 import type { ChatMessage, CompletionResult } from '../../types/openai';
 import * as promptComposer from '../../promptComposer';
 import { PLAN_TASK_PROMPT } from './AgentPrompt';
@@ -36,6 +35,8 @@ export class Agent {
     flowViewer: FlowViewer | null = null;
     terminalManager: CustomCLITerminalManager;
     fileSnapshotManager: FileSnapshotManager;
+    private eventEmitter: vscode.EventEmitter<AgentEvent> = new vscode.EventEmitter<AgentEvent>();
+    public readonly onDidEmitEvent: vscode.Event<AgentEvent> = this.eventEmitter.event;
 
     /**
      * Initialize a new Agent instance
@@ -45,7 +46,7 @@ export class Agent {
     constructor(name: string, context: vscode.ExtensionContext) {
         this.name = name;
         this.context = context;
-        this.logger = vscode.window.createOutputChannel(`Grec0AI Agent: ${name}`);
+        this.logger = vscode.window.createOutputChannel(`Memory Bank Agent: ${name}`);
         this.contextManager = new ContextManager(this);
         this.toolManager = new AgentToolManager(this);
         this.workspaceManager = new WorkspaceManager(this);
@@ -53,6 +54,19 @@ export class Agent {
         this.llmClient = openaiService;
         this.terminalManager = new CustomCLITerminalManager();
         this.fileSnapshotManager = new FileSnapshotManager();
+    }
+
+    /**
+     * Emit an agent event for external listeners (Dashboards, Views)
+     */
+    private emitAgentEvent(type: string, data?: any): void {
+        try {
+            const evt: AgentEvent = { type, timestamp: new Date(), data };
+            this.eventEmitter.fire(evt);
+            this.logger.appendLine(`[AgentEvent] ${type}: ${JSON.stringify(data ?? {}, null, 2)}`);
+        } catch (e) {
+            this.logger.appendLine(`[AgentEvent] Error emitting event ${type}: ${e}`);
+        }
     }
 
     /**
@@ -176,6 +190,13 @@ export class Agent {
                 this.flowViewer.show();
                 this.logger.appendLine('Flow view shown');
             }
+            
+            // Mostrar dashboard
+            const dashboardViewer = (global as any).dashboardViewer;
+            if (dashboardViewer) {
+                dashboardViewer.show(this, this.contextManager, this.context);
+                this.logger.appendLine('Dashboard view shown');
+            }
         } catch (error: any) {
             this.logger.appendLine(`Error showing views: ${error.message}`);
         }
@@ -211,9 +232,10 @@ export class Agent {
             // 2. Plan task using LLM (now includes validation and optimization)
             let plan = await this.planTask(input, context);
             
-            // Actualizar FlowViewer con el plan generado
+            // Actualizar FlowViewer con el plan generado y emitir evento
             if (this.flowViewer && plan) {
                 this.flowViewer.updatePlan(plan);
+                this.emitAgentEvent('planUpdate', { plan });
                 this.logger.appendLine('Plan sent to Flow viewer');
             }
             
@@ -223,7 +245,7 @@ export class Agent {
             let stoppedAtStep: string | null = null;
             let stopReason: string | null = null;
             let replanCount = 0;
-            const maxReplanning = vscode.workspace.getConfiguration('grec0ai.agent').get<number>('maxReplanning', 5);
+            const maxReplanning = vscode.workspace.getConfiguration('memorybank.agent').get<number>('maxReplanning', 5);
             
             // Main execution loop with replanning
             while (replanCount <= maxReplanning) {
@@ -271,10 +293,11 @@ export class Agent {
                     this.logger.appendLine(`Step tool: ${step.tool}`);
                     this.logger.appendLine(`Step params: ${JSON.stringify(step.params, null, 2)}`);
 
-                    // Update FlowViewer: step started
+                    // Update FlowViewer: step started + emit event
                     if (this.flowViewer) {
                         this.flowViewer.updateStepStatus(stepIndex, 'running');
                     }
+                    this.emitAgentEvent('stepStart', { stepIndex, step });
 
                     // --- INTEGRACIÓN FindFileTool ---
                     // Detectar si el paso requiere un archivo y la ruta no existe
@@ -413,8 +436,9 @@ export class Agent {
                         // Pasamos el array de resultados acumulados hasta ahora
                         const resolvedParams = this.resolveVariables(step.params, results);
                         
-                        // Registrar los parámetros después de resolver variables
-                        this.logger.appendLine(`Parámetros resueltos para ${step.tool}: ${JSON.stringify(resolvedParams, null, 2)}`);
+                        // Registrar los parámetros ANTES y DESPUÉS de resolver variables para debugging
+                        this.logger.appendLine(`[BEFORE] Parámetros originales para ${step.tool}: ${JSON.stringify(step.params, null, 2)}`);
+                        this.logger.appendLine(`[AFTER] Parámetros resueltos para ${step.tool}: ${JSON.stringify(resolvedParams, null, 2)}`);
                         
                         // MOVER AQUÍ: Verificación de archivos después de resolver variables
                         // Si hay un parámetro que parece ser una ruta de archivo, verificar que existe
@@ -483,8 +507,8 @@ export class Agent {
                             
                             // Crear una terminal o usar una existente
                             const terminalId = this.terminalManager.createTerminal(
-                                'grec0ai-agent',
-                                'Grec0AI Agent Terminal',
+                                'memorybank-agent',
+                                'Memory Bank Agent Terminal',
                                 workingDirectory
                             );
                             
@@ -545,10 +569,11 @@ export class Agent {
                                 this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
                             }
                             
-                            // Update FlowViewer: step completed successfully
+                            // Update FlowViewer: step completed successfully + emit event
                             if (this.flowViewer) {
                                 this.flowViewer.updateStepStatus(stepIndex, 'success', { result: stepResult });
                             }
+                            this.emitAgentEvent('stepSuccess', { stepIndex, step, result: stepResult });
                             
                             this.logger.appendLine(`Command step completed: ${step.description}`);
                             // NUEVO: Indexar resultados relevantes para aprendizaje futuro
@@ -572,10 +597,11 @@ export class Agent {
                                 this.logsView.addStepLog(step.description, step.tool, step.params, stepResult, true);
                             }
                             
-                            // Update FlowViewer: step completed successfully
+                            // Update FlowViewer: step completed successfully + emit event
                             if (this.flowViewer) {
                                 this.flowViewer.updateStepStatus(stepIndex, 'success', { result: stepResult });
                             }
+                            this.emitAgentEvent('stepSuccess', { stepIndex, step, result: stepResult });
                             
                             // Añadir evento específico según el tipo de herramienta
                             if (this.eventsViewer) {
@@ -607,10 +633,11 @@ export class Agent {
                     } catch (error: any) {
                         this.logger.appendLine(`Error executing step: ${error.message}`);
                         
-                        // Update FlowViewer: step failed
+                        // Update FlowViewer: step failed + emit event
                         if (this.flowViewer) {
                             this.flowViewer.updateStepStatus(stepIndex, 'error', { error: error.message });
                         }
+                        this.emitAgentEvent('stepError', { stepIndex, step, error: error.message });
                         
                         // Add failure feedback to context
                         this.contextManager.addFeedback({
@@ -1468,7 +1495,7 @@ Respond in the following JSON format:
      */
     private getStandardPlanningPrompt(input: string, context: any, availableTools: any[]): string {
         return `
-You are a planning assistant for the Grec0AI Agent. Your task is to break down the user's request into a series of steps that can be executed by the agent.
+You are a planning assistant for the Memory Bank Agent. Your task is to break down the user's request into a series of steps that can be executed by the agent.
 
 User request: "${input}"
 
@@ -2064,7 +2091,10 @@ Respond in the following JSON format:
                         
                         // Log de propiedades disponibles para debugging
                         if (stepResult && stepResult.result) {
-                            this.logger.appendLine(`Available properties in step ${stepIndex}: ${JSON.stringify(Object.keys(stepResult.result))}`);
+                            this.logger.appendLine(`[DEBUG] Step ${stepIndex} result keys: ${JSON.stringify(Object.keys(stepResult.result))}`);
+                            this.logger.appendLine(`[DEBUG] Step ${stepIndex} full result: ${JSON.stringify(stepResult.result, null, 2)}`);
+                        } else {
+                            this.logger.appendLine(`[WARNING] Step ${stepIndex} has no result object`);
                         }
                         
                         // Intentar obtener la propiedad solicitada
@@ -2121,7 +2151,9 @@ Respond in the following JSON format:
                         if (propValue !== undefined) {
                             return propValue;
                         } else {
-                            this.logger.appendLine(`WARNING: Could not resolve $STEP[${stepIndex}].${property}${arrayIndex !== undefined ? `[${arrayIndex}]` : ''}`);
+                            this.logger.appendLine(`[ERROR] Could not resolve $STEP[${stepIndex}].${property}${arrayIndex !== undefined ? `[${arrayIndex}]` : ''}`);
+                            this.logger.appendLine(`[ERROR] Requested property '${property}' does not exist in step ${stepIndex} result`);
+                            this.logger.appendLine(`[ERROR] Returning original placeholder: ${value}`);
                             // En caso de error, intentar la búsqueda manual
                             if (property === 'paths' || property === 'path') {
                                 this.logger.appendLine(`Attempting to find file path from step result using all available properties`);
@@ -2504,12 +2536,11 @@ Respond in the following JSON format:
                 return;
             }
             
-            // Realizar la consulta al vector store
+            // Realizar la consulta al vector store usando ragService
             this.logger.appendLine(`Realizando consulta RAG: ${query}`);
             
-            // Importar vectraService directamente para asegurar el tipado correcto
-            const vectraService = require('../../services/vectraService');
-            const searchResults = await vectraService.query(query, contextCount);
+            // Usar ragService para búsqueda semántica
+            const searchResults = await ragService.searchSimilarCode(query, { topK: contextCount });
             
             // Preparar el contexto para incluir las reglas relevantes del workspace
             let formattedContext = 'CONTEXTO RELEVANTE DEL PROYECTO:\n\n';
@@ -2517,8 +2548,8 @@ Respond in the following JSON format:
             // Añadir resultados de búsqueda vectorial
             if (searchResults && searchResults.length > 0) {
                 searchResults.forEach((result: any, index: number) => {
-                    const filePath = result.metadata?.filePath || 'Sin ruta';
-                    const code = result.metadata?.code || '';
+                    const filePath = result.filePath || 'Sin ruta';
+                    const code = result.content || '';
                     const relevance = Math.round((result.score || 0) * 100);
                     
                     formattedContext += `[${index + 1}] Archivo: ${filePath} (Relevancia: ${relevance}%)\n${code}\n\n`;
@@ -2655,21 +2686,11 @@ Respond in the following JSON format:
                 return; // No indexar este tipo de resultado
             }
             
-            // Para WriteFileTool, indexar el contenido escrito
+            // Nota: La indexación de contenido ahora se realiza externamente por el Memory Bank MCP
+            // Los archivos escritos serán indexados la próxima vez que se ejecute memorybank_index_code
             if (step.tool === 'WriteFileTool' && result.success && step.params.content) {
-                const vectraService = require('../../services/vectraService');
-                await vectraService.initialize();
-                
-                const metadata = {
-                    filePath: result.filePath || step.params.filePath,
-                    fileName: this.getFileName(result.filePath || step.params.filePath),
-                    extension: this.getFileExtension(result.filePath || step.params.filePath),
-                    createdAt: new Date().toISOString(),
-                    stepDescription: step.description
-                };
-                
-                await vectraService.indexCode(step.params.content, metadata);
-                this.logger.appendLine(`Contenido indexado para futura recuperación: ${metadata.filePath}`);
+                const filePath = result.filePath || step.params.filePath;
+                this.logger.appendLine(`Archivo escrito: ${filePath} (será indexado por Memory Bank MCP)`);
             }
         } catch (error: any) {
             this.logger.appendLine(`Error indexando resultados: ${error.message}`);
@@ -2831,7 +2852,7 @@ Respond in the following JSON format:
             }
 
             // Check if intelligent validation is enabled
-            const intelligentValidation = vscode.workspace.getConfiguration('grec0ai.agent').get<boolean>('intelligentValidation', true);
+            const intelligentValidation = vscode.workspace.getConfiguration('memorybank.agent').get<boolean>('intelligentValidation', true);
             
             if (!intelligentValidation) {
                 // Fallback to simple validation
@@ -2988,7 +3009,7 @@ Please analyze the plan and respond in JSON format:
             this.logger.appendLine("Evaluating execution results for potential replanning...");
 
             // Check if auto-replanning is enabled
-            const autoReplanning = vscode.workspace.getConfiguration('grec0ai.agent').get<boolean>('autoReplanning', true);
+            const autoReplanning = vscode.workspace.getConfiguration('memorybank.agent').get<boolean>('autoReplanning', true);
             if (!autoReplanning) {
                 this.logger.appendLine("Auto-replanning is disabled");
                 return { shouldReplan: false, reasoning: "Auto-replanning is disabled in settings", confidence: 100 };

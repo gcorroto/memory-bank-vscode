@@ -170,7 +170,7 @@ export class ExecuteCommandTool extends BaseTool {
         
         try {
             // Crear terminal si no existe aún
-            const terminalId = this.terminalManager.createTerminal('grec0ai-command', 'Grec0AI Command', workDir);
+            const terminalId = this.terminalManager.createTerminal('memorybank-command', 'Memory Bank Command', workDir);
             
             // Ejecutar el comando
             const result = await this.terminalManager.executeCommand(adaptedCommand, terminalId, true);

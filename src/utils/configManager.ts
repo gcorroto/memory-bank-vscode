@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
  * Get the OpenAI API key from configuration
  */
 export function getOpenAIApiKey(): string | undefined {
-    const config = vscode.workspace.getConfiguration('grec0ai');
+    const config = vscode.workspace.getConfiguration('memorybank');
     return config.get('openai.apiKey');
 }
 
@@ -20,7 +20,7 @@ export function getOpenAIApiKey(): string | undefined {
  */
 export async function setConfig(key: string, value: any): Promise<void> {
     try {
-        const config = vscode.workspace.getConfiguration('grec0ai');
+        const config = vscode.workspace.getConfiguration('memorybank');
         await config.update(key, value, vscode.ConfigurationTarget.Global);
     } catch (error) {
         console.error(`Error setting config ${key}:`, error);
@@ -32,7 +32,7 @@ export async function setConfig(key: string, value: any): Promise<void> {
  * Get the configured OpenAI model
  */
 export function getOpenAIModel(): string | undefined {
-    const config = vscode.workspace.getConfiguration('grec0ai');
+    const config = vscode.workspace.getConfiguration('memorybank');
     return config.get('openai.model');
 }
 
@@ -42,8 +42,8 @@ export function getOpenAIModel(): string | undefined {
  * @returns The model name to use for the specified task
  */
 export function getModelForTask(taskType?: string): string {
-    const config = vscode.workspace.getConfiguration('grec0ai');
-    const defaultModel = config.get<string>('openai.model') || 'gpt-4.1-mini';
+    const config = vscode.workspace.getConfiguration('memorybank');
+    const defaultModel = config.get<string>('openai.model') || 'gpt-5-mini';
     
     // Si no se especifica tipo de tarea, usar el modelo por defecto
     if (!taskType) {
@@ -51,9 +51,10 @@ export function getModelForTask(taskType?: string): string {
     }
     
     // Obtener el modelo configurado para cada tipo de tarea
-    const planningModel = config.get<string>('openai.planningModel') || config.get<string>('openai.models.planning') || defaultModel;
-    const analysisModel = config.get<string>('openai.analysisModel') || config.get<string>('openai.models.analysis') || defaultModel;
-    const codegenModel = config.get<string>('openai.codegenModel') || config.get<string>('openai.models.codegen') || defaultModel;
+    // Nuevos defaults: gpt-5.2 para planning/analysis, gpt-5.1-codex para codegen
+    const planningModel = config.get<string>('openai.planningModel') || config.get<string>('openai.models.planning') || 'gpt-5.2';
+    const analysisModel = config.get<string>('openai.analysisModel') || config.get<string>('openai.models.analysis') || 'gpt-5.2';
+    const codegenModel = config.get<string>('openai.codegenModel') || config.get<string>('openai.models.codegen') || 'gpt-5.1-codex';
     
     // Devolver el modelo según el tipo de tarea
     switch (taskType) {
@@ -69,32 +70,16 @@ export function getModelForTask(taskType?: string): string {
 }
 
 /**
- * Get Vectra configurations
- */
-export function getVectraConfig(): any {
-    const config = vscode.workspace.getConfiguration('grec0ai');
-    return {
-        enabled: config.get('vectra.enabled', true),
-        indexPath: config.get('vectra.indexPath', ''),
-        autoIndex: config.get('vectra.autoIndex', false),
-        includePatterns: config.get('vectra.includePatterns', ['*.ts', '*.js', '*.tsx', '*.jsx', '*.md', '*.txt']),
-        excludePatterns: config.get('vectra.excludePatterns', ['node_modules/**', 'dist/**', '.git/**']),
-        chunkSize: config.get('vectra.chunkSize', 1000),
-        showRagInfo: config.get('vectra.showRagInfo', true)
-    };
-}
-
-/**
  * Get RAG configurations
  */
 export function getRAGConfig(): any {
-    const config = vscode.workspace.getConfiguration('grec0ai');
+    const config = vscode.workspace.getConfiguration('memorybank');
     return {
         enabled: config.get('rag.enabled', true),
         defaultContextCount: config.get('rag.defaultContextCount', 5),
         preprocessText: config.get('rag.preprocessText', true),
         enhanceWithCodeContext: config.get('rag.enhanceWithCodeContext', true),
-        model: config.get('rag.model', '') || getOpenAIModel() || 'gpt-4.1-mini',
+        model: config.get('rag.model', '') || getOpenAIModel() || 'gpt-5-mini',
         temperature: config.get('rag.temperature', 0.3)
     };
 }
@@ -116,19 +101,11 @@ export async function initializeDefaults(): Promise<void> {
         'agent.debug': false,
         'agent.maxSteps': 20,
         
-        // OpenAI configs
-        'openai.model': 'gpt-4.1-mini',
-        'openai.models.planning': 'o4-mini',
-        'openai.models.analysis': 'gpt-4.1-mini',
-        'openai.models.codegen': 'gpt-4.1-mini',
-        
-        // Vectra configs
-        'vectra.enabled': true,
-        'vectra.autoIndex': false,
-        'vectra.includePatterns': ['*.ts', '*.js', '*.tsx', '*.jsx', '*.md', '*.txt'],
-        'vectra.excludePatterns': ['node_modules/**', 'dist/**', '.git/**'],
-        'vectra.chunkSize': 1000,
-        'vectra.showRagInfo': true,
+        // OpenAI configs (GPT-5.x with Responses API)
+        'openai.model': 'gpt-5-mini',
+        'openai.models.planning': 'gpt-5.2',
+        'openai.models.analysis': 'gpt-5.2',
+        'openai.models.codegen': 'gpt-5.1-codex',
         
         // RAG configs
         'rag.enabled': true,
@@ -139,7 +116,7 @@ export async function initializeDefaults(): Promise<void> {
     };
     
     // Set defaults for any undefined configs
-    const config = vscode.workspace.getConfiguration('grec0ai');
+    const config = vscode.workspace.getConfiguration('memorybank');
     for (const [key, defaultValue] of Object.entries(configDefaults)) {
         if (config.get(key) === undefined) {
             await setConfig(key, defaultValue);
@@ -148,13 +125,13 @@ export async function initializeDefaults(): Promise<void> {
 }
 
 export function isConfigComplete(): boolean {
-  const config = vscode.workspace.getConfiguration('grec0ai');
+  const config = vscode.workspace.getConfiguration('memorybank');
   const apiKey = config.get('openai.apiKey', '');
   return apiKey !== '';
 }
 
 export function getConfig(key: string, defaultValue: any = undefined): any {
-  const config = vscode.workspace.getConfiguration('grec0ai');
+  const config = vscode.workspace.getConfiguration('memorybank');
   return config.get(key, defaultValue);
 }
 
