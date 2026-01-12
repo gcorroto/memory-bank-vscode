@@ -42,4 +42,14 @@ testem.log
 Thumbs.db
 docker-compose.yml
 cr3
-grec0ai_vscode.vsix
+
+# VS Code extension packages
+*.vsix
+
+# Environment and secrets
+.env
+.env.*
+config.local.json
+
+# LanceDB local data
+.lancedb/

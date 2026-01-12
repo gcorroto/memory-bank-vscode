@@ -3,7 +3,6 @@
 'use strict';
 
 const path = require('path');
-const CopyPlugin = require('copy-webpack-plugin');
 const webpack = require('webpack');
 
 /**@type {import('webpack').Configuration}*/
@@ -39,21 +38,7 @@ const extensionConfig = {
         ]
       }
     ]
-  },
-  plugins: [
-    new CopyPlugin({
-      patterns: [
-        {
-          from: path.resolve(__dirname, 'node_modules/gpt-3-encoder/encoder.json'),
-          to: path.resolve(__dirname, 'dist')
-        },
-        {
-          from: path.resolve(__dirname, 'node_modules/gpt-3-encoder/vocab.bpe'),
-          to: path.resolve(__dirname, 'dist')
-        }
-      ],
-    })
-  ]
+  }
 };
 
 /**@type {import('webpack').Configuration}*/
@@ -71,6 +56,11 @@ const webviewConfig = {
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].js',
     libraryTarget: 'window'
+  },
+  performance: {
+    hints: false, // Disable size warnings for webviews (React Flow is large but acceptable)
+    maxAssetSize: 512000,
+    maxEntrypointSize: 512000
   },
   devtool: 'nosources-source-map',
   resolve: {

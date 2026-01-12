@@ -1,26 +1,42 @@
 {
   "name": "memory-bank-vscode",
-  "version": "3.0.0",
+  "version": "0.0.1",
   "icon": "resources/icons/logo_transparent.png",
-  "private": true,
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
   "license": "MIT",
   "publisher": "grec0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gcorroto/autofixer_extension.git"
+    "url": "https://github.com/gcorroto/memory-bank-vscode.git"
   },
+  "homepage": "https://github.com/gcorroto/memory-bank-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/gcorroto/memory-bank-vscode/issues"
+  },
+  "keywords": [
+    "memory-bank",
+    "code-analysis",
+    "visualization",
+    "dataflow",
+    "react-flow",
+    "mcp",
+    "ai-assistant"
+  ],
   "engines": {
     "vscode": "^1.26.0"
   },
   "categories": [
-    "Testing",
-    "Linters",
+    "Visualization",
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onView:memorybank-projects",
+    "onView:memorybank-files",
+    "onView:memorybank-docs",
+    "onView:memorybank-relations",
+    "onCommand:memorybank.refresh",
+    "onCommand:memorybank.configure"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -55,26 +71,12 @@
     },
     "commands": [
       {
-        "command": "git.connectionSettings.initializeGitRepository",
-        "title": "Initialize Git Repository",
-        "category": "Memory Bank"
-      },
-      {
         "command": "memorybank.filesystem.refresh",
         "title": "Refresh File Tree",
         "category": "Memory Bank",
         "icon": {
           "dark": "resources/icons/dark/refresh.svg",
           "light": "resources/icons/light/refresh.svg"
-        }
-      },
-      {
-        "command": "memorybank.automaticTest",
-        "title": "Automatic Test",
-        "category": "Memory Bank",
-        "icon": {
-          "dark": "resources/icons/dark/frame_sink.png",
-          "light": "resources/icons/light/frame_sink.png"
         }
       },
       {
@@ -263,10 +265,6 @@
       ],
       "editor/context": [
         {
-          "command": "memorybank.automaticTest",
-          "group": "memorybank"
-        },
-        {
           "command": "memorybank.explain",
           "group": "memorybank"
         },
@@ -347,7 +345,7 @@
         },
         "memorybank.path": {
           "type": "string",
-          "default": "C:\\Users\\goyoc\\.memorybank",
+          "default": "",
           "description": "Ruta a la carpeta del Memory Bank (relativa al workspace o absoluta)",
           "scope": "resource"
         },
@@ -370,7 +368,7 @@
         },
         "memorybank.openai.apiKey": {
           "type": "string",
-          "default": "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",
+          "default": "",
           "description": "OpenAI API Key para acceder a los servicios de IA",
           "scope": "application"
         },
@@ -456,21 +454,6 @@
           "default": true,
           "description": "Automatically replan tasks when they fail or produce suboptimal results",
           "scope": "application"
-        },
-        "git.connectionSettings.gitRepoUrl": {
-          "type": "string",
-          "default": "https://github.com/",
-          "description": "Remote Git repository URL"
-        },
-        "git.connectionSettings.gitUsername": {
-          "type": "string",
-          "default": "",
-          "description": "Git username for repository access"
-        },
-        "git.connectionSettings.gitToken": {
-          "type": "string",
-          "default": "",
-          "description": "Git personal access token (PAT) for repository access"
         }
       }
     }
@@ -487,37 +470,19 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.15.0",
-    "@types/async-lock": "^1.1.1",
-    "@types/bluebird": "*",
-    "@types/glob": "^8.1.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/request": "*",
-    "acorn": "^8.14.0",
-    "async-lock": "^1.1.4",
-    "bluebird": "^3.5.0",
     "dagre": "0.8.5",
-    "glob": "^10.4.5",
     "gray-matter": "^4.0.3",
-    "memory-bank-vscode": "file:",
-    "immutable": "^4.0.0-rc.12",
-    "java-parser": "^2.3.2",
     "openai": "^4.103.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "reactflow": "^11.10.0",
-    "request": "^2.81.0",
-    "ts-log-debug": "^4.0.4",
-    "ws": "^8.18.0"
+    "reactflow": "^11.10.0"
   },
   "devDependencies": {
     "@types/dagre": "0.7.53",
-    "@types/jest": "^29.5.14",
-    "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.26.0",
-    "@types/webpack-env": "^1.18.0",
-    "copy-webpack-plugin": "^13.0.0",
     "css-loader": "^6.8.1",
     "eslint": "^8.40.0",
     "style-loader": "^3.3.3",

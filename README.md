@@ -1,7 +1,7 @@
 # Memory Bank Inspector — VS Code Extension
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=grec0.memory-bank-vscode)
-[![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://github.com/gcorroto/autofixer_extension)
+[![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://github.com/gcorroto/memory-bank-vscode)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#licencia)
 [![TypeScript](https://img.shields.io/badge/Made%20with-TypeScript-3178C6)]()
 
@@ -12,6 +12,11 @@
 [📦 Instalar](#instalación) • [🚀 Inicio Rápido](#inicio-rápido) • [📚 Características](#características) • [⚙️ Configuración](#configuración)
 
 </div>
+
+> **Companion Extension for [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mcp)**
+> 
+> This extension provides a visual interface to explore projects indexed by Memory Bank MCP.
+> For indexing and semantic search capabilities, use the MCP with your AI agent (Claude, Cursor, Copilot).
 
 ---
 
@@ -88,10 +93,10 @@ code --install-extension memory-bank-vscode-3.0.0.vsix
 ### Instalación desde Fuente
 
 ```bash
-git clone https://github.com/gcorroto/autofixer_extension.git
-cd autofixer_extension
+git clone https://github.com/gcorroto/memory-bank-vscode.git
+cd memory-bank-vscode
 npm install
-npm run build
+npm run compile
 npm run package
 ```
 

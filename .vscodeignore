@@ -1,20 +1,48 @@
-.vscode
-node_modules
+.vscode/**
+.vscode-test/**
+node_modules/**
+src/**
+out/**
+.git/**
+.github/**
+.history/**
+
+# Build files
 tsconfig.json
 webpack.config.js
 esbuild.js
-.history
+jest.config.js
+.eslintrc.json
+package-lock.json
+
+# CI/CD files (not needed in extension)
+Jenkinsfile
+Dockerfile*
+docker-compose*.yml
+
+# Old artifacts and secrets
 cr3
 grec0ai_vscode.vsix
-grec0ai-vscode-3.0.0.vsix
-.git
-.github
-out/**
-src/**
-**/test/**
-**/scripts/**
+grec0ai-vscode-*.vsix
+*.vsix
+
+# Docs folder (internal docs)
+docs/**
+
+# Cursor ignore
+.cursorignore
+
+# Source maps and TypeScript
 **/*.map
 **/*.ts
-**/tsconfig.json
-**/webpack.config.js
-**/.gitignore
+!dist/**/*.js
+
+# Tests
+**/test/**
+**/tests/**
+**/scripts/**
+
+# Documentation sources (keep compiled)
+*.md
+!README.md
+!CHANGELOG.md
