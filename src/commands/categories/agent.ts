@@ -303,7 +303,7 @@ export const agentCommands: CommandRegistration[] = [
                     
                     <div class="summary">
                         <h3>Resumen de la Interacción</h3>
-                        <p>Modelo utilizado: <strong>o3-mini</strong> (Esfuerzo de razonamiento: medium)</p>
+                        <p>Modelo utilizado: <strong>gpt-5-mini</strong> (Esfuerzo de razonamiento: medium)</p>
                         ${result.tool_calls && result.tool_calls.length > 0 
                             ? `<p>Se realizaron <strong>${result.tool_calls.length}</strong> llamadas a herramientas.</p>` 
                             : '<p>No se utilizaron herramientas durante la conversación.</p>'}

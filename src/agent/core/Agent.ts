@@ -2799,7 +2799,7 @@ Respond in the following JSON format:
                 messages,
                 demoTools,
                 toolCallHandler,
-                'o3-mini',
+                'gpt-5-mini',
                 { reasoning_effort: 'medium' }
             );
             

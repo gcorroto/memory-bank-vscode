@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -375,35 +375,36 @@
         "memorybank.openai.model": {
           "type": "string",
           "enum": [
+            "gpt-5",
             "gpt-5-mini",
+            "gpt-5-nano",
             "gpt-5.2",
-            "gpt-5.1-codex",
-            "o4-mini"
+            "gpt-5.1-codex"
           ],
           "default": "gpt-5-mini",
-          "description": "Modelo de OpenAI a utilizar para las consultas",
+          "description": "OpenAI model for queries",
           "scope": "application"
         },
         "memorybank.openai.models.planning": {
           "type": "string",
           "enum": [
             "gpt-5.2",
-            "gpt-5-mini",
-            "o4-mini"
+            "gpt-5",
+            "gpt-5-mini"
           ],
           "default": "gpt-5.2",
-          "description": "Modelo de OpenAI a utilizar para tareas de planificación",
+          "description": "OpenAI model for planning tasks (supports reasoning)",
           "scope": "application"
         },
         "memorybank.openai.models.analysis": {
           "type": "string",
           "enum": [
             "gpt-5.2",
-            "gpt-5-mini",
-            "o4-mini"
+            "gpt-5",
+            "gpt-5-mini"
           ],
           "default": "gpt-5.2",
-          "description": "Modelo de OpenAI a utilizar para tareas de análisis",
+          "description": "OpenAI model for analysis tasks (supports reasoning)",
           "scope": "application"
         },
         "memorybank.openai.models.codegen": {
@@ -411,10 +412,11 @@
           "enum": [
             "gpt-5.1-codex",
             "gpt-5.2",
+            "gpt-5",
             "gpt-5-mini"
           ],
           "default": "gpt-5.1-codex",
-          "description": "Modelo de OpenAI a utilizar para tareas de generación de código",
+          "description": "OpenAI model for code generation tasks",
           "scope": "application"
         },
         "memorybank.rag.similarityThreshold": {

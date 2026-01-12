@@ -9,6 +9,7 @@ export interface ChatMessage {
   content: string;
   name?: string;
   tool_call_id?: string;
+  tool_calls?: ToolCall[];  // Present when assistant requests tool calls
 }
 
 export interface ChatFunction {

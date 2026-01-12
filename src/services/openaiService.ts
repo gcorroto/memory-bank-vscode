@@ -17,11 +17,12 @@ let OpenAI: any;
 let client: OpenAIClient | null = null;
 let initialized = false;
 
-// Modelos que soportan razonamiento (legacy)
-const REASONING_MODELS = ['o1', 'o1-preview', 'o3-mini', 'o3-mini-high', 'o3-mini-low', 'o4-mini'];
+// Legacy o-series reasoning models are fully deprecated
+// GPT-5.x models have built-in parameterized reasoning via Responses API
+const REASONING_MODELS: string[] = []; // Empty - no legacy reasoning models supported
 
-// Modelos GPT-5.x que usan el nuevo Responses API
-const RESPONSES_API_MODELS = ['gpt-5-mini', 'gpt-5.2', 'gpt-5.1-codex'];
+// All GPT-5.x models use the new Responses API with built-in parameterized reasoning
+const RESPONSES_API_MODELS = ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2', 'gpt-5.1-codex'];
 
 // Definición de tipos para opciones
 interface CompletionOptions {
@@ -117,25 +118,11 @@ export async function callOpenAI(prompt: string): Promise<string> {
   }
 
   try {
-    if (!client) {
-      throw new Error('Cliente OpenAI no disponible');
-    }
-
-    const completion = await client.chat.completions.create({
-      model: 'gpt-5-mini',
-      messages: [
-        { 
-          role: 'system', 
-          content: 'Eres un asistente experto en programación que proporciona respuestas precisas y detalladas sobre código. Hablas en español pero conservas los términos técnicos en inglés cuando es apropiado.' 
-        },
-        { 
-          role: 'user', 
-          content: prompt 
-        }
-      ]
+    // Use generateCompletion which handles Responses API for GPT-5.x models
+    const result = await generateCompletion(prompt, {
+      taskType: 'general'
     });
-
-    return completion.choices[0].message.content || '';
+    return result.content;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error al llamar a OpenAI:', error);
@@ -200,19 +187,18 @@ export async function chatCompletion(
   }
 
   try {
-    // Verificar si es un modelo de razonamiento
-    const isReasoningModel = REASONING_MODELS.some(m => model.startsWith(m));
+    // GPT-5.x models require Responses API
+    if (supportsResponsesAPI(model)) {
+      return await chatCompletionViaResponsesAPI(messages, model, options);
+    }
     
-    // Preparar los parámetros según el tipo de modelo
+    // Fallback for non-GPT-5.x models (should not happen in practice)
     const requestParams: ChatCompletionParams = {
       model: model,
-      messages: isReasoningModel ? 
-        // Para modelos de razonamiento, usar 'developer' en lugar de 'system'
-        messages.map(msg => msg.role === 'system' ? {...msg, role: 'developer'} : msg) : 
-        messages,
+      messages: messages,
     };
     
-    // Añadir opciones generales
+    // Add general options
     if (options.temperature !== undefined) requestParams.temperature = options.temperature;
     if (options.max_tokens !== undefined) requestParams.max_tokens = options.max_tokens;
     if (options.top_p !== undefined) requestParams.top_p = options.top_p;
@@ -221,21 +207,11 @@ export async function chatCompletion(
     if (options.stop !== undefined) requestParams.stop = options.stop;
     if (options.user !== undefined) requestParams.user = options.user;
     
-    // Añadir parámetros específicos para modelos de razonamiento si corresponde
-    if (isReasoningModel) {
-      // Añadir reasoning_effort si se especifica
-      if (options.reasoning_effort) {
-        requestParams.reasoning_effort = options.reasoning_effort;
-      }
-      
-      // Añadir herramientas si se especifican
-      if (options.tools) {
-        requestParams.tools = options.tools;
-        
-        // Añadir tool_choice si se especifica
-        if (options.tool_choice) {
-          requestParams.tool_choice = options.tool_choice;
-        }
+    // Add tools if specified
+    if (options.tools) {
+      requestParams.tools = options.tools;
+      if (options.tool_choice) {
+        requestParams.tool_choice = options.tool_choice;
       }
     }
 
@@ -247,6 +223,100 @@ export async function chatCompletion(
     console.error('Error al generar chat completion con OpenAI:', error);
     throw new Error(`Error al generar chat completion con OpenAI: ${errorMessage}`);
   }
+}
+
+/**
+ * Adapter: Call Responses API and convert response to ChatCompletionResponse format
+ */
+async function chatCompletionViaResponsesAPI(
+  messages: ChatMessage[],
+  model: string,
+  options: CompletionOptions
+): Promise<ChatCompletionResponse> {
+  if (!client) {
+    throw new Error('Cliente OpenAI no disponible');
+  }
+
+  // Convert ChatMessage[] to Responses API input format
+  const input = messages.map(msg => ({
+    role: msg.role === 'system' ? 'developer' : msg.role,
+    content: msg.content,
+  }));
+
+  // Build Responses API request
+  const requestParams: any = {
+    model: model,
+    input: input,
+    max_output_tokens: options.max_tokens || 16000,
+  };
+
+  // Add reasoning effort if specified
+  if (options.reasoning_effort) {
+    requestParams.reasoning = {
+      effort: options.reasoning_effort,
+    };
+  }
+
+  // Add tools if specified (Responses API supports tools)
+  if (options.tools && options.tools.length > 0) {
+    requestParams.tools = options.tools;
+    if (options.tool_choice) {
+      requestParams.tool_choice = options.tool_choice;
+    }
+  }
+
+  // Call Responses API
+  const response = await (client as any).responses.create(requestParams);
+
+  // Extract content and tool_calls from Responses API format
+  let content = '';
+  let tool_calls: any[] = [];
+
+  for (const item of response.output || []) {
+    if (item.type === 'message' && item.content) {
+      for (const contentItem of item.content) {
+        if (contentItem.type === 'output_text') {
+          content += contentItem.text;
+        }
+      }
+    } else if (item.type === 'function_call') {
+      // Convert Responses API function_call to Chat Completions tool_call format
+      tool_calls.push({
+        id: item.call_id || `call_${Date.now()}`,
+        type: 'function',
+        function: {
+          name: item.name,
+          arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments),
+        }
+      });
+    }
+  }
+
+  // Build ChatCompletionResponse-compatible structure
+  const adaptedResponse: ChatCompletionResponse = {
+    id: response.id || `resp_${Date.now()}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: model,
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: content,
+        tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+      },
+      finish_reason: response.status === 'completed' ? 'stop' : 'stop',
+      logprobs: null,
+    }],
+    usage: {
+      prompt_tokens: response.usage?.input_tokens || 0,
+      completion_tokens: response.usage?.output_tokens || 0,
+      total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
+    },
+    tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+  };
+
+  return adaptedResponse;
 }
 
 /**
@@ -579,7 +649,7 @@ export async function callWithTools(
   messages: ChatMessage[],
   tools: any[],
   toolCallHandler: (toolCall: any) => Promise<any>,
-  model: string = 'o3-mini',
+  model: string = 'gpt-5-mini',
   options: CompletionOptions = {}
 ): Promise<ChatCompletionResponse> {
   if (!await ensureInitialized()) {
