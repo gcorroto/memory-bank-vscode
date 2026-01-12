@@ -7,6 +7,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+
+// Use fs.promises for async file operations
+const fsAsync = fs.promises;
 import { getMemoryBankService } from './memoryBankService';
 import * as openaiService from './openaiService';
 import {
@@ -21,6 +24,16 @@ import {
   AnalysisOptions,
   NODE_TYPE_PATTERNS,
 } from '../types/relations';
+
+// ============================================
+// Performance Configuration
+// ============================================
+/** Number of files to process in parallel */
+const PARALLEL_FILE_READS = 20;
+/** Progress update frequency (every N files) */
+const PROGRESS_UPDATE_INTERVAL = 10;
+/** Max AI enrichment calls in parallel */
+const PARALLEL_AI_CALLS = 5;
 
 // Current schema version
 const RELATIONS_VERSION = '1.0.0';
@@ -308,26 +321,34 @@ function extractNames(content: string, language: string): { classes: string[]; f
   };
 }
 
+/** Type names in Spanish for descriptions */
+const TYPE_NAMES_ES: Record<string, string> = {
+  'component': 'Componente',
+  'service': 'Servicio',
+  'controller': 'Controlador',
+  'model': 'Modelo',
+  'util': 'Utilidad',
+  'hook': 'Hook',
+  'class': 'Clase',
+  'config': 'Configuración',
+  'test': 'Test',
+  'other': 'Módulo'
+};
+
+/**
+ * Generate simple description for a node (sync, no AI)
+ */
+function generateSimpleDescription(node: RelationNode): string {
+  const typeName = TYPE_NAMES_ES[node.type] || node.type;
+  return `${typeName} "${node.name}" con ${node.functions.length} función(es)`;
+}
+
 /**
  * Generate AI description for a node
  */
 async function generateNodeDescription(node: RelationNode, useAI: boolean): Promise<string> {
   if (!useAI) {
-    // Generate simple description based on type and name (in Spanish)
-    const typeNames: Record<string, string> = {
-      'component': 'Componente',
-      'service': 'Servicio',
-      'controller': 'Controlador',
-      'model': 'Modelo',
-      'util': 'Utilidad',
-      'hook': 'Hook',
-      'class': 'Clase',
-      'config': 'Configuración',
-      'test': 'Test',
-      'other': 'Módulo'
-    };
-    const typeName = typeNames[node.type] || node.type;
-    return `${typeName} "${node.name}" con ${node.functions.length} función(es)`;
+    return generateSimpleDescription(node);
   }
 
   try {
@@ -347,20 +368,7 @@ IMPORTANTE: Responde SOLO con la descripción en español, sin prefijos ni expli
     return result.content.trim().substring(0, 200); // Limit length
   } catch (error) {
     console.error('Error generating AI description:', error);
-    const typeNames: Record<string, string> = {
-      'component': 'Componente',
-      'service': 'Servicio',
-      'controller': 'Controlador',
-      'model': 'Modelo',
-      'util': 'Utilidad',
-      'hook': 'Hook',
-      'class': 'Clase',
-      'config': 'Configuración',
-      'test': 'Test',
-      'other': 'Módulo'
-    };
-    const typeName = typeNames[node.type] || node.type;
-    return `${typeName} "${node.name}"`;
+    return generateSimpleDescription(node);
   }
 }
 
@@ -594,13 +602,13 @@ function shouldSkipFile(filePath: string): boolean {
 }
 
 /**
- * Analyze a single file and create a node
+ * Analyze a single file and create a node (sync version - only regex, no I/O)
  */
-async function analyzeFile(
+function analyzeFileSync(
   filePath: string, 
   content: string, 
   language: string
-): Promise<RelationNode | null> {
+): RelationNode | null {
   try {
     // Skip noise files
     if (shouldSkipFile(filePath)) {
@@ -930,8 +938,9 @@ export async function analyzeProject(
 
   const files = projectFiles;
   const totalFiles = Math.min(files.length, options.maxFiles || Infinity);
+  const filesToProcess = files.slice(0, totalFiles);
   
-  console.log(`[Relations] Phase 1: Parsing ${totalFiles} files...`);
+  console.log(`[Relations] Phase 1: Parsing ${totalFiles} files (parallel: ${PARALLEL_FILE_READS})...`);
   
   const nodes: RelationNode[] = [];
   const fileContents = new Map<string, { content: string; language: string }>();
@@ -940,68 +949,96 @@ export async function analyzeProject(
   let skippedNotExists = 0;
   let skippedUnknownLang = 0;
   let skippedNoContent = 0;
-  let skippedNoisyFile = 0;
   
-  // Phase 1: Parse files
+  // Get base directory (mbPath already declared above)
+  if (!mbPath) {
+    throw new Error('MemoryBank path not configured');
+  }
+  const baseDir = path.dirname(mbPath);
+  
+  // Language map
+  const langMap: Record<string, string> = {
+    '.ts': 'typescript',
+    '.js': 'javascript',
+    '.tsx': 'typescriptreact',
+    '.jsx': 'javascriptreact',
+    '.py': 'python',
+    '.java': 'java',
+  };
+  
+  // Phase 1: Parse files in parallel batches
   let processedFiles = 0;
   
-  for (const [filePath, entry] of files.slice(0, totalFiles)) {
+  // Process files in parallel batches
+  for (let i = 0; i < filesToProcess.length; i += PARALLEL_FILE_READS) {
+    const batch = filesToProcess.slice(i, i + PARALLEL_FILE_READS);
+    
+    // Update progress at batch start
     onProgress?.({
       phase: 'parsing',
-      currentFile: filePath,
+      currentFile: `Batch ${Math.floor(i / PARALLEL_FILE_READS) + 1}/${Math.ceil(filesToProcess.length / PARALLEL_FILE_READS)}`,
       processedFiles,
       totalFiles,
       processedNodes: nodes.length
     });
-
-    try {
-      // Read file content
-      const mbPath = mbService.getMemoryBankPath();
-      if (!mbPath) continue;
-
-      // Resolve the file path
-      const baseDir = path.dirname(mbPath);
-      const resolvedPath = path.resolve(baseDir, filePath);
-
-      if (!fs.existsSync(resolvedPath)) {
+    
+    // Process batch in parallel
+    const batchPromises = batch.map(async ([filePath, entry]) => {
+      try {
+        const ext = path.extname(filePath).toLowerCase();
+        const language = langMap[ext];
+        
+        // Skip unknown languages early (no I/O needed)
+        if (!language) {
+          return { skipped: 'unknown_lang' as const };
+        }
+        
+        const resolvedPath = path.resolve(baseDir, filePath);
+        
+        // Check if file exists (async)
+        try {
+          await fsAsync.access(resolvedPath, fs.constants.R_OK);
+        } catch {
+          return { skipped: 'not_exists' as const };
+        }
+        
+        // Read file content (async)
+        const content = await fsAsync.readFile(resolvedPath, 'utf-8') as string;
+        
+        // Analyze file (sync but fast - just regex)
+        const node = analyzeFileSync(filePath, content, language);
+        
+        if (node) {
+          return { node, filePath, content: content as string, language };
+        } else {
+          return { skipped: 'no_content' as const };
+        }
+      } catch (error) {
+        console.error(`[Relations] Error processing ${filePath}:`, error);
+        return { skipped: 'error' as const };
+      }
+    });
+    
+    // Wait for batch to complete
+    const batchResults = await Promise.all(batchPromises);
+    
+    // Collect results
+    for (const result of batchResults) {
+      if ('node' in result && result.node) {
+        nodes.push(result.node);
+        fileContents.set(result.filePath!, { content: result.content!, language: result.language! });
+      } else if (result.skipped === 'not_exists') {
         skippedNotExists++;
-        continue;
-      }
-
-      const content = fs.readFileSync(resolvedPath, 'utf-8');
-      const ext = path.extname(filePath).toLowerCase();
-      
-      // Determine language from extension
-      const langMap: Record<string, string> = {
-        '.ts': 'typescript',
-        '.js': 'javascript',
-        '.tsx': 'typescriptreact',
-        '.jsx': 'javascriptreact',
-        '.py': 'python',
-        '.java': 'java',
-      };
-      
-      const language = langMap[ext] || 'unknown';
-      
-      if (language === 'unknown') {
+      } else if (result.skipped === 'unknown_lang') {
         skippedUnknownLang++;
-        continue;
-      }
-
-      fileContents.set(filePath, { content, language });
-
-      // Analyze file
-      const node = await analyzeFile(filePath, content, language);
-      if (node) {
-        nodes.push(node);
-      } else {
+      } else if (result.skipped === 'no_content') {
         skippedNoContent++;
       }
-    } catch (error) {
-      console.error(`[Relations] Error processing file ${filePath}:`, error);
+      processedFiles++;
     }
-
-    processedFiles++;
+    
+    // Yield to event loop between batches (prevents UI freeze)
+    await new Promise(resolve => setImmediate(resolve));
   }
 
   // Log parsing results
@@ -1015,14 +1052,13 @@ export async function analyzeProject(
   if (nodes.length === 0) {
     console.warn(`[Relations] WARNING: No nodes created! Check if files exist on disk and contain analyzable code.`);
     if (skippedNotExists > 0) {
-      console.warn(`[Relations] HINT: ${skippedNotExists} files not found. BaseDir: ${path.dirname(mbService.getMemoryBankPath() || '')}`);
-      // Log sample missing files
+      console.warn(`[Relations] HINT: ${skippedNotExists} files not found. BaseDir: ${baseDir}`);
       console.warn(`[Relations] Sample file paths in index:`);
       files.slice(0, 3).forEach(([f]) => console.warn(`[Relations]   - ${f}`));
     }
   }
 
-  // Phase 2: Build edges
+  // Phase 2: Build edges (sync but fast)
   console.log(`[Relations] Phase 2: Building edges from imports...`);
   onProgress?.({
     phase: 'detecting',
@@ -1036,25 +1072,40 @@ export async function analyzeProject(
 
   // Phase 3: Enrich with AI descriptions
   if (options.useAI !== false && nodes.length > 0) {
+    console.log(`[Relations] Phase 3: Enriching ${nodes.length} nodes with AI (parallel: ${PARALLEL_AI_CALLS})...`);
     let enrichedCount = 0;
     const totalNodesToEnrich = nodes.length;
     
-    for (const node of nodes) {
+    // Process AI enrichment in parallel batches
+    for (let i = 0; i < nodes.length; i += PARALLEL_AI_CALLS) {
+      const batch = nodes.slice(i, i + PARALLEL_AI_CALLS);
+      
       onProgress?.({
         phase: 'enriching',
-        currentFile: node.name,
+        currentFile: `Batch ${Math.floor(i / PARALLEL_AI_CALLS) + 1}/${Math.ceil(nodes.length / PARALLEL_AI_CALLS)}`,
         processedFiles: totalFiles,
         totalFiles,
         processedNodes: enrichedCount,
         totalNodes: totalNodesToEnrich
       });
-
-      node.description = await generateNodeDescription(node, true);
-      enrichedCount++;
       
-      // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Process batch in parallel
+      const descriptions = await Promise.all(
+        batch.map(node => generateNodeDescription(node, true))
+      );
+      
+      // Apply descriptions
+      batch.forEach((node, idx) => {
+        node.description = descriptions[idx];
+      });
+      
+      enrichedCount += batch.length;
+      
+      // Yield to event loop between batches
+      await new Promise(resolve => setImmediate(resolve));
     }
+    
+    console.log(`[Relations] Phase 3 complete: ${enrichedCount} nodes enriched`);
     
     // Final progress for enriching phase
     onProgress?.({
@@ -1065,10 +1116,12 @@ export async function analyzeProject(
       totalNodes: totalNodesToEnrich
     });
   } else {
-    // Generate simple descriptions without AI
+    // Generate simple descriptions without AI (sync, fast)
+    console.log(`[Relations] Phase 3: Generating simple descriptions (no AI)...`);
     for (const node of nodes) {
-      node.description = await generateNodeDescription(node, false);
+      node.description = generateSimpleDescription(node);
     }
+    console.log(`[Relations] Phase 3 complete`);
   }
 
   // Calculate stats
