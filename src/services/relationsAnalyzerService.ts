@@ -409,8 +409,67 @@ function resolveImportToNode(
     return resolvePythonImport(importPath, sourceFilePath, nodesByFile);
   }
   
+  // Handle Java imports
+  if (sourceLanguage === 'java') {
+    return resolveJavaImport(importPath, nodesByFile);
+  }
+  
   // Handle JS/TS imports
   return resolveJSImport(importPath, sourceFilePath, nodesByFile);
+}
+
+/**
+ * Resolve Java import to node
+ * Handles: import com.example.service.UserService;
+ */
+function resolveJavaImport(
+  importPath: string,
+  nodesByFile: Map<string, RelationNode>
+): RelationNode | null {
+  // Skip common external packages
+  const externalPackages = [
+    'java.', 'javax.', 'jakarta.',
+    'org.springframework.', 'org.apache.', 'org.hibernate.',
+    'com.google.', 'com.fasterxml.', 'org.slf4j.', 'org.junit.',
+    'lombok.', 'io.swagger.', 'org.mapstruct.'
+  ];
+  
+  if (externalPackages.some(pkg => importPath.startsWith(pkg))) {
+    return null;
+  }
+  
+  // Extract class name from import (last part after the dot)
+  // com.example.service.UserService -> UserService
+  const parts = importPath.split('.');
+  const className = parts[parts.length - 1];
+  
+  // Also extract potential package path for matching
+  // com.example.service.UserService -> service/UserService
+  const lastTwoParts = parts.slice(-2).join('/').toLowerCase();
+  const lastThreeParts = parts.slice(-3).join('/').toLowerCase();
+  
+  // Try to find matching node
+  for (const [nodePath, node] of nodesByFile.entries()) {
+    const normalizedPath = normalizePath(nodePath).toLowerCase();
+    
+    // Match by class name (most common case)
+    if (node.name === className) {
+      return node;
+    }
+    
+    // Match by file name without extension
+    const fileName = path.basename(nodePath, '.java');
+    if (fileName === className) {
+      return node;
+    }
+    
+    // Match by path suffix (e.g., service/UserService.java)
+    if (normalizedPath.includes(lastTwoParts) || normalizedPath.includes(lastThreeParts)) {
+      return node;
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -642,8 +701,126 @@ function analyzeFileSync(
   }
 }
 
+// ============================================
+// Map-Reduce Edge Detection
+// ============================================
+
 /**
- * Build edges from imports and calls
+ * Escape special regex characters in a string
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * MAP PHASE: Build an index of all class/component names to their nodes
+ * This allows O(1) lookup when scanning for references
+ */
+function buildNameIndex(nodes: RelationNode[]): Map<string, RelationNode> {
+  const index = new Map<string, RelationNode>();
+  
+  for (const node of nodes) {
+    // Index by class/component name (primary)
+    index.set(node.name, node);
+    
+    // Also index by file name without extension (fallback)
+    const fileName = path.basename(node.filePath, path.extname(node.filePath));
+    if (fileName !== node.name && !index.has(fileName)) {
+      index.set(fileName, node);
+    }
+  }
+  
+  console.log(`[Relations] Name index built with ${index.size} entries`);
+  return index;
+}
+
+/**
+ * REDUCE PHASE: Find all references to known names in a file's content
+ * Uses word boundary regex to avoid partial matches
+ */
+function findReferencesInCode(
+  content: string,
+  nameIndex: Map<string, RelationNode>,
+  sourceNode: RelationNode
+): RelationNode[] {
+  const referenced = new Set<RelationNode>();
+  
+  for (const [name, targetNode] of nameIndex) {
+    // Skip self-references
+    if (targetNode.id === sourceNode.id) continue;
+    
+    // Skip very short names to avoid false positives (e.g., "id", "to", "of")
+    if (name.length < 3) continue;
+    
+    // Word boundary regex to match whole words only
+    // This prevents "User" from matching inside "UserService"
+    const regex = new RegExp(`\\b${escapeRegex(name)}\\b`);
+    
+    if (regex.test(content)) {
+      referenced.add(targetNode);
+    }
+  }
+  
+  return Array.from(referenced);
+}
+
+/**
+ * Build edges using Map-Reduce cross-reference scanning
+ * More robust than import parsing - detects all references in code
+ */
+function buildEdgesMapReduce(
+  nodes: RelationNode[],
+  fileContents: Map<string, { content: string; language: string }>
+): RelationEdge[] {
+  console.log(`[Relations] Building edges with Map-Reduce for ${nodes.length} nodes`);
+  
+  // MAP: Build name index
+  const nameIndex = buildNameIndex(nodes);
+  
+  // REDUCE: Scan each file for references
+  const edges: RelationEdge[] = [];
+  const edgeSet = new Set<string>(); // For O(1) duplicate check
+  let totalReferences = 0;
+  
+  for (const node of nodes) {
+    const fileData = fileContents.get(node.filePath);
+    if (!fileData) {
+      continue;
+    }
+    
+    // Find all references in this file
+    const referencedNodes = findReferencesInCode(
+      fileData.content,
+      nameIndex,
+      node
+    );
+    
+    totalReferences += referencedNodes.length;
+    
+    // Create edges for each reference
+    for (const targetNode of referencedNodes) {
+      const edgeId = `${node.id}-${targetNode.id}`;
+      
+      // Skip if edge already exists
+      if (edgeSet.has(edgeId)) continue;
+      edgeSet.add(edgeId);
+      
+      edges.push({
+        id: edgeId,
+        source: node.id,
+        target: targetNode.id,
+        type: 'uses',
+        label: `uses ${targetNode.name}`
+      });
+    }
+  }
+  
+  console.log(`[Relations] Map-Reduce complete: ${totalReferences} references found, ${edges.length} unique edges created`);
+  return edges;
+}
+
+/**
+ * Build edges from imports and calls (LEGACY - kept for reference)
  */
 function buildEdges(
   nodes: RelationNode[],
@@ -661,13 +838,18 @@ function buildEdges(
   }
 
   console.log(`[Relations] Building edges for ${nodes.length} nodes`);
+  console.log(`[Relations] FileContents has ${fileContents.size} entries`);
   let totalImports = 0;
   let resolvedImports = 0;
+  let unresolvedSamples: string[] = [];
 
   // Analyze each file for imports
   for (const node of nodes) {
     const fileData = fileContents.get(node.filePath);
-    if (!fileData) continue;
+    if (!fileData) {
+      console.log(`[Relations] WARNING: No content for ${node.filePath}`);
+      continue;
+    }
 
     const imports = parseImports(fileData.content, fileData.language);
     totalImports += imports.length;
@@ -689,11 +871,18 @@ function buildEdges(
             label: `imports ${targetNode.name}`
           });
         }
+      } else if (!targetNode && unresolvedSamples.length < 5) {
+        // Collect some unresolved imports for debugging
+        unresolvedSamples.push(`${path.basename(node.filePath)} -> ${importPath}`);
       }
     }
   }
 
   console.log(`[Relations] Found ${totalImports} imports, resolved ${resolvedImports}, created ${edges.length} edges`);
+  if (unresolvedSamples.length > 0) {
+    console.log(`[Relations] Sample unresolved imports:`);
+    unresolvedSamples.forEach(s => console.log(`[Relations]   - ${s}`));
+  }
   return edges;
 }
 
@@ -1067,7 +1256,7 @@ export async function analyzeProject(
     processedNodes: nodes.length
   });
 
-  const edges = buildEdges(nodes, fileContents);
+  const edges = buildEdgesMapReduce(nodes, fileContents);
   console.log(`[Relations] Phase 2 complete: ${edges.length} edges created`);
 
   // Phase 3: Enrich with AI descriptions
