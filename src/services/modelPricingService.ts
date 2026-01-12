@@ -26,14 +26,15 @@ export interface CostBreakdown {
 }
 
 // Prices per million tokens - GPT-5.x models (Responses API)
+// Source: https://platform.openai.com/docs/pricing (Jan 2026)
 const modelPrices: Record<string, Price> = {
-  'gpt-5': { input: 2.00, output: 8.00 },
-  'gpt-5-mini': { input: 0.50, output: 2.00 },
-  'gpt-5-nano': { input: 0.10, output: 0.40 },
-  'gpt-5.2': { input: 3.00, output: 12.00 },
-  'gpt-5.1-codex': { input: 2.50, output: 10.00 },
+  'gpt-5.2': { input: 1.75, output: 14.00 },      // Best for coding/agentic
+  'gpt-5-mini': { input: 0.25, output: 2.00 },    // Fast, cost-efficient
+  'gpt-5-nano': { input: 0.05, output: 0.40 },    // Fastest, most cost-efficient
+  'gpt-5': { input: 1.75, output: 14.00 },        // Same as gpt-5.2
+  'gpt-5.1-codex': { input: 1.75, output: 14.00 }, // Code-specialized
   // Fallback for unknown models
-  'default': { input: 0.10, output: 0.40 }
+  'default': { input: 0.05, output: 0.40 }
 };
 
 // Tipo de cambio USD -> EUR

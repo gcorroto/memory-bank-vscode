@@ -853,43 +853,94 @@ export async function analyzeProject(
   const startTime = Date.now();
   const mbService = getMemoryBankService();
   
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`[Relations] Starting analysis for project: ${projectId}`);
+  console.log(`[Relations] Options: useAI=${options.useAI ?? true}, maxFiles=${options.maxFiles ?? 'unlimited'}`);
+  console.log(`${'='.repeat(60)}`);
+  
   // Load index metadata
+  const mbPath = mbService.getMemoryBankPath();
+  console.log(`[Relations] MemoryBank path: ${mbPath || 'NOT CONFIGURED'}`);
+  
   const indexMeta = await mbService.loadIndexMetadata();
   if (!indexMeta) {
-    throw new Error('No index metadata found');
+    console.error(`[Relations] ERROR: No index-metadata.json found in ${mbPath}`);
+    throw new Error('No index metadata found. Ensure the project has been indexed with Memory Bank MCP.');
   }
+  
+  console.log(`[Relations] Index metadata loaded:`);
+  console.log(`[Relations]   - Total indexed files: ${Object.keys(indexMeta.files || {}).length}`);
+  console.log(`[Relations]   - Total chunks: ${(indexMeta as any).stats?.totalChunks || 'unknown'}`);
+  console.log(`[Relations]   - Last updated: ${(indexMeta as any).stats?.lastUpdated || 'unknown'}`);
 
   // First, try to get sourcePath from project config
   const projectConfig = await loadProjectConfig(projectId);
-  const allFiles = Object.entries(indexMeta.files);
+  const allFiles = Object.entries(indexMeta.files || {});
+  
+  if (allFiles.length === 0) {
+    console.error(`[Relations] ERROR: index-metadata.json has 0 files`);
+    throw new Error('Index metadata contains no files. Re-index the project with Memory Bank MCP.');
+  }
+  
+  // Log sample of indexed files for debugging
+  console.log(`[Relations] Sample of indexed files (first 5):`);
+  allFiles.slice(0, 5).forEach(([f]) => console.log(`[Relations]   - ${f}`));
   
   let projectFiles: [string, any][];
   
   if (projectConfig?.sourcePath) {
     // Use sourcePath from config - filter files that start with this path
     const sourcePath = projectConfig.sourcePath.toLowerCase();
+    console.log(`[Relations] Using sourcePath from config: "${projectConfig.sourcePath}"`);
     projectFiles = allFiles.filter(([filePath]) => {
       const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
       return normalizedPath.includes(sourcePath);
     });
-    console.log(`[Relations] Using sourcePath "${projectConfig.sourcePath}": Found ${projectFiles.length} files`);
+    console.log(`[Relations] Files matching sourcePath: ${projectFiles.length}`);
   } else {
     // Fallback to heuristic detection
-    console.log(`[Relations] No sourcePath in config, using heuristic detection...`);
+    console.log(`[Relations] No sourcePath in config, using heuristic detection for "${projectId}"...`);
     projectFiles = filterFilesByProject(allFiles, projectId);
   }
   
   console.log(`[Relations] Project ${projectId}: Found ${projectFiles.length} files out of ${allFiles.length} total`);
   
   if (projectFiles.length === 0) {
+    console.error(`[Relations] ERROR: No files matched project filter`);
+    console.error(`[Relations] Tried patterns: ${projectId.toLowerCase()}, ${projectId.replace(/_/g, '-').toLowerCase()}`);
     throw new Error(`No files found for project "${projectId}". Check that the project folder name matches or re-index the project to update sourcePath.`);
+  }
+  
+  // Log languages distribution
+  const langCounts: Record<string, number> = {};
+  projectFiles.forEach(([f]) => {
+    const ext = path.extname(f).toLowerCase();
+    langCounts[ext] = (langCounts[ext] || 0) + 1;
+  });
+  console.log(`[Relations] File types: ${JSON.stringify(langCounts)}`);
+  
+  // Supported extensions
+  const supportedExts = ['.ts', '.js', '.tsx', '.jsx', '.py', '.java'];
+  const supportedFiles = projectFiles.filter(([f]) => supportedExts.includes(path.extname(f).toLowerCase()));
+  console.log(`[Relations] Supported language files: ${supportedFiles.length} (${supportedExts.join(', ')})`);
+  
+  if (supportedFiles.length === 0) {
+    console.warn(`[Relations] WARNING: No files with supported extensions found`);
   }
 
   const files = projectFiles;
   const totalFiles = Math.min(files.length, options.maxFiles || Infinity);
   
+  console.log(`[Relations] Phase 1: Parsing ${totalFiles} files...`);
+  
   const nodes: RelationNode[] = [];
   const fileContents = new Map<string, { content: string; language: string }>();
+  
+  // Stats for debugging
+  let skippedNotExists = 0;
+  let skippedUnknownLang = 0;
+  let skippedNoContent = 0;
+  let skippedNoisyFile = 0;
   
   // Phase 1: Parse files
   let processedFiles = 0;
@@ -913,6 +964,7 @@ export async function analyzeProject(
       const resolvedPath = path.resolve(baseDir, filePath);
 
       if (!fs.existsSync(resolvedPath)) {
+        skippedNotExists++;
         continue;
       }
 
@@ -931,7 +983,10 @@ export async function analyzeProject(
       
       const language = langMap[ext] || 'unknown';
       
-      if (language === 'unknown') continue;
+      if (language === 'unknown') {
+        skippedUnknownLang++;
+        continue;
+      }
 
       fileContents.set(filePath, { content, language });
 
@@ -939,15 +994,36 @@ export async function analyzeProject(
       const node = await analyzeFile(filePath, content, language);
       if (node) {
         nodes.push(node);
+      } else {
+        skippedNoContent++;
       }
     } catch (error) {
-      console.error(`Error processing file ${filePath}:`, error);
+      console.error(`[Relations] Error processing file ${filePath}:`, error);
     }
 
     processedFiles++;
   }
 
+  // Log parsing results
+  console.log(`[Relations] Phase 1 complete:`);
+  console.log(`[Relations]   - Processed: ${processedFiles} files`);
+  console.log(`[Relations]   - Created nodes: ${nodes.length}`);
+  console.log(`[Relations]   - Skipped (file not found): ${skippedNotExists}`);
+  console.log(`[Relations]   - Skipped (unknown language): ${skippedUnknownLang}`);
+  console.log(`[Relations]   - Skipped (no classes/functions): ${skippedNoContent}`);
+  
+  if (nodes.length === 0) {
+    console.warn(`[Relations] WARNING: No nodes created! Check if files exist on disk and contain analyzable code.`);
+    if (skippedNotExists > 0) {
+      console.warn(`[Relations] HINT: ${skippedNotExists} files not found. BaseDir: ${path.dirname(mbService.getMemoryBankPath() || '')}`);
+      // Log sample missing files
+      console.warn(`[Relations] Sample file paths in index:`);
+      files.slice(0, 3).forEach(([f]) => console.warn(`[Relations]   - ${f}`));
+    }
+  }
+
   // Phase 2: Build edges
+  console.log(`[Relations] Phase 2: Building edges from imports...`);
   onProgress?.({
     phase: 'detecting',
     processedFiles: totalFiles,
@@ -956,6 +1032,7 @@ export async function analyzeProject(
   });
 
   const edges = buildEdges(nodes, fileContents);
+  console.log(`[Relations] Phase 2 complete: ${edges.length} edges created`);
 
   // Phase 3: Enrich with AI descriptions
   if (options.useAI !== false && nodes.length > 0) {
@@ -1022,6 +1099,7 @@ export async function analyzeProject(
   };
 
   // Phase 4: Save
+  console.log(`[Relations] Phase 4: Saving relations...`);
   onProgress?.({
     phase: 'saving',
     processedFiles: totalFiles,
@@ -1030,6 +1108,19 @@ export async function analyzeProject(
   });
 
   await saveRelations(relations);
+  
+  // Final summary
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`[Relations] ANALYSIS COMPLETE for "${projectId}"`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(`[Relations] Results:`);
+  console.log(`[Relations]   - Nodes: ${nodes.length}`);
+  console.log(`[Relations]   - Edges: ${edges.length}`);
+  console.log(`[Relations]   - Files analyzed: ${processedFiles}`);
+  console.log(`[Relations]   - Time: ${elapsed}s`);
+  console.log(`[Relations] Node types: ${JSON.stringify(nodesByType)}`);
+  console.log(`${'='.repeat(60)}\n`);
 
   return relations;
 }
