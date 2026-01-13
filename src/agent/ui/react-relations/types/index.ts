@@ -45,6 +45,29 @@ export interface FlowNode {
   position: { x: number; y: number };
 }
 
+// Group node for collapsible folders
+export interface NodeGroup {
+  id: string;
+  folder: string;
+  nodes: RelationNode[];
+  nodeCount: number;
+  // Aggregated types in this group
+  types: string[];
+  // Primary type (most common)
+  primaryType: string;
+}
+
+export interface FlowGroupNode {
+  id: string;
+  type: 'groupNode';
+  data: {
+    group: NodeGroup;
+    isExpanded: boolean;
+    onToggle: () => void;
+  };
+  position: { x: number; y: number };
+}
+
 export interface FlowEdge {
   id: string;
   source: string;

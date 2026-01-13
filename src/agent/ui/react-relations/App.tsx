@@ -1,8 +1,9 @@
 /**
  * Main App component for Relations Flow Viewer
+ * Supports collapsible folder groups for large graphs
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -20,18 +21,107 @@ import 'reactflow/dist/style.css';
 
 import { useRelationsData } from './hooks/useRelationsData';
 import RelationNodeComponent from './components/RelationNodeComponent';
+import GroupNodeComponent from './components/GroupNodeComponent';
 import Toolbar from './components/Toolbar';
 import NodeDetails from './components/NodeDetails';
-import { NODE_TYPE_COLORS, FlowNode, FlowEdge, RelationNode, RelationEdge } from './types';
+import { NODE_TYPE_COLORS, FlowNode, FlowEdge, RelationNode, RelationEdge, NodeGroup } from './types';
 
 // Custom node types
 const nodeTypes = {
   relationNode: RelationNodeComponent,
+  groupNode: GroupNodeComponent,
 };
+
+// Threshold for enabling grouped view
+const GROUP_VIEW_THRESHOLD = 30;
 
 // Node dimensions for layout calculation
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 140;
+const GROUP_NODE_WIDTH = 200;
+const GROUP_NODE_HEIGHT = 120;
+
+/**
+ * Extract folder name from file path
+ * e.g., "src/main/java/com/example/controller/UserController.java" -> "controller"
+ */
+function getFolderFromPath(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const parts = normalized.split('/').filter(p => p);
+  // Get parent folder (second to last part)
+  if (parts.length >= 2) {
+    return parts[parts.length - 2];
+  }
+  return 'root';
+}
+
+/**
+ * Group nodes by their parent folder
+ */
+function groupNodesByFolder(nodes: RelationNode[]): NodeGroup[] {
+  const groupMap = new Map<string, RelationNode[]>();
+  
+  for (const node of nodes) {
+    const folder = getFolderFromPath(node.filePath);
+    if (!groupMap.has(folder)) {
+      groupMap.set(folder, []);
+    }
+    groupMap.get(folder)!.push(node);
+  }
+  
+  return Array.from(groupMap.entries()).map(([folder, groupNodes]) => {
+    // Count types
+    const typeCounts = groupNodes.reduce((acc, n) => {
+      acc[n.type] = (acc[n.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    // Find primary type (most common)
+    const primaryType = Object.entries(typeCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+    
+    return {
+      id: `group-${folder}`,
+      folder,
+      nodes: groupNodes,
+      nodeCount: groupNodes.length,
+      types: Object.keys(typeCounts),
+      primaryType,
+    };
+  }).sort((a, b) => b.nodeCount - a.nodeCount);
+}
+
+/**
+ * Calculate edges between groups based on node edges
+ */
+function calculateGroupEdges(
+  edges: RelationEdge[],
+  nodeToGroup: Map<string, string>
+): RelationEdge[] {
+  const groupEdgeSet = new Set<string>();
+  const groupEdges: RelationEdge[] = [];
+  
+  for (const edge of edges) {
+    const sourceGroup = nodeToGroup.get(edge.source);
+    const targetGroup = nodeToGroup.get(edge.target);
+    
+    if (sourceGroup && targetGroup && sourceGroup !== targetGroup) {
+      const edgeKey = `${sourceGroup}->${targetGroup}`;
+      if (!groupEdgeSet.has(edgeKey)) {
+        groupEdgeSet.add(edgeKey);
+        groupEdges.push({
+          id: `ge-${sourceGroup}-${targetGroup}`,
+          source: sourceGroup,
+          target: targetGroup,
+          type: 'uses',
+          label: '',
+        });
+      }
+    }
+  }
+  
+  return groupEdges;
+}
 
 /**
  * Layout algorithm using Dagre for automatic node positioning
@@ -209,15 +299,145 @@ const FlowContent: React.FC = () => {
   } = useRelationsData();
 
   const { fitView } = useReactFlow();
+  
+  // State for expanded groups
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // State for grouped view mode
+  const [useGroupedView, setUseGroupedView] = useState<boolean>(true);
+
+  // Toggle group expansion
+  const toggleGroup = useCallback((groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
 
   // Create stable keys for memoization - only based on data, not selection
   const nodesKey = useMemo(() => nodes.map(n => n.id).join(','), [nodes]);
   const edgesKey = useMemo(() => edges.map(e => e.id).join(','), [edges]);
   
+  // Group nodes by folder
+  const groups = useMemo(() => groupNodesByFolder(nodes), [nodesKey]);
+  
+  // Create node-to-group mapping
+  const nodeToGroup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of groups) {
+      for (const node of group.nodes) {
+        map.set(node.id, group.id);
+      }
+    }
+    return map;
+  }, [groups]);
+  
+  // Determine if we should use grouped view (only for large graphs)
+  const shouldUseGroupedView = useGroupedView && nodes.length > GROUP_VIEW_THRESHOLD;
+  
+  // Calculate which nodes and edges to show based on expanded state
+  const { visibleNodes, visibleEdges } = useMemo(() => {
+    if (!shouldUseGroupedView) {
+      // No grouping - show all nodes
+      return { visibleNodes: nodes, visibleEdges: edges };
+    }
+    
+    const visNodes: RelationNode[] = [];
+    const groupsToShow: NodeGroup[] = [];
+    
+    for (const group of groups) {
+      if (expandedGroups.has(group.id)) {
+        // Group is expanded - show individual nodes
+        visNodes.push(...group.nodes);
+      } else {
+        // Group is collapsed - show as group node
+        groupsToShow.push(group);
+      }
+    }
+    
+    // Calculate edges
+    // For expanded groups: show edges between individual nodes
+    // For collapsed groups: show edges between groups with count
+    const visNodeIds = new Set(visNodes.map(n => n.id));
+    const visGroupIds = new Set(groupsToShow.map(g => g.id));
+    
+    const visEdges: RelationEdge[] = [];
+    // Map to count aggregated edges: edgeKey -> count
+    const groupEdgeCount = new Map<string, number>();
+    
+    for (const edge of edges) {
+      const sourceInVisible = visNodeIds.has(edge.source);
+      const targetInVisible = visNodeIds.has(edge.target);
+      const sourceGroup = nodeToGroup.get(edge.source);
+      const targetGroup = nodeToGroup.get(edge.target);
+      
+      if (sourceInVisible && targetInVisible) {
+        // Both nodes visible - show edge
+        visEdges.push(edge);
+      } else if (sourceInVisible && targetGroup && visGroupIds.has(targetGroup)) {
+        // Source visible, target in collapsed group - edge to group
+        const edgeKey = `${edge.source}->${targetGroup}`;
+        groupEdgeCount.set(edgeKey, (groupEdgeCount.get(edgeKey) || 0) + 1);
+      } else if (targetInVisible && sourceGroup && visGroupIds.has(sourceGroup)) {
+        // Target visible, source in collapsed group - edge from group
+        const edgeKey = `${sourceGroup}->${edge.target}`;
+        groupEdgeCount.set(edgeKey, (groupEdgeCount.get(edgeKey) || 0) + 1);
+      } else if (sourceGroup && targetGroup && sourceGroup !== targetGroup &&
+                 visGroupIds.has(sourceGroup) && visGroupIds.has(targetGroup)) {
+        // Both in collapsed groups - edge between groups
+        const edgeKey = `${sourceGroup}->${targetGroup}`;
+        groupEdgeCount.set(edgeKey, (groupEdgeCount.get(edgeKey) || 0) + 1);
+      }
+    }
+    
+    // Create aggregated edges with counts
+    for (const [edgeKey, count] of groupEdgeCount.entries()) {
+      const [source, target] = edgeKey.split('->');
+      const isGroupToGroup = source.startsWith('group-') && target.startsWith('group-');
+      visEdges.push({
+        id: isGroupToGroup ? `ge-${source}-${target}` : `e-${source}-${target}`,
+        source,
+        target,
+        type: 'uses',
+        label: count > 1 ? `(${count})` : '',
+      });
+    }
+    
+    return { 
+      visibleNodes: visNodes, 
+      visibleEdges: visEdges,
+      groupsToShow 
+    };
+  }, [shouldUseGroupedView, groups, expandedGroups, nodes, edges, nodeToGroup]);
+  
+  // Get groups to show (collapsed ones)
+  const groupsToShow = useMemo(() => {
+    if (!shouldUseGroupedView) return [];
+    return groups.filter(g => !expandedGroups.has(g.id));
+  }, [shouldUseGroupedView, groups, expandedGroups]);
+  
   // Layout nodes ONCE when data changes (not on selection change)
   const baseFlowNodes = useMemo(() => {
-    return layoutNodes(nodes, edges);
-  }, [nodesKey, edgesKey]);
+    // Create combined list of individual nodes + group nodes for layout
+    const allNodesForLayout: RelationNode[] = [
+      ...visibleNodes,
+      // Add pseudo-nodes for groups (for layout calculation)
+      ...groupsToShow.map(g => ({
+        id: g.id,
+        type: g.primaryType,
+        name: g.folder,
+        filePath: '',
+        description: '',
+        functions: [],
+      })),
+    ];
+    
+    return layoutNodes(allNodesForLayout, visibleEdges);
+  }, [visibleNodes, visibleEdges, groupsToShow]);
   
   // Calculate connected nodes and edges when a node is selected
   // Returns stable string keys for comparison
@@ -228,7 +448,7 @@ const FlowContent: React.FC = () => {
     const targets = new Set<string>();
     
     if (selectedNodeId) {
-      edges.forEach(edge => {
+      visibleEdges.forEach(edge => {
         if (edge.source === selectedNodeId) {
           connected.add(edge.target);
           targets.add(edge.target);
@@ -248,26 +468,48 @@ const FlowContent: React.FC = () => {
       sourceNodeIds: sources,
       targetNodeIds: targets
     };
-  }, [selectedNodeId, edgesKey]);
+  }, [selectedNodeId, visibleEdges]);
   
   // Apply highlight information to nodes (cheap operation, no layout recalc)
   const flowNodes = useMemo(() => {
-    return baseFlowNodes.map(flowNode => ({
-      ...flowNode,
-      selected: flowNode.id === selectedNodeId, // Mark selected node
-      data: {
-        ...flowNode.data,
-        isSelected: flowNode.id === selectedNodeId, // Also pass in data
-        isHighlighted: highlightInfo.connectedNodeIds.has(flowNode.id),
-        isSource: highlightInfo.sourceNodeIds.has(flowNode.id),
-        isTarget: highlightInfo.targetNodeIds.has(flowNode.id),
+    return baseFlowNodes.map(flowNode => {
+      // Check if this is a group node
+      const isGroupNode = flowNode.id.startsWith('group-');
+      
+      if (isGroupNode) {
+        const group = groupsToShow.find(g => g.id === flowNode.id);
+        if (group) {
+          return {
+            ...flowNode,
+            type: 'groupNode',
+            data: {
+              group,
+              isExpanded: false,
+              onToggle: () => toggleGroup(group.id),
+            },
+          };
+        }
       }
-    }));
-  }, [baseFlowNodes, selectedNodeId]);
+      
+      // Regular relation node
+      return {
+        ...flowNode,
+        type: 'relationNode',
+        selected: flowNode.id === selectedNodeId,
+        data: {
+          ...flowNode.data,
+          isSelected: flowNode.id === selectedNodeId,
+          isHighlighted: highlightInfo.connectedNodeIds.has(flowNode.id),
+          isSource: highlightInfo.sourceNodeIds.has(flowNode.id),
+          isTarget: highlightInfo.targetNodeIds.has(flowNode.id),
+        }
+      };
+    });
+  }, [baseFlowNodes, selectedNodeId, groupsToShow, toggleGroup]);
   
   const flowEdges = useMemo(() => {
-    return convertEdges(edges, highlightInfo.highlightedEdgeIds);
-  }, [edgesKey, selectedNodeId]);
+    return convertEdges(visibleEdges, highlightInfo.highlightedEdgeIds);
+  }, [visibleEdges, highlightInfo.highlightedEdgeIds]);
 
   // Callbacks for node changes (for dragging support)
   const onNodesChange = useCallback(() => {}, []);
@@ -330,6 +572,10 @@ const FlowContent: React.FC = () => {
         nodeCount={nodes.length}
         edgeCount={edges.length}
         lastAnalyzed={relations.lastAnalyzed}
+        useGroupedView={useGroupedView}
+        onToggleGroupedView={() => setUseGroupedView(!useGroupedView)}
+        groupCount={groups.length}
+        expandedCount={expandedGroups.size}
       />
       
       <div style={{ flex: 1, position: 'relative' }}>

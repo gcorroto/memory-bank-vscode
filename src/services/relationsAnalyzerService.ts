@@ -1004,6 +1004,7 @@ function filterFilesByProject(
 
 /**
  * Load project config from metadata.json (contains sourcePath)
+ * Searches in multiple possible locations within the Memory Bank structure
  */
 async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: string } | null> {
   try {
@@ -1011,27 +1012,53 @@ async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: stri
     const mbPath = mbService.getMemoryBankPath();
     if (!mbPath) return null;
     
-    const metadataPath = path.join(
-      path.dirname(mbPath), 
-      'projects', 
-      projectId, 
-      'docs', 
-      'metadata.json'
-    );
+    // Try multiple possible locations for metadata
+    const possiblePaths = [
+      // Standard location: memory-bank/projects/{projectId}/docs/metadata.json
+      path.join(path.dirname(mbPath), 'projects', projectId, 'docs', 'metadata.json'),
+      // Alternative: memory-bank/projects/{projectId}/metadata.json
+      path.join(path.dirname(mbPath), 'projects', projectId, 'metadata.json'),
+      // Direct in memory-bank: memory-bank/{projectId}/metadata.json
+      path.join(mbPath, projectId, 'metadata.json'),
+      // Inside projects folder of memory-bank
+      path.join(mbPath, 'projects', projectId, 'metadata.json'),
+      path.join(mbPath, 'projects', projectId, 'docs', 'metadata.json'),
+    ];
     
-    if (!fs.existsSync(metadataPath)) {
-      console.log(`[Relations] No metadata.json found for project ${projectId}`);
-      return null;
+    for (const metadataPath of possiblePaths) {
+      if (fs.existsSync(metadataPath)) {
+        console.log(`[Relations] Found metadata at: ${metadataPath}`);
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        const data = JSON.parse(content);
+        
+        // Check for sourcePath in various locations
+        const sourcePath = data._projectConfig?.sourcePath || 
+                          data.sourcePath || 
+                          data.projectPath ||
+                          data.rootPath;
+        
+        if (sourcePath) {
+          console.log(`[Relations] Found sourcePath in config: ${sourcePath}`);
+          return { sourcePath };
+        }
+      }
     }
     
-    const content = fs.readFileSync(metadataPath, 'utf-8');
-    const data = JSON.parse(content);
-    
-    if (data._projectConfig?.sourcePath) {
-      console.log(`[Relations] Found sourcePath in config: ${data._projectConfig.sourcePath}`);
-      return data._projectConfig;
+    // Also try to get from index-metadata.json which might have the root path
+    const indexMetaPath = path.join(mbPath, 'index-metadata.json');
+    if (fs.existsSync(indexMetaPath)) {
+      const indexContent = fs.readFileSync(indexMetaPath, 'utf-8');
+      const indexData = JSON.parse(indexContent);
+      
+      // The index might have projectRoot or similar
+      const rootPath = indexData.projectRoot || indexData.rootPath || indexData.basePath;
+      if (rootPath) {
+        console.log(`[Relations] Found rootPath in index-metadata: ${rootPath}`);
+        return { sourcePath: rootPath };
+      }
     }
     
+    console.log(`[Relations] No sourcePath found in any config for project ${projectId}`);
     return null;
   } catch (error) {
     console.error(`[Relations] Error loading project config:`, error);
@@ -1139,11 +1166,56 @@ export async function analyzeProject(
   let skippedUnknownLang = 0;
   let skippedNoContent = 0;
   
-  // Get base directory (mbPath already declared above)
+  // Get base directory for resolving file paths
+  // IMPORTANT: Use the sourcePath from project config, NOT the memory bank path
+  // The files in index-metadata have paths relative to the original indexed project
+  let baseDir: string = '';
+  
+  if (projectConfig?.sourcePath) {
+    // Use the sourcePath from the project config (original indexed location)
+    baseDir = projectConfig.sourcePath;
+    console.log(`[Relations] Using sourcePath as baseDir: ${baseDir}`);
+  } else {
+    // Fallback: try to detect from the first indexed file path
+    // If paths are absolute, use root. If relative, we need sourcePath.
+    const samplePath = files[0]?.[0] || '';
+    if (path.isAbsolute(samplePath)) {
+      baseDir = ''; // Absolute paths don't need a base
+      console.log(`[Relations] Files have absolute paths, no baseDir needed`);
+    } else {
+      // Try to infer from workspace folders
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (workspaceFolders && workspaceFolders.length > 0) {
+        let foundInWorkspace = false;
+        // Check if any workspace folder contains files matching the project
+        for (const folder of workspaceFolders) {
+          const testPath = path.join(folder.uri.fsPath, samplePath);
+          if (fs.existsSync(testPath)) {
+            baseDir = folder.uri.fsPath;
+            foundInWorkspace = true;
+            console.log(`[Relations] Inferred baseDir from workspace: ${baseDir}`);
+            break;
+          }
+        }
+        if (!foundInWorkspace) {
+          console.warn(`[Relations] WARNING: Could not find indexed files in any workspace folder`);
+          console.warn(`[Relations] Sample indexed path: ${samplePath}`);
+          console.warn(`[Relations] Current workspaces: ${workspaceFolders.map(f => f.uri.fsPath).join(', ')}`);
+          console.warn(`[Relations] This project may have been indexed from a different location.`);
+          console.warn(`[Relations] Re-index the project to update file paths, or ensure the correct folder is open.`);
+          // Use first workspace as fallback but warn user
+          baseDir = workspaceFolders[0].uri.fsPath;
+        }
+      } else {
+        throw new Error('No workspace folder open and no sourcePath configured. Cannot locate project files.');
+      }
+    }
+  }
+  
+  console.log(`[Relations] Base directory for file resolution: ${baseDir || '(absolute paths)'}`);
   if (!mbPath) {
     throw new Error('MemoryBank path not configured');
   }
-  const baseDir = path.dirname(mbPath);
   
   // Language map
   const langMap: Record<string, string> = {

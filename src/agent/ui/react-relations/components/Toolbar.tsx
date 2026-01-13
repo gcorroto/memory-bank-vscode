@@ -15,6 +15,11 @@ interface ToolbarProps {
   nodeCount: number;
   edgeCount: number;
   lastAnalyzed?: number;
+  // Grouped view
+  useGroupedView?: boolean;
+  onToggleGroupedView?: () => void;
+  groupCount?: number;
+  expandedCount?: number;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -27,6 +32,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   nodeCount,
   edgeCount,
   lastAnalyzed,
+  useGroupedView,
+  onToggleGroupedView,
+  groupCount,
+  expandedCount,
 }) => {
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -68,6 +77,43 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Grouped View Toggle */}
+      {onToggleGroupedView && nodeCount > 30 && (
+        <button
+          onClick={onToggleGroupedView}
+          title={useGroupedView ? 'Mostrar todos los nodos' : 'Agrupar por carpetas'}
+          style={{
+            padding: '6px 12px',
+            borderRadius: '4px',
+            border: useGroupedView 
+              ? '2px solid var(--vscode-button-background)' 
+              : '1px solid var(--vscode-button-border)',
+            background: useGroupedView 
+              ? 'var(--vscode-button-background)' 
+              : 'var(--vscode-button-secondaryBackground)',
+            color: useGroupedView 
+              ? 'var(--vscode-button-foreground)' 
+              : 'var(--vscode-button-secondaryForeground)',
+            cursor: 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          📁 {useGroupedView ? `Agrupado (${groupCount} grupos)` : 'Agrupar'}
+          {useGroupedView && expandedCount !== undefined && expandedCount > 0 && (
+            <span style={{ 
+              fontSize: '10px', 
+              opacity: 0.8,
+              marginLeft: '4px',
+            }}>
+              ({expandedCount} expandidos)
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Filter */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
