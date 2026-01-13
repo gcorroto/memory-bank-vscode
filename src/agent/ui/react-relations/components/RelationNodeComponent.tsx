@@ -12,6 +12,7 @@ interface RelationNodeData {
   isHighlighted?: boolean;  // Connected to selected node
   isSource?: boolean;       // Is source of selected (selected imports this)
   isTarget?: boolean;       // Is target of selected (this imports selected)
+  isDimmed?: boolean;       // Not related to selection - make semi-transparent
   onClick?: (node: RelationNode) => void;
 }
 
@@ -23,7 +24,7 @@ const SELECTED_COLOR = '#f0c040';
 const SELECTED_GLOW = 'rgba(240, 192, 64, 0.5)';
 
 const RelationNodeComponent: React.FC<NodeProps<RelationNodeData>> = ({ data, selected }) => {
-  const { node, onClick, isSelected, isHighlighted, isSource, isTarget } = data;
+  const { node, onClick, isSelected, isHighlighted, isSource, isTarget, isDimmed } = data;
   const color = NODE_TYPE_COLORS[node.type] || NODE_TYPE_COLORS.unknown;
   
   // Use isSelected from data (more reliable than React Flow's selected prop)
@@ -39,6 +40,7 @@ const RelationNodeComponent: React.FC<NodeProps<RelationNodeData>> = ({ data, se
   let borderColor = 'var(--vscode-panel-border)';
   let boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
   let backgroundColor = 'var(--vscode-editor-background)';
+  let opacity = 1;
 
   if (isOriginNode) {
     // Selected/origin node - strongest highlight
@@ -50,6 +52,10 @@ const RelationNodeComponent: React.FC<NodeProps<RelationNodeData>> = ({ data, se
     borderColor = HIGHLIGHT_COLOR;
     boxShadow = `0 0 10px ${HIGHLIGHT_GLOW}`;
     backgroundColor = 'rgba(201, 162, 39, 0.08)';
+  } else if (isDimmed) {
+    // Not related - make semi-transparent
+    opacity = 0.25;
+    boxShadow = 'none';
   }
 
   return (
@@ -65,6 +71,7 @@ const RelationNodeComponent: React.FC<NodeProps<RelationNodeData>> = ({ data, se
         maxWidth: '250px',
         cursor: 'pointer',
         transition: 'all 0.2s ease',
+        opacity: opacity,
       }}
     >
       {/* Input handle */}

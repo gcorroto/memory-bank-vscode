@@ -226,10 +226,13 @@ const EDGE_DEFAULT_COLOR = 'var(--vscode-textLink-foreground)';
 // Convert edges to React Flow format with optional highlighting
 function convertEdges(
   edges: { id: string; source: string; target: string; type: string; label?: string }[],
-  highlightedEdgeIds: Set<string> = new Set()
+  highlightedEdgeIds: Set<string> = new Set(),
+  hasSelection: boolean = false  // Whether there's an active node selection
 ): FlowEdge[] {
   return edges.map(edge => {
     const isHighlighted = highlightedEdgeIds.has(edge.id);
+    // Dim edges that are not highlighted when there's a selection
+    const isDimmed = hasSelection && !isHighlighted;
     
     return {
       id: edge.id,
@@ -247,12 +250,13 @@ function convertEdges(
       style: {
         stroke: isHighlighted ? EDGE_HIGHLIGHT_COLOR : EDGE_DEFAULT_COLOR,
         strokeWidth: isHighlighted ? 3 : 1.5,
-        opacity: isHighlighted ? 1 : 0.6,
+        opacity: isDimmed ? 0.1 : (isHighlighted ? 1 : 0.6),
       },
       labelStyle: {
         fontSize: isHighlighted ? 11 : 10,
         fill: isHighlighted ? EDGE_HIGHLIGHT_COLOR : 'var(--vscode-descriptionForeground)',
         fontWeight: isHighlighted ? 'bold' : 'normal',
+        opacity: isDimmed ? 0.1 : 1,
       },
       labelBgStyle: {
         fill: 'var(--vscode-editor-background)',
@@ -296,6 +300,11 @@ const FlowContent: React.FC = () => {
       }
       return next;
     });
+  }, []);
+
+  // Collapse all expanded groups
+  const collapseAll = useCallback(() => {
+    setExpandedGroups(new Set());
   }, []);
 
   // Create stable keys for memoization - only based on data, not selection
@@ -473,24 +482,30 @@ const FlowContent: React.FC = () => {
       }
       
       // Regular relation node
+      const isThisSelected = flowNode.id === selectedNodeId;
+      const isConnected = highlightInfo.connectedNodeIds.has(flowNode.id);
+      // Dim nodes that are not selected and not connected when there's a selection
+      const shouldDim = selectedNodeId !== null && !isThisSelected && !isConnected;
+      
       return {
         ...flowNode,
         type: 'relationNode',
-        selected: flowNode.id === selectedNodeId,
+        selected: isThisSelected,
         data: {
           ...flowNode.data,
-          isSelected: flowNode.id === selectedNodeId,
-          isHighlighted: highlightInfo.connectedNodeIds.has(flowNode.id),
+          isSelected: isThisSelected,
+          isHighlighted: isConnected,
           isSource: highlightInfo.sourceNodeIds.has(flowNode.id),
           isTarget: highlightInfo.targetNodeIds.has(flowNode.id),
+          isDimmed: shouldDim,
         }
       };
     });
-  }, [baseFlowNodes, selectedNodeId, groupsToShow, toggleGroup]);
+  }, [baseFlowNodes, selectedNodeId, groupsToShow, toggleGroup, highlightInfo]);
   
   const flowEdges = useMemo(() => {
-    return convertEdges(visibleEdges, highlightInfo.highlightedEdgeIds);
-  }, [visibleEdges, highlightInfo.highlightedEdgeIds]);
+    return convertEdges(visibleEdges, highlightInfo.highlightedEdgeIds, selectedNodeId !== null);
+  }, [visibleEdges, highlightInfo.highlightedEdgeIds, selectedNodeId]);
 
   // Callbacks for node changes (for dragging support)
   const onNodesChange = useCallback(() => {}, []);
@@ -555,6 +570,7 @@ const FlowContent: React.FC = () => {
         lastAnalyzed={relations.lastAnalyzed}
         useGroupedView={useGroupedView}
         onToggleGroupedView={() => setUseGroupedView(!useGroupedView)}
+        onCollapseAll={collapseAll}
         groupCount={groups.length}
         expandedCount={expandedGroups.size}
       />

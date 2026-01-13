@@ -18,6 +18,7 @@ interface ToolbarProps {
   // Grouped view
   useGroupedView?: boolean;
   onToggleGroupedView?: () => void;
+  onCollapseAll?: () => void;
   groupCount?: number;
   expandedCount?: number;
 }
@@ -34,6 +35,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   lastAnalyzed,
   useGroupedView,
   onToggleGroupedView,
+  onCollapseAll,
   groupCount,
   expandedCount,
 }) => {
@@ -80,39 +82,59 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Grouped View Toggle */}
       {onToggleGroupedView && nodeCount > 30 && (
-        <button
-          onClick={onToggleGroupedView}
-          title={useGroupedView ? 'Mostrar todos los nodos' : 'Agrupar por carpetas'}
-          style={{
-            padding: '6px 12px',
-            borderRadius: '4px',
-            border: useGroupedView 
-              ? '2px solid var(--vscode-button-background)' 
-              : '1px solid var(--vscode-button-border)',
-            background: useGroupedView 
-              ? 'var(--vscode-button-background)' 
-              : 'var(--vscode-button-secondaryBackground)',
-            color: useGroupedView 
-              ? 'var(--vscode-button-foreground)' 
-              : 'var(--vscode-button-secondaryForeground)',
-            cursor: 'pointer',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          📁 {useGroupedView ? `Agrupado (${groupCount} grupos)` : 'Agrupar'}
-          {useGroupedView && expandedCount !== undefined && expandedCount > 0 && (
-            <span style={{ 
-              fontSize: '10px', 
-              opacity: 0.8,
-              marginLeft: '4px',
-            }}>
-              ({expandedCount} expandidos)
-            </span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            onClick={onToggleGroupedView}
+            title={useGroupedView ? 'Mostrar todos los nodos' : 'Agrupar por tipo'}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: useGroupedView 
+                ? '2px solid var(--vscode-button-background)' 
+                : '1px solid var(--vscode-button-border)',
+              background: useGroupedView 
+                ? 'var(--vscode-button-background)' 
+                : 'var(--vscode-button-secondaryBackground)',
+              color: useGroupedView 
+                ? 'var(--vscode-button-foreground)' 
+                : 'var(--vscode-button-secondaryForeground)',
+              cursor: 'pointer',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            📁 {useGroupedView ? `Agrupado (${groupCount} grupos)` : 'Agrupar'}
+            {useGroupedView && expandedCount !== undefined && expandedCount > 0 && (
+              <span style={{ 
+                fontSize: '10px', 
+                opacity: 0.8,
+                marginLeft: '4px',
+              }}>
+                ({expandedCount} exp.)
+              </span>
+            )}
+          </button>
+          {/* Collapse All button - only show when there are expanded groups */}
+          {useGroupedView && expandedCount !== undefined && expandedCount > 0 && onCollapseAll && (
+            <button
+              onClick={onCollapseAll}
+              title="Colapsar todos los grupos"
+              style={{
+                padding: '6px 10px',
+                borderRadius: '4px',
+                border: '1px solid var(--vscode-button-border)',
+                background: 'var(--vscode-button-secondaryBackground)',
+                color: 'var(--vscode-button-secondaryForeground)',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              ⊟
+            </button>
           )}
-        </button>
+        </div>
       )}
 
       {/* Filter */}
