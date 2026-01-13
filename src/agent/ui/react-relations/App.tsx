@@ -42,51 +42,31 @@ const GROUP_NODE_WIDTH = 200;
 const GROUP_NODE_HEIGHT = 120;
 
 /**
- * Extract folder name from file path
- * e.g., "src/main/java/com/example/controller/UserController.java" -> "controller"
+ * Group nodes by their TYPE (same as Code Relations tree)
+ * This creates groups like: Component, Service, Class, Model, Config, Utility
  */
-function getFolderFromPath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  const parts = normalized.split('/').filter(p => p);
-  // Get parent folder (second to last part)
-  if (parts.length >= 2) {
-    return parts[parts.length - 2];
-  }
-  return 'root';
-}
-
-/**
- * Group nodes by their parent folder
- */
-function groupNodesByFolder(nodes: RelationNode[]): NodeGroup[] {
+function groupNodesByType(nodes: RelationNode[]): NodeGroup[] {
   const groupMap = new Map<string, RelationNode[]>();
   
   for (const node of nodes) {
-    const folder = getFolderFromPath(node.filePath);
-    if (!groupMap.has(folder)) {
-      groupMap.set(folder, []);
+    const type = node.type || 'unknown';
+    if (!groupMap.has(type)) {
+      groupMap.set(type, []);
     }
-    groupMap.get(folder)!.push(node);
+    groupMap.get(type)!.push(node);
   }
   
-  return Array.from(groupMap.entries()).map(([folder, groupNodes]) => {
-    // Count types
-    const typeCounts = groupNodes.reduce((acc, n) => {
-      acc[n.type] = (acc[n.type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    // Find primary type (most common)
-    const primaryType = Object.entries(typeCounts)
-      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+  return Array.from(groupMap.entries()).map(([type, groupNodes]) => {
+    // Capitalize type name for display
+    const displayName = type.charAt(0).toUpperCase() + type.slice(1);
     
     return {
-      id: `group-${folder}`,
-      folder,
+      id: `group-${type}`,
+      folder: displayName, // Using 'folder' field for display name
       nodes: groupNodes,
       nodeCount: groupNodes.length,
-      types: Object.keys(typeCounts),
-      primaryType,
+      types: [type],
+      primaryType: type,
     };
   }).sort((a, b) => b.nodeCount - a.nodeCount);
 }
@@ -323,7 +303,8 @@ const FlowContent: React.FC = () => {
   const edgesKey = useMemo(() => edges.map(e => e.id).join(','), [edges]);
   
   // Group nodes by folder
-  const groups = useMemo(() => groupNodesByFolder(nodes), [nodesKey]);
+  // Group by TYPE (same as Code Relations tree: Component, Service, Class, etc.)
+  const groups = useMemo(() => groupNodesByType(nodes), [nodesKey]);
   
   // Create node-to-group mapping
   const nodeToGroup = useMemo(() => {
