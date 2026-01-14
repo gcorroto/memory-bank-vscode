@@ -1318,49 +1318,25 @@ export async function analyzeProject(
   let skippedNoContent = 0;
   
   // Get base directory for resolving file paths
-  // IMPORTANT: Use the sourcePath from project config, NOT the memory bank path
-  // The files in index-metadata have paths relative to the original indexed project
+  // The files in index-metadata have paths that can be:
+  // 1. RELATIVE to the Memory Bank directory (e.g., "../../workspaces/project/src/file.ts")
+  // 2. ABSOLUTE paths (e.g., "C:/workspaces/project/src/file.ts")
   let baseDir: string = '';
   
-  if (projectConfig?.sourcePath) {
-    // Use the sourcePath from the project config (original indexed location)
-    baseDir = projectConfig.sourcePath;
-    console.log(`[Relations] Using sourcePath as baseDir: ${baseDir}`);
+  // Check if file paths are relative or absolute
+  const sampleFilePath = files[0]?.[0] || '';
+  const isRelativePath = sampleFilePath.startsWith('.') || !path.isAbsolute(sampleFilePath);
+  
+  if (isRelativePath) {
+    // Paths are relative to Memory Bank directory
+    baseDir = path.dirname(mbPath);
+    console.log(`[Relations] File paths are relative to Memory Bank`);
+    console.log(`[Relations] Sample path: ${sampleFilePath}`);
+    console.log(`[Relations] Using baseDir: ${baseDir}`);
   } else {
-    // Fallback: try to detect from the first indexed file path
-    // If paths are absolute, use root. If relative, we need sourcePath.
-    const samplePath = files[0]?.[0] || '';
-    if (path.isAbsolute(samplePath)) {
-      baseDir = ''; // Absolute paths don't need a base
-      console.log(`[Relations] Files have absolute paths, no baseDir needed`);
-    } else {
-      // Try to infer from workspace folders
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (workspaceFolders && workspaceFolders.length > 0) {
-        let foundInWorkspace = false;
-        // Check if any workspace folder contains files matching the project
-        for (const folder of workspaceFolders) {
-          const testPath = path.join(folder.uri.fsPath, samplePath);
-          if (fs.existsSync(testPath)) {
-            baseDir = folder.uri.fsPath;
-            foundInWorkspace = true;
-            console.log(`[Relations] Inferred baseDir from workspace: ${baseDir}`);
-            break;
-          }
-        }
-        if (!foundInWorkspace) {
-          console.warn(`[Relations] WARNING: Could not find indexed files in any workspace folder`);
-          console.warn(`[Relations] Sample indexed path: ${samplePath}`);
-          console.warn(`[Relations] Current workspaces: ${workspaceFolders.map(f => f.uri.fsPath).join(', ')}`);
-          console.warn(`[Relations] This project may have been indexed from a different location.`);
-          console.warn(`[Relations] Re-index the project to update file paths, or ensure the correct folder is open.`);
-          // Use first workspace as fallback but warn user
-          baseDir = workspaceFolders[0].uri.fsPath;
-        }
-      } else {
-        throw new Error('No workspace folder open and no sourcePath configured. Cannot locate project files.');
-      }
-    }
+    // Paths are absolute - no base needed
+    baseDir = '';
+    console.log(`[Relations] File paths are absolute, no baseDir needed`);
   }
   
   console.log(`[Relations] Base directory for file resolution: ${baseDir || '(absolute paths)'}`);
