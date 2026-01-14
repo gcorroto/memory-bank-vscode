@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -66,6 +66,10 @@
         {
           "id": "memorybank-relations",
           "name": "Code Relations"
+        },
+        {
+          "id": "memorybank-frameworks",
+          "name": "Framework Components"
         }
       ]
     },
@@ -235,6 +239,26 @@
         "command": "memorybank.showDashboard",
         "title": "Mostrar Dashboard de Agente",
         "category": "Memory Bank Agent"
+      },
+      {
+        "command": "memorybank.frameworks.refresh",
+        "title": "Refrescar Framework Components",
+        "category": "Memory Bank",
+        "icon": {
+          "dark": "resources/icons/dark/refresh.svg",
+          "light": "resources/icons/light/refresh.svg"
+        }
+      },
+      {
+        "command": "memorybank.frameworks.search",
+        "title": "Buscar Componente",
+        "category": "Memory Bank",
+        "icon": "$(search)"
+      },
+      {
+        "command": "memorybank.frameworks.openFile",
+        "title": "Abrir Archivo",
+        "category": "Memory Bank"
       }
     ],
     "menus": {
@@ -272,6 +296,16 @@
         {
           "command": "memorybank.relations.refresh",
           "when": "view == memorybank-relations",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.frameworks.refresh",
+          "when": "view == memorybank-frameworks",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.frameworks.search",
+          "when": "view == memorybank-frameworks",
           "group": "navigation"
         }
       ],

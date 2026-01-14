@@ -8,9 +8,11 @@ import { MemoryBankProjectsProvider, ProjectTreeItem } from './MemoryBankProject
 import { IndexedFilesProvider } from './IndexedFilesProvider';
 import { ProjectDocsProvider } from './ProjectDocsProvider';
 import { RelationsTreeProvider } from './RelationsTreeProvider';
+import { FrameworkComponentsProvider } from './FrameworkComponentsProvider';
 import { getMemoryBankService } from './services/memoryBankService';
 import { ProjectInfo } from './types/memoryBank';
 import * as relationsAnalyzerService from './services/relationsAnalyzerService';
+import * as frameworkDetectorService from './services/frameworkDetectorService';
 import { RelationsViewer } from './agent/ui/RelationsViewer';
 
 // Import de WebSocket con dynamic import
@@ -45,6 +47,7 @@ const memoryBankProjectsProvider = new MemoryBankProjectsProvider(logger);
 const indexedFilesProvider = new IndexedFilesProvider(logger);
 const projectDocsProvider = new ProjectDocsProvider(logger);
 const relationsTreeProvider = new RelationsTreeProvider(logger);
+const frameworkComponentsProvider = new FrameworkComponentsProvider(logger);
 
 // Relations viewer instance
 let relationsViewer: RelationsViewer | null = null;
@@ -121,6 +124,7 @@ function continueActivation(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider('memorybank-files', indexedFilesProvider);
   vscode.window.registerTreeDataProvider('memorybank-docs', projectDocsProvider);
   vscode.window.registerTreeDataProvider('memorybank-relations', relationsTreeProvider);
+  vscode.window.registerTreeDataProvider('memorybank-frameworks', frameworkComponentsProvider);
 
   // Initialize Relations Viewer
   relationsViewer = new RelationsViewer(context);
@@ -505,13 +509,34 @@ function registerRelationsCommands(context: vscode.ExtensionContext) {
     })
   );
 
-  // Sync relations provider with project selection
-  // When a project is selected in Memory Bank, also update relations provider
+  // Sync relations and framework providers with project selection
+  // When a project is selected in Memory Bank, also update other providers
   const originalSetSelectedProject = memoryBankProjectsProvider.setSelectedProject.bind(memoryBankProjectsProvider);
   memoryBankProjectsProvider.setSelectedProject = (project: ProjectInfo | null) => {
     originalSetSelectedProject(project);
     relationsTreeProvider.setSelectedProject(project);
+    frameworkComponentsProvider.setSelectedProject(project);
   };
+
+  // Register Framework Components commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.frameworks.refresh', async () => {
+      logger.appendLine('Refreshing Framework Components...');
+      await frameworkComponentsProvider.reanalyze();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.frameworks.search', async () => {
+      await frameworkComponentsProvider.showSearchQuickPick();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.frameworks.openFile', async (filePath: string, line?: number) => {
+      await frameworkComponentsProvider.openFile(filePath, line);
+    })
+  );
 }
 
 /**
