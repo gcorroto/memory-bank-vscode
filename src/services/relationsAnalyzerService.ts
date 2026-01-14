@@ -1263,8 +1263,10 @@ export async function analyzeProject(
   
   if (projectConfig?.sourcePath) {
     // Use sourcePath from config - filter files that start with this path
-    const sourcePath = projectConfig.sourcePath.toLowerCase();
+    // IMPORTANT: Normalize both paths (replace backslashes with forward slashes)
+    const sourcePath = projectConfig.sourcePath.replace(/\\/g, '/').toLowerCase();
     console.log(`[Relations] Using sourcePath from config: "${projectConfig.sourcePath}"`);
+    console.log(`[Relations] Normalized sourcePath: "${sourcePath}"`);
     projectFiles = allFiles.filter(([filePath]) => {
       const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
       return normalizedPath.includes(sourcePath);
