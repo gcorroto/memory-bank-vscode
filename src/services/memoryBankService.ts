@@ -394,9 +394,13 @@ export class MemoryBankService {
       // Dynamically import lancedb
       const lancedb = await import('@lancedb/lancedb');
       
+      console.log(`[MemoryBank] Connecting to LanceDB at: ${mbPath}`);
+      
       // Connect to LanceDB
       const db = await lancedb.connect(mbPath);
       const tableNames = await db.tableNames();
+      
+      console.log(`[MemoryBank] Available tables: ${tableNames.join(', ')}`);
       
       if (!tableNames.includes('code_chunks')) {
         console.log('[MemoryBank] No code_chunks table found, skipping embedding deletion');
@@ -405,21 +409,51 @@ export class MemoryBankService {
 
       const table = await db.openTable('code_chunks');
       
-      // First, count how many chunks belong to this project
-      const allChunks = await table.query()
+      // First, get all unique project_ids in the table for debugging
+      const allRecords = await table.query().toArray();
+      const uniqueProjectIds = new Set<string>();
+      for (const record of allRecords as any[]) {
+        if (record.project_id) {
+          uniqueProjectIds.add(record.project_id);
+        }
+      }
+      console.log(`[MemoryBank] Total chunks in DB: ${allRecords.length}`);
+      console.log(`[MemoryBank] Unique project_ids in DB: ${Array.from(uniqueProjectIds).join(', ')}`);
+      console.log(`[MemoryBank] Looking for project_id: '${projectId}'`);
+      
+      // Count how many chunks belong to this project
+      const projectChunks = await table.query()
         .where(`project_id = '${projectId}'`)
         .toArray();
       
-      const chunkCount = allChunks.length;
+      const chunkCount = projectChunks.length;
       
       if (chunkCount === 0) {
-        console.log(`[MemoryBank] No embeddings found for project ${projectId}`);
+        console.log(`[MemoryBank] No embeddings found for project '${projectId}'`);
+        // Try case-insensitive search as fallback
+        const matchingProjects = Array.from(uniqueProjectIds).filter(
+          pid => pid.toLowerCase() === projectId.toLowerCase()
+        );
+        if (matchingProjects.length > 0) {
+          console.log(`[MemoryBank] Found similar project_id with different case: ${matchingProjects.join(', ')}`);
+          // Use the matching project_id
+          const actualProjectId = matchingProjects[0];
+          const actualChunks = await table.query()
+            .where(`project_id = '${actualProjectId}'`)
+            .toArray();
+          if (actualChunks.length > 0) {
+            console.log(`[MemoryBank] Deleting ${actualChunks.length} chunks with project_id='${actualProjectId}'`);
+            await table.delete(`project_id = '${actualProjectId}'`);
+            return actualChunks.length;
+          }
+        }
         return 0;
       }
 
       // Delete all chunks with this project_id
+      console.log(`[MemoryBank] Deleting ${chunkCount} chunks with project_id='${projectId}'`);
       await table.delete(`project_id = '${projectId}'`);
-      console.log(`[MemoryBank] Deleted ${chunkCount} embeddings for project ${projectId}`);
+      console.log(`[MemoryBank] Successfully deleted ${chunkCount} embeddings for project ${projectId}`);
       
       return chunkCount;
     } catch (error) {
@@ -519,6 +553,201 @@ export class MemoryBankService {
     }
     
     await fs.promises.rmdir(dirPath);
+  }
+
+  /**
+   * Get information about orphaned embeddings without deleting them
+   * Returns a list of project IDs and their chunk counts that don't have a corresponding project folder
+   */
+  public async getOrphanedEmbeddingsInfo(): Promise<Array<{ projectId: string; chunkCount: number }>> {
+    const mbPath = this.getMemoryBankPath();
+    if (!mbPath) {
+      return [];
+    }
+
+    try {
+      // Get list of existing project IDs
+      const projects = await this.getProjects();
+      const existingProjectIds = new Set(projects.map(p => p.id.toLowerCase()));
+
+      // Dynamically import lancedb
+      const lancedb = await import('@lancedb/lancedb');
+      
+      // Connect to LanceDB
+      const db = await lancedb.connect(mbPath);
+      const tableNames = await db.tableNames();
+      
+      if (!tableNames.includes('code_chunks')) {
+        return [];
+      }
+
+      const table = await db.openTable('code_chunks');
+      
+      // Get all unique project_ids in the DB with counts
+      const allRecords = await table.query().toArray();
+      const projectIdCounts = new Map<string, number>();
+      
+      for (const record of allRecords as any[]) {
+        const pid = record.project_id || 'unknown';
+        projectIdCounts.set(pid, (projectIdCounts.get(pid) || 0) + 1);
+      }
+
+      // Find orphaned project IDs (in DB but not in projects folder)
+      const orphanedProjects: Array<{ projectId: string; chunkCount: number }> = [];
+      
+      for (const [pid, count] of projectIdCounts.entries()) {
+        // Check if this project exists (case-insensitive)
+        const exists = existingProjectIds.has(pid.toLowerCase());
+        
+        if (!exists) {
+          orphanedProjects.push({ projectId: pid, chunkCount: count });
+        }
+      }
+
+      return orphanedProjects;
+    } catch (error) {
+      console.error(`[MemoryBank] Error getting orphaned embeddings info:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete embeddings for a specific orphaned project by its project_id
+   */
+  public async deleteOrphanedProjectEmbeddings(projectId: string): Promise<{
+    success: boolean;
+    chunksDeleted: number;
+    error?: string;
+  }> {
+    const mbPath = this.getMemoryBankPath();
+    if (!mbPath) {
+      return { success: false, chunksDeleted: 0, error: 'Memory Bank path not configured' };
+    }
+
+    try {
+      const lancedb = await import('@lancedb/lancedb');
+      const db = await lancedb.connect(mbPath);
+      const tableNames = await db.tableNames();
+      
+      if (!tableNames.includes('code_chunks')) {
+        return { success: true, chunksDeleted: 0 };
+      }
+
+      const table = await db.openTable('code_chunks');
+      
+      // Count chunks before deletion
+      const chunks = await table.query()
+        .where(`project_id = '${projectId}'`)
+        .toArray();
+      
+      const chunkCount = chunks.length;
+      
+      if (chunkCount === 0) {
+        return { success: true, chunksDeleted: 0 };
+      }
+
+      // Delete the chunks
+      await table.delete(`project_id = '${projectId}'`);
+      console.log(`[MemoryBank] Deleted ${chunkCount} orphaned chunks for project '${projectId}'`);
+
+      return { success: true, chunksDeleted: chunkCount };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[MemoryBank] Error deleting orphaned embeddings:`, error);
+      return { success: false, chunksDeleted: 0, error: errorMessage };
+    }
+  }
+
+  /**
+   * Clean up orphaned embeddings - embeddings whose project no longer exists
+   * This is useful after manual deletion of project folders
+   */
+  public async cleanupOrphanedEmbeddings(): Promise<{
+    success: boolean;
+    orphanedProjectIds: string[];
+    chunksDeleted: number;
+    error?: string;
+  }> {
+    const mbPath = this.getMemoryBankPath();
+    if (!mbPath) {
+      return { success: false, orphanedProjectIds: [], chunksDeleted: 0, error: 'Memory Bank path not configured' };
+    }
+
+    try {
+      // Get list of existing project IDs
+      const projects = await this.getProjects();
+      const existingProjectIds = new Set(projects.map(p => p.id.toLowerCase()));
+      
+      console.log(`[MemoryBank] Existing projects: ${Array.from(existingProjectIds).join(', ')}`);
+
+      // Dynamically import lancedb
+      const lancedb = await import('@lancedb/lancedb');
+      
+      // Connect to LanceDB
+      const db = await lancedb.connect(mbPath);
+      const tableNames = await db.tableNames();
+      
+      if (!tableNames.includes('code_chunks')) {
+        console.log('[MemoryBank] No code_chunks table found');
+        return { success: true, orphanedProjectIds: [], chunksDeleted: 0 };
+      }
+
+      const table = await db.openTable('code_chunks');
+      
+      // Get all unique project_ids in the DB
+      const allRecords = await table.query().toArray();
+      const projectIdCounts = new Map<string, number>();
+      
+      for (const record of allRecords as any[]) {
+        const pid = record.project_id || 'unknown';
+        projectIdCounts.set(pid, (projectIdCounts.get(pid) || 0) + 1);
+      }
+      
+      console.log(`[MemoryBank] Project IDs in DB:`);
+      for (const [pid, count] of projectIdCounts.entries()) {
+        console.log(`[MemoryBank]   - ${pid}: ${count} chunks`);
+      }
+
+      // Find orphaned project IDs (in DB but not in projects folder)
+      const orphanedProjectIds: string[] = [];
+      let totalChunksDeleted = 0;
+      
+      for (const [pid, count] of projectIdCounts.entries()) {
+        // Check if this project exists (case-insensitive)
+        const exists = existingProjectIds.has(pid.toLowerCase());
+        
+        if (!exists) {
+          console.log(`[MemoryBank] Found orphaned project: '${pid}' with ${count} chunks`);
+          orphanedProjectIds.push(pid);
+          
+          // Delete orphaned chunks
+          await table.delete(`project_id = '${pid}'`);
+          totalChunksDeleted += count;
+          console.log(`[MemoryBank] Deleted ${count} orphaned chunks for project '${pid}'`);
+        }
+      }
+
+      if (orphanedProjectIds.length === 0) {
+        console.log('[MemoryBank] No orphaned embeddings found');
+      } else {
+        console.log(`[MemoryBank] Cleaned up ${totalChunksDeleted} orphaned chunks from ${orphanedProjectIds.length} projects`);
+      }
+
+      return {
+        success: true,
+        orphanedProjectIds,
+        chunksDeleted: totalChunksDeleted
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[MemoryBank] Error cleaning orphaned embeddings:`, error);
+      return {
+        success: false,
+        orphanedProjectIds: [],
+        chunksDeleted: 0,
+        error: errorMessage
+      };
+    }
   }
 
   /**

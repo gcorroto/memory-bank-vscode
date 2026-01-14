@@ -1,7 +1,7 @@
 # Memory Bank Inspector — VS Code Extension
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=grec0.memory-bank-vscode)
-[![Version](https://img.shields.io/badge/Version-0.0.13-green)](https://github.com/gcorroto/memory-bank-vscode)
+[![Version](https://img.shields.io/badge/Version-0.0.14-green)](https://github.com/gcorroto/memory-bank-vscode)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
 
 > **PREREQUISITE**: This extension requires [Memory Bank MCP](https://www.npmjs.com/package/@grec0/memory-bank-mcp) installed and configured with at least one indexed project. Without the MCP, this extension will not display any data.

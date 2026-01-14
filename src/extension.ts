@@ -263,6 +263,114 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
     })
   );
 
+  // Clean up orphaned embeddings (embeddings from projects that no longer exist)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.cleanupOrphanedEmbeddings', async () => {
+      const confirmation = await vscode.window.showWarningMessage(
+        '¿Limpiar embeddings huérfanos?\n\nEsto eliminará los embeddings de proyectos que ya no existen en el Memory Bank.',
+        { modal: true },
+        'Limpiar',
+        'Cancelar'
+      );
+
+      if (confirmation !== 'Limpiar') {
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Limpiando embeddings huérfanos...',
+          cancellable: false
+        },
+        async (progress) => {
+          try {
+            progress.report({ message: 'Analizando base de datos...' });
+            logger.appendLine('[Cleanup] Starting orphaned embeddings cleanup...');
+
+            const result = await getMemoryBankService().cleanupOrphanedEmbeddings();
+
+            if (result.success) {
+              logger.appendLine(`[Cleanup] Cleanup completed successfully`);
+              logger.appendLine(`[Cleanup] - Orphaned projects found: ${result.orphanedProjectIds.length}`);
+              logger.appendLine(`[Cleanup] - Chunks deleted: ${result.chunksDeleted}`);
+              
+              if (result.orphanedProjectIds.length > 0) {
+                logger.appendLine(`[Cleanup] - Project IDs cleaned: ${result.orphanedProjectIds.join(', ')}`);
+              }
+
+              if (result.chunksDeleted > 0) {
+                vscode.window.showInformationMessage(
+                  `Limpieza completada:\n` +
+                  `• ${result.chunksDeleted} embeddings eliminados\n` +
+                  `• ${result.orphanedProjectIds.length} proyectos huérfanos: ${result.orphanedProjectIds.join(', ')}`
+                );
+              } else {
+                vscode.window.showInformationMessage('No se encontraron embeddings huérfanos.');
+              }
+
+              // Refresh views
+              indexedFilesProvider.refresh();
+            } else {
+              logger.appendLine(`[Cleanup] Error: ${result.error}`);
+              vscode.window.showErrorMessage(`Error durante la limpieza: ${result.error}`);
+            }
+          } catch (error: any) {
+            logger.appendLine(`[Cleanup] Exception: ${error.message}`);
+            vscode.window.showErrorMessage(`Error durante la limpieza: ${error.message}`);
+          }
+        }
+      );
+    })
+  );
+
+  // Delete a specific orphaned project's embeddings
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.deleteOrphanedProject', async (item: any) => {
+      // Get project ID from the tree item
+      const projectId: string | undefined = item?.filePath || item?.label;
+      
+      if (!projectId) {
+        vscode.window.showErrorMessage('No se pudo obtener el ID del proyecto huérfano');
+        return;
+      }
+
+      const confirmation = await vscode.window.showWarningMessage(
+        `¿Eliminar embeddings del proyecto huérfano "${projectId}"?\n\nEsta acción no se puede deshacer.`,
+        { modal: true },
+        'Eliminar',
+        'Cancelar'
+      );
+
+      if (confirmation !== 'Eliminar') {
+        return;
+      }
+
+      try {
+        logger.appendLine(`[Cleanup] Deleting orphaned project: ${projectId}`);
+        
+        const result = await getMemoryBankService().deleteOrphanedProjectEmbeddings(projectId);
+        
+        if (result.success) {
+          logger.appendLine(`[Cleanup] Deleted ${result.chunksDeleted} chunks for orphaned project ${projectId}`);
+          
+          vscode.window.showInformationMessage(
+            `Proyecto huérfano "${projectId}" eliminado.\n• ${result.chunksDeleted} embeddings eliminados`
+          );
+          
+          // Refresh views
+          indexedFilesProvider.refresh();
+        } else {
+          logger.appendLine(`[Cleanup] Error: ${result.error}`);
+          vscode.window.showErrorMessage(`Error al eliminar proyecto huérfano: ${result.error}`);
+        }
+      } catch (error: any) {
+        logger.appendLine(`[Cleanup] Exception: ${error.message}`);
+        vscode.window.showErrorMessage(`Error al eliminar proyecto huérfano: ${error.message}`);
+      }
+    })
+  );
+
   // Open a document with Markdown preview
   context.subscriptions.push(
     vscode.commands.registerCommand('memorybank.openDoc', async (docPath: string) => {

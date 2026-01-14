@@ -16,7 +16,7 @@ import { FileEntry, IndexMetadata } from './types/memoryBank';
 /**
  * Types of tree items
  */
-type IndexedTreeItemType = 'root' | 'folder' | 'file' | 'stats' | 'empty';
+type IndexedTreeItemType = 'root' | 'folder' | 'file' | 'stats' | 'empty' | 'orphan-section' | 'orphan-project';
 
 /**
  * Node structure for hierarchical folder tree
@@ -62,6 +62,12 @@ export class IndexedFileTreeItem extends vscode.TreeItem {
         break;
       case 'empty':
         this.setupEmptyItem();
+        break;
+      case 'orphan-section':
+        this.setupOrphanSectionItem();
+        break;
+      case 'orphan-project':
+        this.setupOrphanProjectItem();
         break;
     }
   }
@@ -121,6 +127,30 @@ export class IndexedFileTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('warning');
     this.contextValue = 'memorybank-empty';
   }
+
+  private setupOrphanSectionItem(): void {
+    this.iconPath = new vscode.ThemeIcon('warning');
+    this.contextValue = 'memorybank-orphan-section';
+  }
+
+  private setupOrphanProjectItem(): void {
+    this.iconPath = new vscode.ThemeIcon('trash');
+    this.contextValue = 'memorybank-orphan-project';
+    
+    // Rich tooltip
+    this.tooltip = new vscode.MarkdownString();
+    this.tooltip.appendMarkdown(`**Proyecto huérfano**: ${this.label}\n\n`);
+    this.tooltip.appendMarkdown(`Este proyecto tiene embeddings en la base de datos pero ya no existe en el Memory Bank.\n\n`);
+    this.tooltip.appendMarkdown(`*Click derecho para eliminar los embeddings.*`);
+  }
+}
+
+/**
+ * Orphaned embedding info
+ */
+interface OrphanedProjectInfo {
+  projectId: string;
+  chunkCount: number;
 }
 
 /**
@@ -135,6 +165,7 @@ export class IndexedFilesProvider implements vscode.TreeDataProvider<IndexedFile
   private logger: vscode.OutputChannel;
   private indexMetadata: IndexMetadata | null = null;
   private rootNode: FolderNode | null = null;
+  private orphanedProjects: OrphanedProjectInfo[] = [];
 
   constructor(logger: vscode.OutputChannel) {
     this.logger = logger;
@@ -147,6 +178,7 @@ export class IndexedFilesProvider implements vscode.TreeDataProvider<IndexedFile
     getMemoryBankService().clearCache();
     this.indexMetadata = null;
     this.rootNode = null;
+    this.orphanedProjects = [];
     this._onDidChangeTreeData.fire();
   }
 
@@ -195,6 +227,20 @@ export class IndexedFilesProvider implements vscode.TreeDataProvider<IndexedFile
         statsItem.description = `Última indexación: ${formatRelativeTime(stats.lastIndexed)}`;
         items.push(statsItem);
 
+        // Check for orphaned embeddings
+        await this.loadOrphanedProjects();
+        
+        if (this.orphanedProjects.length > 0) {
+          const totalOrphanedChunks = this.orphanedProjects.reduce((sum, p) => sum + p.chunkCount, 0);
+          const orphanSection = new IndexedFileTreeItem(
+            `⚠️ Embeddings Huérfanos`,
+            'orphan-section',
+            vscode.TreeItemCollapsibleState.Expanded
+          );
+          orphanSection.description = `${this.orphanedProjects.length} proyecto(s), ${totalOrphanedChunks} chunks`;
+          items.push(orphanSection);
+        }
+
         // Add root folder children (top-level project folders)
         if (this.rootNode) {
           const sortedChildren = Array.from(this.rootNode.children.entries())
@@ -242,6 +288,24 @@ export class IndexedFilesProvider implements vscode.TreeDataProvider<IndexedFile
           vscode.TreeItemCollapsibleState.None
         )];
       }
+    }
+
+    // Orphan section - show orphaned projects
+    if (element.itemType === 'orphan-section') {
+      const items: IndexedFileTreeItem[] = [];
+      
+      for (const orphan of this.orphanedProjects) {
+        const item = new IndexedFileTreeItem(
+          orphan.projectId,
+          'orphan-project',
+          vscode.TreeItemCollapsibleState.None,
+          orphan.projectId  // Use projectId as filePath for context
+        );
+        item.description = `${orphan.chunkCount} chunks`;
+        items.push(item);
+      }
+      
+      return items;
     }
 
     // Folder level - show subfolders and files
@@ -378,5 +442,27 @@ export class IndexedFilesProvider implements vscode.TreeDataProvider<IndexedFile
     }
     
     return count;
+  }
+
+  /**
+   * Load orphaned projects from the vector store
+   */
+  private async loadOrphanedProjects(): Promise<void> {
+    try {
+      const service = getMemoryBankService();
+      const orphanInfo = await service.getOrphanedEmbeddingsInfo();
+      
+      this.orphanedProjects = orphanInfo;
+      
+      if (orphanInfo.length > 0) {
+        this.logger.appendLine(`[IndexedFiles] Found ${orphanInfo.length} orphaned project(s)`);
+        for (const orphan of orphanInfo) {
+          this.logger.appendLine(`[IndexedFiles]   - ${orphan.projectId}: ${orphan.chunkCount} chunks`);
+        }
+      }
+    } catch (error) {
+      this.logger.appendLine(`[IndexedFiles] Error loading orphaned projects: ${error}`);
+      this.orphanedProjects = [];
+    }
   }
 }

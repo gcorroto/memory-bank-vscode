@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -101,6 +101,18 @@
       {
         "command": "memorybank.deleteProject",
         "title": "Eliminar Proyecto",
+        "category": "Memory Bank",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "memorybank.cleanupOrphanedEmbeddings",
+        "title": "Limpiar Todos los Embeddings Huérfanos",
+        "category": "Memory Bank",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "memorybank.deleteOrphanedProject",
+        "title": "Eliminar Embeddings de este Proyecto Huérfano",
         "category": "Memory Bank",
         "icon": "$(trash)"
       },
@@ -315,6 +327,16 @@
         {
           "command": "memorybank.deleteProject",
           "when": "view == memorybank-projects && viewItem == memorybank-project",
+          "group": "danger@1"
+        },
+        {
+          "command": "memorybank.deleteOrphanedProject",
+          "when": "view == memorybank-files && viewItem == memorybank-orphan-project",
+          "group": "danger@1"
+        },
+        {
+          "command": "memorybank.cleanupOrphanedEmbeddings",
+          "when": "view == memorybank-files && viewItem == memorybank-orphan-section",
           "group": "danger@1"
         }
       ]
