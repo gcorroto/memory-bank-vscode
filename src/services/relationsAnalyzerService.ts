@@ -139,9 +139,130 @@ export async function isOutdated(projectId: string): Promise<OutdatedCheckResult
 }
 
 /**
- * Detect node type from file path
+ * Detect node type from file content using annotations, decorators, and inheritance patterns
+ * This is more accurate than filename-based detection
  */
-function detectNodeType(filePath: string): RelationNodeType {
+function detectNodeTypeFromContent(content: string, language: string): RelationNodeType | null {
+  // ========================================
+  // JAVA / SPRING BOOT - Annotations
+  // ========================================
+  if (language === 'java') {
+    // Spring annotations (order matters - more specific first)
+    if (/@RestController\b/.test(content)) return 'controller';
+    if (/@Controller\b/.test(content)) return 'controller';
+    if (/@Service\b/.test(content)) return 'service';
+    if (/@Repository\b/.test(content)) return 'repository';
+    if (/@Component\b/.test(content)) return 'component';
+    if (/@Configuration\b/.test(content)) return 'config';
+    if (/@Entity\b/.test(content)) return 'model';
+    if (/@Document\b/.test(content)) return 'model'; // MongoDB
+    if (/@Table\b/.test(content)) return 'model';
+    if (/@Mapper\b/.test(content)) return 'util'; // MapStruct
+    
+    // Spring inheritance patterns
+    if (/extends\s+JpaRepository\b/.test(content)) return 'repository';
+    if (/extends\s+CrudRepository\b/.test(content)) return 'repository';
+    if (/extends\s+MongoRepository\b/.test(content)) return 'repository';
+    if (/extends\s+PagingAndSortingRepository\b/.test(content)) return 'repository';
+    
+    // Implementation patterns
+    if (/implements\s+[\w,\s]*RowMapper\b/.test(content)) return 'util';
+    if (/implements\s+[\w,\s]*Mapper\b/.test(content)) return 'util';
+    if (/implements\s+[\w,\s]*Converter\b/.test(content)) return 'util';
+    if (/implements\s+[\w,\s]*Validator\b/.test(content)) return 'util';
+    if (/implements\s+[\w,\s]*Handler\b/.test(content)) return 'handler';
+    if (/implements\s+[\w,\s]*Listener\b/.test(content)) return 'handler';
+    if (/implements\s+[\w,\s]*Factory\b/.test(content)) return 'factory';
+    if (/implements\s+[\w,\s]*Adapter\b/.test(content)) return 'adapter';
+    if (/implements\s+[\w,\s]*Strategy\b/.test(content)) return 'service';
+    
+    // Generic patterns with type parameters
+    if (/extends\s+\w+Repository</.test(content)) return 'repository';
+    if (/implements\s+\w+<[^>]+>\s*\{/.test(content)) {
+      // Check the interface name for hints
+      if (/implements\s+\w*Mapper</.test(content)) return 'util';
+      if (/implements\s+\w*Service</.test(content)) return 'service';
+      if (/implements\s+\w*Repository</.test(content)) return 'repository';
+    }
+  }
+  
+  // ========================================
+  // TYPESCRIPT / NESTJS - Decorators
+  // ========================================
+  if (['typescript', 'typescriptreact', 'ts', 'tsx'].includes(language)) {
+    // NestJS decorators
+    if (/@Controller\s*\(/.test(content)) return 'controller';
+    if (/@Injectable\s*\(/.test(content)) return 'service';
+    if (/@Module\s*\(/.test(content)) return 'module';
+    if (/@Guard\s*\(/.test(content)) return 'middleware';
+    if (/@Interceptor\s*\(/.test(content)) return 'middleware';
+    if (/@Pipe\s*\(/.test(content)) return 'util';
+    
+    // Angular decorators
+    if (/@Component\s*\(/.test(content)) return 'component';
+    if (/@Directive\s*\(/.test(content)) return 'component';
+    if (/@NgModule\s*\(/.test(content)) return 'module';
+    
+    // TypeORM / Database
+    if (/@Entity\s*\(/.test(content)) return 'model';
+    if (/@Schema\s*\(/.test(content)) return 'model'; // Mongoose
+    
+    // React patterns
+    if (/extends\s+(React\.)?Component\b/.test(content)) return 'component';
+    if (/extends\s+(React\.)?PureComponent\b/.test(content)) return 'component';
+    if (/: React\.FC\b/.test(content)) return 'component';
+    if (/: FC\b/.test(content)) return 'component';
+    
+    // Custom hooks (React)
+    if (/^export\s+(default\s+)?function\s+use[A-Z]/.test(content)) return 'util';
+    if (/^const\s+use[A-Z]\w+\s*=/.test(content)) return 'util';
+  }
+  
+  // ========================================
+  // JAVASCRIPT - Similar patterns
+  // ========================================
+  if (['javascript', 'javascriptreact', 'js', 'jsx'].includes(language)) {
+    // React patterns
+    if (/extends\s+(React\.)?Component\b/.test(content)) return 'component';
+    if (/extends\s+(React\.)?PureComponent\b/.test(content)) return 'component';
+    
+    // Custom hooks
+    if (/^export\s+(default\s+)?function\s+use[A-Z]/.test(content)) return 'util';
+    if (/^const\s+use[A-Z]\w+\s*=/.test(content)) return 'util';
+    
+    // Express/Koa middleware pattern
+    if (/module\.exports\s*=\s*\(\s*req\s*,\s*res/.test(content)) return 'middleware';
+    if (/export\s+(default\s+)?\(\s*req\s*,\s*res/.test(content)) return 'middleware';
+  }
+  
+  // ========================================
+  // PYTHON - Decorators and patterns
+  // ========================================
+  if (['python', 'py'].includes(language)) {
+    // FastAPI/Flask decorators
+    if (/@(app|router)\.(get|post|put|delete|patch)\s*\(/.test(content)) return 'controller';
+    if (/@(api_view|action)\s*\(/.test(content)) return 'controller'; // Django REST
+    
+    // Django patterns
+    if (/class\s+\w+\(.*ModelSerializer\)/.test(content)) return 'util';
+    if (/class\s+\w+\(.*APIView\)/.test(content)) return 'controller';
+    if (/class\s+\w+\(.*ViewSet\)/.test(content)) return 'controller';
+    if (/class\s+\w+\(.*models\.Model\)/.test(content)) return 'model';
+    
+    // SQLAlchemy
+    if (/class\s+\w+\(.*Base\)/.test(content) && /__tablename__/.test(content)) return 'model';
+    
+    // Pydantic
+    if (/class\s+\w+\(.*BaseModel\)/.test(content)) return 'model';
+  }
+  
+  return null; // No specific type detected from content
+}
+
+/**
+ * Detect node type from file path (fallback when content detection fails)
+ */
+function detectNodeTypeFromPath(filePath: string): RelationNodeType {
   const normalizedPath = filePath.toLowerCase().replace(/\\/g, '/');
   const parts = normalizedPath.split('/');
   
@@ -159,9 +280,14 @@ function detectNodeType(filePath: string): RelationNodeType {
   
   if (filename.endsWith('controller')) return 'controller';
   if (filename.endsWith('service')) return 'service';
+  if (filename.endsWith('serviceimpl')) return 'service';
   if (filename.endsWith('repository') || filename.endsWith('repo')) return 'repository';
+  if (filename.endsWith('repositoryimpl')) return 'repository';
   if (filename.endsWith('dao')) return 'dao';
+  if (filename.endsWith('daoimpl')) return 'dao';
   if (filename.endsWith('util') || filename.endsWith('utils') || filename.endsWith('helper')) return 'util';
+  if (filename.endsWith('mapper')) return 'util';
+  if (filename.endsWith('converter')) return 'util';
   if (filename.endsWith('model') || filename.endsWith('entity') || filename.endsWith('dto')) return 'model';
   if (filename.endsWith('component')) return 'component';
   if (filename.endsWith('config') || filename.endsWith('configuration')) return 'config';
@@ -169,8 +295,30 @@ function detectNodeType(filePath: string): RelationNodeType {
   if (filename.endsWith('handler')) return 'handler';
   if (filename.endsWith('adapter')) return 'adapter';
   if (filename.endsWith('factory')) return 'factory';
+  if (filename.endsWith('interceptor')) return 'middleware';
+  if (filename.endsWith('guard')) return 'middleware';
+  if (filename.endsWith('filter')) return 'middleware';
+  if (filename.endsWith('pipe')) return 'util';
+  if (filename.endsWith('validator')) return 'util';
+  if (filename.endsWith('transformer')) return 'util';
 
   return 'class';
+}
+
+/**
+ * Detect node type - combines content analysis with path fallback
+ */
+function detectNodeType(filePath: string, content?: string, language?: string): RelationNodeType {
+  // First, try to detect from content (more accurate)
+  if (content && language) {
+    const contentType = detectNodeTypeFromContent(content, language);
+    if (contentType) {
+      return contentType;
+    }
+  }
+  
+  // Fallback to path-based detection
+  return detectNodeTypeFromPath(filePath);
 }
 
 /**
@@ -681,7 +829,8 @@ function analyzeFileSync(
       return null;
     }
 
-    const nodeType = detectNodeType(filePath);
+    // Detect type from content first (annotations, decorators), then fallback to path
+    const nodeType = detectNodeType(filePath, content, language);
     const name = classes[0] || path.basename(filePath, path.extname(filePath));
 
     const node: RelationNode = {
