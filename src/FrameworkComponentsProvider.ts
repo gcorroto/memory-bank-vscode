@@ -252,15 +252,26 @@ export class FrameworkComponentsProvider implements vscode.TreeDataProvider<Fram
     this.status = 'analyzing';
     this.refresh();
 
+    this.logger.appendLine(`[Frameworks] Starting analysis for project: ${projectId}`);
+
     try {
-      this.analysis = await frameworkDetectorService.getFrameworkAnalysis(projectId);
+      this.analysis = await frameworkDetectorService.getFrameworkAnalysis(projectId, true); // Force refresh
       
-      if (this.analysis && this.analysis.frameworks.length > 0) {
-        this.status = 'ready';
-        this.logger.appendLine(`[Frameworks] Loaded analysis for ${projectId}: ${this.analysis.frameworks.join(', ')}`);
+      if (this.analysis) {
+        this.logger.appendLine(`[Frameworks] Analysis result:`);
+        this.logger.appendLine(`[Frameworks]   - Frameworks: ${this.analysis.frameworks.join(', ') || 'none'}`);
+        this.logger.appendLine(`[Frameworks]   - Components: ${this.analysis.components.length}`);
+        this.logger.appendLine(`[Frameworks]   - Endpoints: ${this.analysis.endpoints.length}`);
+        
+        if (this.analysis.frameworks.length > 0) {
+          this.status = 'ready';
+        } else {
+          this.status = 'no-framework';
+          this.logger.appendLine(`[Frameworks] No frameworks detected for ${projectId}`);
+        }
       } else {
         this.status = 'no-framework';
-        this.logger.appendLine(`[Frameworks] No frameworks detected for ${projectId}`);
+        this.logger.appendLine(`[Frameworks] Analysis returned null for ${projectId}`);
       }
     } catch (error) {
       this.logger.appendLine(`[Frameworks] Error loading analysis: ${error}`);

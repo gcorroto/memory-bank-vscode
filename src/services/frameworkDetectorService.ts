@@ -2,13 +2,15 @@
  * @fileoverview Framework Detector Service
  * Detects project framework first, then extracts components
  * 
- * Approach:
- * 1. Detect project framework by examining config files (pom.xml, package.json, etc.)
- * 2. Once framework is known, extract components using framework-specific patterns
+ * Uses the same approach as relationsAnalyzerService:
+ * 1. Load index-metadata.json to get file list
+ * 2. Read files directly from disk
+ * 3. Analyze content with framework-specific patterns
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { getMemoryBankService } from './memoryBankService';
 import {
@@ -27,11 +29,8 @@ import {
 
 interface FrameworkDetectionRule {
   framework: FrameworkType;
-  /** File patterns to look for */
   configFiles: string[];
-  /** Content patterns that confirm the framework */
   contentPatterns: RegExp[];
-  /** Priority (higher = checked first) */
   priority: number;
 }
 
@@ -40,120 +39,84 @@ const FRAMEWORK_DETECTION_RULES: FrameworkDetectionRule[] = [
   {
     framework: 'spring-boot',
     configFiles: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
-    contentPatterns: [
-      /spring-boot-starter/,
-      /org\.springframework\.boot/,
-      /springBootVersion/,
-    ],
+    contentPatterns: [/spring-boot-starter/, /org\.springframework\.boot/, /springBootVersion/],
     priority: 100,
   },
   // NestJS
   {
     framework: 'nestjs',
     configFiles: ['package.json'],
-    contentPatterns: [
-      /@nestjs\/core/,
-      /@nestjs\/common/,
-    ],
+    contentPatterns: [/@nestjs\/core/, /@nestjs\/common/],
     priority: 90,
   },
   // Angular
   {
     framework: 'angular',
     configFiles: ['angular.json', 'package.json'],
-    contentPatterns: [
-      /@angular\/core/,
-      /@angular\/common/,
-    ],
+    contentPatterns: [/@angular\/core/, /@angular\/common/],
     priority: 90,
   },
-  // Next.js (check before React)
+  // Next.js
   {
     framework: 'nextjs',
     configFiles: ['next.config.js', 'next.config.mjs', 'next.config.ts', 'package.json'],
-    contentPatterns: [
-      /"next":/,
-      /from ['"]next/,
-    ],
+    contentPatterns: [/"next":/, /from ['"]next/],
     priority: 85,
   },
-  // Nuxt (check before Vue)
+  // Nuxt
   {
     framework: 'nuxt',
     configFiles: ['nuxt.config.js', 'nuxt.config.ts', 'package.json'],
-    contentPatterns: [
-      /"nuxt":/,
-      /from ['"]nuxt/,
-    ],
+    contentPatterns: [/"nuxt":/, /from ['"]nuxt/],
     priority: 85,
   },
   // React
   {
     framework: 'react',
     configFiles: ['package.json'],
-    contentPatterns: [
-      /"react":/,
-      /"react-dom":/,
-    ],
+    contentPatterns: [/"react":/, /"react-dom":/],
     priority: 80,
   },
   // Vue
   {
     framework: 'vue',
     configFiles: ['vue.config.js', 'vite.config.ts', 'package.json'],
-    contentPatterns: [
-      /"vue":/,
-      /@vue\/cli/,
-    ],
+    contentPatterns: [/"vue":/, /@vue\/cli/],
     priority: 80,
   },
   // Django
   {
     framework: 'django',
     configFiles: ['manage.py', 'requirements.txt', 'setup.py', 'pyproject.toml'],
-    contentPatterns: [
-      /django/i,
-      /DJANGO_SETTINGS_MODULE/,
-    ],
+    contentPatterns: [/django/i, /DJANGO_SETTINGS_MODULE/],
     priority: 90,
   },
   // FastAPI
   {
     framework: 'fastapi',
     configFiles: ['requirements.txt', 'setup.py', 'pyproject.toml', 'main.py'],
-    contentPatterns: [
-      /fastapi/i,
-      /from fastapi import/,
-    ],
+    contentPatterns: [/fastapi/i, /from fastapi import/],
     priority: 85,
   },
   // Flask
   {
     framework: 'flask',
     configFiles: ['requirements.txt', 'setup.py', 'pyproject.toml', 'app.py'],
-    contentPatterns: [
-      /flask/i,
-      /from flask import/,
-    ],
+    contentPatterns: [/flask/i, /from flask import/],
     priority: 80,
   },
   // Express
   {
     framework: 'express',
     configFiles: ['package.json'],
-    contentPatterns: [
-      /"express":/,
-    ],
+    contentPatterns: [/"express":/],
     priority: 70,
   },
   // Svelte
   {
     framework: 'svelte',
     configFiles: ['svelte.config.js', 'package.json'],
-    contentPatterns: [
-      /"svelte":/,
-      /@sveltejs/,
-    ],
+    contentPatterns: [/"svelte":/, /@sveltejs/],
     priority: 80,
   },
 ];
@@ -163,13 +126,9 @@ const FRAMEWORK_DETECTION_RULES: FrameworkDetectionRule[] = [
 // ============================================================================
 
 interface ComponentPattern {
-  /** Regex to match the component */
   pattern: RegExp;
-  /** Component type */
   type: FrameworkComponentType;
-  /** Extract component name from match */
   nameExtractor: (match: RegExpMatchArray, content: string, filePath: string) => string;
-  /** Optional metadata extractor */
   metadataExtractor?: (match: RegExpMatchArray, content: string) => Record<string, any>;
 }
 
@@ -269,25 +228,12 @@ const NESTJS_PATTERNS: FrameworkPatterns = {
       nameExtractor: (m) => m[1],
       metadataExtractor: () => ({ decorators: ['@Module'] }),
     },
-    {
-      pattern: /@Injectable\s*\(\s*\)[\s\S]*?(?:export\s+)?class\s+(\w+Guard)/,
-      type: 'guard',
-      nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@Injectable'] }),
-    },
-    {
-      pattern: /@Injectable\s*\(\s*\)[\s\S]*?(?:export\s+)?class\s+(\w+Interceptor)/,
-      type: 'interceptor',
-      nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@Injectable'] }),
-    },
   ],
   endpoints: [
     { pattern: /@Get\s*\(\s*['"]?([^'")\s]*)['"]?\s*\)/g, methodExtractor: () => 'GET', pathExtractor: (m) => m[1] || '/' },
     { pattern: /@Post\s*\(\s*['"]?([^'")\s]*)['"]?\s*\)/g, methodExtractor: () => 'POST', pathExtractor: (m) => m[1] || '/' },
     { pattern: /@Put\s*\(\s*['"]?([^'")\s]*)['"]?\s*\)/g, methodExtractor: () => 'PUT', pathExtractor: (m) => m[1] || '/' },
     { pattern: /@Delete\s*\(\s*['"]?([^'")\s]*)['"]?\s*\)/g, methodExtractor: () => 'DELETE', pathExtractor: (m) => m[1] || '/' },
-    { pattern: /@Patch\s*\(\s*['"]?([^'")\s]*)['"]?\s*\)/g, methodExtractor: () => 'PATCH', pathExtractor: (m) => m[1] || '/' },
   ],
 };
 
@@ -298,34 +244,26 @@ const ANGULAR_PATTERNS: FrameworkPatterns = {
       pattern: /@Component\s*\(\s*\{[\s\S]*?\}\s*\)[\s\S]*?(?:export\s+)?class\s+(\w+)/,
       type: 'component',
       nameExtractor: (m) => m[1],
-      metadataExtractor: (_, content) => {
-        const selector = content.match(/selector\s*:\s*['"]([^'"]+)['"]/);
-        return { selector: selector?.[1], decorators: ['@Component'] };
-      },
     },
     {
       pattern: /@Injectable\s*\([\s\S]*?\)[\s\S]*?(?:export\s+)?class\s+(\w+)/,
       type: 'service',
       nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@Injectable'] }),
     },
     {
       pattern: /@NgModule\s*\([\s\S]*?\)[\s\S]*?(?:export\s+)?class\s+(\w+)/,
       type: 'module',
       nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@NgModule'] }),
     },
     {
       pattern: /@Directive\s*\([\s\S]*?\)[\s\S]*?(?:export\s+)?class\s+(\w+)/,
       type: 'directive',
       nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@Directive'] }),
     },
     {
       pattern: /@Pipe\s*\([\s\S]*?\)[\s\S]*?(?:export\s+)?class\s+(\w+)/,
       type: 'pipe',
       nameExtractor: (m) => m[1],
-      metadataExtractor: () => ({ decorators: ['@Pipe'] }),
     },
   ],
   endpoints: [],
@@ -353,35 +291,6 @@ const REACT_PATTERNS: FrameworkPatterns = {
   endpoints: [],
 };
 
-// Next.js patterns (extends React)
-const NEXTJS_PATTERNS: FrameworkPatterns = {
-  components: [
-    ...REACT_PATTERNS.components,
-    // Pages detected by file path
-    {
-      pattern: /(?:export\s+default|module\.exports\s*=)/,
-      type: 'page',
-      nameExtractor: (_, __, filePath) => {
-        if (filePath.includes('/pages/') || filePath.includes('\\pages\\')) {
-          const name = path.basename(filePath, path.extname(filePath));
-          return name === 'index' ? 'Home' : name.charAt(0).toUpperCase() + name.slice(1);
-        }
-        return '';
-      },
-    },
-    // API routes
-    {
-      pattern: /export\s+(?:async\s+)?function\s+(GET|POST|PUT|DELETE|PATCH)/,
-      type: 'api-route',
-      nameExtractor: (m, _, filePath) => {
-        const routeName = path.basename(path.dirname(filePath));
-        return `${m[1]} /${routeName}`;
-      },
-    },
-  ],
-  endpoints: [],
-};
-
 // Vue patterns
 const VUE_PATTERNS: FrameworkPatterns = {
   components: [
@@ -401,11 +310,6 @@ const VUE_PATTERNS: FrameworkPatterns = {
     {
       pattern: /(?:export\s+)?const\s+(\w+)\s*=\s*defineStore\s*\(/,
       type: 'store',
-      nameExtractor: (m) => m[1],
-    },
-    {
-      pattern: /(?:export\s+)?(?:const|function)\s+(use[A-Z]\w+)\s*[=:]/,
-      type: 'composable',
       nameExtractor: (m) => m[1],
     },
   ],
@@ -428,11 +332,6 @@ const DJANGO_PATTERNS: FrameworkPatterns = {
     {
       pattern: /class\s+(\w+)\s*\(\s*serializers\.(?:Serializer|ModelSerializer)/,
       type: 'serializer',
-      nameExtractor: (m) => m[1],
-    },
-    {
-      pattern: /@api_view\s*\(\s*\[[^\]]*\]\s*\)\s*def\s+(\w+)/,
-      type: 'view',
       nameExtractor: (m) => m[1],
     },
   ],
@@ -466,7 +365,7 @@ const FLASK_PATTERNS: FrameworkPatterns = {
     },
   ],
   endpoints: [
-    { pattern: /@(?:\w+\.)?route\s*\(\s*["']([^"']+)["'](?:.*?methods\s*=\s*\[["'](\w+)["']\])?/g, methodExtractor: (m) => (m[2] as HttpMethod) || 'GET', pathExtractor: (m) => m[1] },
+    { pattern: /@(?:\w+\.)?route\s*\(\s*["']([^"']+)["']/g, methodExtractor: () => 'GET', pathExtractor: (m) => m[1] },
   ],
 };
 
@@ -484,12 +383,7 @@ const EXPRESS_PATTERNS: FrameworkPatterns = {
       nameExtractor: (m) => m[1],
     },
   ],
-  endpoints: [
-    { pattern: /\.get\s*\(\s*["']([^"']+)["']/g, methodExtractor: () => 'GET', pathExtractor: (m) => m[1] },
-    { pattern: /\.post\s*\(\s*["']([^"']+)["']/g, methodExtractor: () => 'POST', pathExtractor: (m) => m[1] },
-    { pattern: /\.put\s*\(\s*["']([^"']+)["']/g, methodExtractor: () => 'PUT', pathExtractor: (m) => m[1] },
-    { pattern: /\.delete\s*\(\s*["']([^"']+)["']/g, methodExtractor: () => 'DELETE', pathExtractor: (m) => m[1] },
-  ],
+  endpoints: [],
 };
 
 // Pattern registry
@@ -498,14 +392,14 @@ const FRAMEWORK_PATTERNS: Record<FrameworkType, FrameworkPatterns> = {
   'nestjs': NESTJS_PATTERNS,
   'angular': ANGULAR_PATTERNS,
   'react': REACT_PATTERNS,
-  'nextjs': NEXTJS_PATTERNS,
+  'nextjs': REACT_PATTERNS,
   'vue': VUE_PATTERNS,
-  'nuxt': VUE_PATTERNS, // Nuxt uses Vue patterns
+  'nuxt': VUE_PATTERNS,
   'django': DJANGO_PATTERNS,
   'fastapi': FASTAPI_PATTERNS,
   'flask': FLASK_PATTERNS,
   'express': EXPRESS_PATTERNS,
-  'svelte': { components: [], endpoints: [] }, // TODO: Add Svelte patterns
+  'svelte': { components: [], endpoints: [] },
 };
 
 // ============================================================================
@@ -520,43 +414,22 @@ function generateComponentId(filePath: string, name: string, type: string): stri
 }
 
 /**
- * Step 1: Detect project framework by examining config files
+ * Detect framework from file contents
  */
-async function detectProjectFramework(chunks: any[], projectFiles: string[]): Promise<FrameworkType[]> {
-  console.log(`[FrameworkDetector] Detecting framework from ${chunks.length} chunks...`);
-  
+function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkType[] {
   const detectedFrameworks: FrameworkType[] = [];
-  
-  // Sort rules by priority
   const sortedRules = [...FRAMEWORK_DETECTION_RULES].sort((a, b) => b.priority - a.priority);
   
-  // Build a map of filename -> content for quick lookup
-  const fileContents = new Map<string, string>();
-  for (const chunk of chunks) {
-    const fp = chunk.file_path || '';
-    const fileName = path.basename(fp).toLowerCase();
-    const existing = fileContents.get(fileName) || '';
-    fileContents.set(fileName, existing + '\n' + (chunk.content || ''));
-  }
-  
-  console.log(`[FrameworkDetector] Config files found: ${Array.from(fileContents.keys()).filter(f => 
-    ['pom.xml', 'package.json', 'build.gradle', 'angular.json', 'requirements.txt', 'manage.py'].includes(f)
-  ).join(', ')}`);
-  
-  // Check each rule
+  // Check config files first
   for (const rule of sortedRules) {
-    // Check if any config file exists
     for (const configFile of rule.configFiles) {
-      const configFileName = configFile.toLowerCase();
-      const content = fileContents.get(configFileName);
-      
+      const content = fileContents.get(configFile.toLowerCase());
       if (content) {
-        // Check if content matches any pattern
         for (const pattern of rule.contentPatterns) {
           if (pattern.test(content)) {
-            console.log(`[FrameworkDetector] Detected ${rule.framework} via ${configFile}`);
             if (!detectedFrameworks.includes(rule.framework)) {
               detectedFrameworks.push(rule.framework);
+              console.log(`[FrameworkDetector] Detected ${rule.framework} via ${configFile}`);
             }
             break;
           }
@@ -565,23 +438,45 @@ async function detectProjectFramework(chunks: any[], projectFiles: string[]): Pr
     }
   }
   
-  // If no framework detected by config files, try to infer from code patterns
-  if (detectedFrameworks.length === 0) {
-    console.log(`[FrameworkDetector] No framework detected from config, inferring from code...`);
-    
-    // Check for Spring annotations in Java files
-    for (const chunk of chunks) {
-      const content = chunk.content || '';
-      if (/@RestController|@Service|@Repository|@Entity/.test(content)) {
-        if (!detectedFrameworks.includes('spring-boot')) {
-          detectedFrameworks.push('spring-boot');
-          console.log(`[FrameworkDetector] Inferred spring-boot from annotations`);
-        }
+  // Also detect from code patterns
+  for (const [filePath, content] of fileContents) {
+    // Spring Boot from annotations
+    if (/@RestController|@Service|@Repository|@Entity|@Component|@Configuration/.test(content)) {
+      if (!detectedFrameworks.includes('spring-boot')) {
+        detectedFrameworks.push('spring-boot');
+        console.log(`[FrameworkDetector] Detected spring-boot from annotations in ${filePath}`);
       }
-      if (/@Component\s*\(\s*\{/.test(content) && /@angular\/core/.test(content)) {
-        if (!detectedFrameworks.includes('angular')) {
-          detectedFrameworks.push('angular');
-        }
+    }
+    
+    // Angular from decorators
+    if (/@Component\s*\(\s*\{[\s\S]*?selector/.test(content) || /@NgModule\s*\(/.test(content)) {
+      if (!detectedFrameworks.includes('angular')) {
+        detectedFrameworks.push('angular');
+        console.log(`[FrameworkDetector] Detected angular from decorators in ${filePath}`);
+      }
+    }
+    
+    // NestJS from decorators
+    if (/@Controller\s*\(/.test(content) && (/@Injectable\s*\(/.test(content) || /@Module\s*\(/.test(content))) {
+      if (!detectedFrameworks.includes('nestjs')) {
+        detectedFrameworks.push('nestjs');
+        console.log(`[FrameworkDetector] Detected nestjs from decorators in ${filePath}`);
+      }
+    }
+    
+    // Vue from SFC or composition API
+    if (/<script\s+setup|defineComponent|defineStore/.test(content) || filePath.endsWith('.vue')) {
+      if (!detectedFrameworks.includes('vue') && !detectedFrameworks.includes('nuxt')) {
+        detectedFrameworks.push('vue');
+        console.log(`[FrameworkDetector] Detected vue from patterns in ${filePath}`);
+      }
+    }
+    
+    // Django from Python patterns
+    if (/class\s+\w+\s*\(\s*(?:models\.Model|APIView|ViewSet)/.test(content)) {
+      if (!detectedFrameworks.includes('django')) {
+        detectedFrameworks.push('django');
+        console.log(`[FrameworkDetector] Detected django from patterns in ${filePath}`);
       }
     }
   }
@@ -590,15 +485,14 @@ async function detectProjectFramework(chunks: any[], projectFiles: string[]): Pr
 }
 
 /**
- * Step 2: Extract components using framework-specific patterns
+ * Extract components using framework-specific patterns
  */
 function extractComponents(
-  chunks: any[],
+  fileContents: Map<string, string>,
   framework: FrameworkType
 ): { components: FrameworkComponent[]; endpoints: EndpointInfo[] } {
   const patterns = FRAMEWORK_PATTERNS[framework];
   if (!patterns) {
-    console.log(`[FrameworkDetector] No patterns defined for ${framework}`);
     return { components: [], endpoints: [] };
   }
   
@@ -606,25 +500,23 @@ function extractComponents(
   const endpoints: EndpointInfo[] = [];
   const processedKeys = new Set<string>();
   
-  console.log(`[FrameworkDetector] Extracting ${framework} components from ${chunks.length} chunks...`);
-  
-  for (const chunk of chunks) {
-    const content = chunk.content || '';
-    const filePath = chunk.file_path || '';
-    const startLine = chunk.start_line || 1;
-    
+  for (const [filePath, content] of fileContents) {
     // Extract components
     for (const pattern of patterns.components) {
       const match = content.match(pattern.pattern);
       if (match) {
         const name = pattern.nameExtractor(match, content, filePath);
-        if (!name) continue; // Skip if name extraction failed
+        if (!name) continue;
         
         const key = `${filePath}:${name}:${pattern.type}`;
         if (processedKeys.has(key)) continue;
         processedKeys.add(key);
         
         const metadata = pattern.metadataExtractor?.(match, content) || {};
+        
+        // Find line number
+        const beforeMatch = content.substring(0, match.index);
+        const startLine = (beforeMatch.match(/\n/g) || []).length + 1;
         
         components.push({
           id: generateComponentId(filePath, name, pattern.type),
@@ -633,11 +525,11 @@ function extractComponents(
           framework,
           filePath,
           startLine,
-          endLine: chunk.end_line || startLine,
+          endLine: startLine,
           metadata,
         });
         
-        console.log(`[FrameworkDetector] Found ${pattern.type}: ${name}`);
+        console.log(`[FrameworkDetector] Found ${pattern.type}: ${name} in ${path.basename(filePath)}`);
       }
     }
     
@@ -649,7 +541,6 @@ function extractComponents(
         const method = endpointPattern.methodExtractor(match);
         const endpointPath = endpointPattern.pathExtractor(match);
         
-        // Find handler name
         const afterMatch = content.substring(match.index + match[0].length);
         const handlerMatch = afterMatch.match(/(?:public\s+)?(?:\w+\s+)?(\w+)\s*\(/);
         const handlerName = handlerMatch?.[1] || 'handler';
@@ -658,12 +549,15 @@ function extractComponents(
         if (processedKeys.has(key)) continue;
         processedKeys.add(key);
         
+        const beforeMatch = content.substring(0, match.index);
+        const line = (beforeMatch.match(/\n/g) || []).length + 1;
+        
         endpoints.push({
           method,
           path: endpointPath,
           handlerName,
           filePath,
-          line: startLine,
+          line,
         });
       }
     }
@@ -673,7 +567,21 @@ function extractComponents(
 }
 
 /**
- * Main analysis function
+ * Filter files that belong to a project
+ */
+function filterFilesByProject(files: [string, any][], projectId: string): [string, any][] {
+  const normalizedProjectId = projectId.toLowerCase();
+  
+  return files.filter(([filePath]) => {
+    const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+    return normalizedPath.includes(normalizedProjectId) ||
+           normalizedPath.includes(normalizedProjectId.replace(/_/g, '-')) ||
+           normalizedPath.includes(normalizedProjectId.replace(/-/g, '_'));
+  });
+}
+
+/**
+ * Main analysis function - follows same pattern as relationsAnalyzerService
  */
 export async function analyzeFrameworks(projectId: string): Promise<FrameworkAnalysis> {
   console.log(`[FrameworkDetector] ========================================`);
@@ -682,86 +590,82 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   const mbService = getMemoryBankService();
   const mbPath = mbService.getMemoryBankPath();
   
+  console.log(`[FrameworkDetector] Memory Bank path: ${mbPath || 'NOT CONFIGURED'}`);
+  
   if (!mbPath) {
     throw new Error('Memory Bank path not configured');
   }
-
-  // Load index metadata
+  
+  // Load index metadata (same as relationsAnalyzerService)
   const indexMeta = await mbService.loadIndexMetadata();
-  if (!indexMeta?.files) {
-    throw new Error('No indexed files found');
+  if (!indexMeta) {
+    throw new Error('No index metadata found. Ensure the project has been indexed.');
   }
-
-  // Get files for this project
-  const projectFiles = Object.keys(indexMeta.files).filter((filePath) => {
-    const normalizedPath = filePath.toLowerCase();
-    const normalizedProjectId = projectId.toLowerCase();
-    return normalizedPath.includes(normalizedProjectId) ||
-           normalizedPath.includes(normalizedProjectId.replace(/_/g, '-')) ||
-           normalizedPath.includes(normalizedProjectId.replace(/-/g, '_'));
-  });
-
-  console.log(`[FrameworkDetector] Found ${projectFiles.length} project files in index`);
-
-  // Connect to LanceDB
-  let chunks: any[] = [];
   
-  try {
-    const lancedb = await import('@lancedb/lancedb');
-    const db = await lancedb.connect(mbPath);
-    const tableNames = await db.tableNames();
-    
-    if (!tableNames.includes('code_chunks')) {
-      throw new Error('No code_chunks table found');
-    }
-    
-    const table = await db.openTable('code_chunks');
-    
-    // Get all chunks
-    const allChunks = await table.query().toArray();
-    console.log(`[FrameworkDetector] Total chunks in DB: ${allChunks.length}`);
-    
-    // Get unique project_ids for debugging
-    const uniqueProjectIds = new Set<string>();
-    for (const c of allChunks as any[]) {
-      if (c.project_id) uniqueProjectIds.add(c.project_id);
-    }
-    console.log(`[FrameworkDetector] Unique project_ids: ${Array.from(uniqueProjectIds).join(', ')}`);
-    
-    // Try to find chunks by project_id or file_path
-    const normalizedProjectId = projectId.toLowerCase();
-    
-    // First try exact project_id match
-    chunks = (allChunks as any[]).filter((c: any) => 
-      c.project_id === projectId
-    );
-    
-    // If no exact match, try case-insensitive
-    if (chunks.length === 0) {
-      chunks = (allChunks as any[]).filter((c: any) =>
-        c.project_id?.toLowerCase() === normalizedProjectId
-      );
-    }
-    
-    // If still no match, filter by file_path
-    if (chunks.length === 0) {
-      console.log(`[FrameworkDetector] No project_id match, filtering by file_path...`);
-      chunks = (allChunks as any[]).filter((c: any) => {
-        const fp = (c.file_path || '').toLowerCase();
-        return fp.includes(normalizedProjectId) ||
-               fp.includes(normalizedProjectId.replace(/_/g, '-')) ||
-               fp.includes(normalizedProjectId.replace(/-/g, '_'));
-      });
-    }
-    
-  } catch (error) {
-    console.error(`[FrameworkDetector] Error connecting to LanceDB:`, error);
-    throw error;
+  const allFiles = Object.entries(indexMeta.files || {});
+  console.log(`[FrameworkDetector] Total indexed files: ${allFiles.length}`);
+  
+  if (allFiles.length === 0) {
+    throw new Error('Index metadata contains no files.');
   }
-
-  console.log(`[FrameworkDetector] Retrieved ${chunks.length} chunks for analysis`);
   
-  if (chunks.length === 0) {
+  // Filter files for this project
+  const projectFiles = filterFilesByProject(allFiles, projectId);
+  console.log(`[FrameworkDetector] Project files: ${projectFiles.length}`);
+  
+  if (projectFiles.length === 0) {
+    console.log(`[FrameworkDetector] No files found for project "${projectId}"`);
+    return {
+      projectId,
+      frameworks: [],
+      components: [],
+      componentsByType: new Map(),
+      endpoints: [],
+      analyzedAt: Date.now(),
+      fileCount: 0,
+    };
+  }
+  
+  // Determine base directory for resolving file paths (same as relationsAnalyzerService)
+  const sampleFilePath = projectFiles[0]?.[0] || '';
+  const isRelativePath = sampleFilePath.startsWith('.') || !path.isAbsolute(sampleFilePath);
+  const baseDir = isRelativePath ? mbPath : '';
+  
+  console.log(`[FrameworkDetector] File paths are ${isRelativePath ? 'relative' : 'absolute'}`);
+  console.log(`[FrameworkDetector] Base directory: ${baseDir || '(absolute paths)'}`);
+  
+  // Read file contents from disk
+  const fileContents = new Map<string, string>();
+  let filesRead = 0;
+  let filesSkipped = 0;
+  
+  for (const [filePath] of projectFiles) {
+    try {
+      const resolvedPath = path.resolve(baseDir, filePath);
+      
+      if (fs.existsSync(resolvedPath)) {
+        const content = fs.readFileSync(resolvedPath, 'utf-8');
+        fileContents.set(filePath, content);
+        
+        // Also store by filename for config file detection
+        const fileName = path.basename(filePath).toLowerCase();
+        if (!fileContents.has(fileName)) {
+          fileContents.set(fileName, content);
+        }
+        
+        filesRead++;
+      } else {
+        filesSkipped++;
+      }
+    } catch (error) {
+      filesSkipped++;
+    }
+  }
+  
+  console.log(`[FrameworkDetector] Files read: ${filesRead}, skipped: ${filesSkipped}`);
+  
+  if (filesRead === 0) {
+    console.log(`[FrameworkDetector] No files could be read from disk`);
     return {
       projectId,
       frameworks: [],
@@ -772,9 +676,9 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
       fileCount: projectFiles.length,
     };
   }
-
+  
   // Step 1: Detect framework(s)
-  const detectedFrameworks = await detectProjectFramework(chunks, projectFiles);
+  const detectedFrameworks = detectFrameworkFromFiles(fileContents);
   console.log(`[FrameworkDetector] Detected frameworks: ${detectedFrameworks.join(', ') || 'None'}`);
   
   // Step 2: Extract components for each detected framework
@@ -782,7 +686,7 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   const allEndpoints: EndpointInfo[] = [];
   
   for (const framework of detectedFrameworks) {
-    const { components, endpoints } = extractComponents(chunks, framework);
+    const { components, endpoints } = extractComponents(fileContents, framework);
     allComponents.push(...components);
     allEndpoints.push(...endpoints);
   }
@@ -809,9 +713,9 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   analysisCache.set(projectId, analysis);
   
   console.log(`[FrameworkDetector] Analysis complete:`);
-  console.log(`[FrameworkDetector]   Frameworks: ${analysis.frameworks.join(', ') || 'None'}`);
-  console.log(`[FrameworkDetector]   Components: ${allComponents.length}`);
-  console.log(`[FrameworkDetector]   Endpoints: ${allEndpoints.length}`);
+  console.log(`[FrameworkDetector]   - Frameworks: ${analysis.frameworks.join(', ') || 'None'}`);
+  console.log(`[FrameworkDetector]   - Components: ${allComponents.length}`);
+  console.log(`[FrameworkDetector]   - Endpoints: ${allEndpoints.length}`);
   console.log(`[FrameworkDetector] ========================================`);
   
   return analysis;
