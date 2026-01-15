@@ -1,0 +1,206 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { getMemoryBankService } from './services/memoryBankService';
+import { ProjectInfo } from './types/memoryBank';
+
+export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+  private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = 
+    new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = 
+    this._onDidChangeTreeData.event;
+
+  private selectedProject: ProjectInfo | null = null;
+  private logger: vscode.OutputChannel;
+
+  constructor(logger: vscode.OutputChannel) {
+    this.logger = logger;
+  }
+
+  refresh(): void {
+    this._onDidChangeTreeData.fire();
+  }
+
+  setSelectedProject(project: ProjectInfo | null): void {
+    this.selectedProject = project;
+    this.refresh();
+  }
+
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+    if (!element) {
+      if (!this.selectedProject) {
+        return [new vscode.TreeItem('Ningún proyecto seleccionado', vscode.TreeItemCollapsibleState.None)];
+      }
+
+      const service = getMemoryBankService();
+      const mbPath = service.getMemoryBankPath();
+      if (!mbPath) {
+        return [new vscode.TreeItem('Memory Bank no configurado', vscode.TreeItemCollapsibleState.None)];
+      }
+
+      const boardPath = path.join(mbPath, 'projects', this.selectedProject.id, 'docs', 'agentBoard.md');
+
+      if (!fs.existsSync(boardPath)) {
+        const item = new vscode.TreeItem('No hay actividad de agentes', vscode.TreeItemCollapsibleState.None);
+        item.description = '(agentBoard.md no encontrado)';
+        return [item];
+      }
+
+      try {
+        const content = fs.readFileSync(boardPath, 'utf-8');
+        return this.parseBoardContent(content);
+      } catch (error) {
+        this.logger.appendLine(`Error reading agent board: ${error}`);
+        return [new vscode.TreeItem('Error al leer el tablero de agentes', vscode.TreeItemCollapsibleState.None)];
+      }
+    }
+
+    // Handle children of sections (Agents, Locks, Messages)
+    if (element instanceof SectionTreeItem) {
+        return element.children;
+    }
+
+    return [];
+  }
+
+  private parseBoardContent(content: string): vscode.TreeItem[] {
+    const sections: vscode.TreeItem[] = [];
+
+    // Parse Active Agents
+    const agentsSection = new SectionTreeItem('Agentes Activos', vscode.TreeItemCollapsibleState.Expanded);
+    agentsSection.iconPath = new vscode.ThemeIcon('organization');
+    const agents = this.parseTable(content, 'Active Agents');
+    if (agents.length > 0) {
+        agentsSection.children = agents.map(row => {
+            // | Agent ID | Status | Current Focus | Last Heartbeat |
+            const [id, status, focus, heartbeat] = row;
+            const item = new vscode.TreeItem(id || 'Unknown', vscode.TreeItemCollapsibleState.None);
+            item.description = status;
+            item.tooltip = `Status: ${status}\nFocus: ${focus}\nHeartbeat: ${heartbeat}`;
+            item.iconPath = new vscode.ThemeIcon('person');
+            if (status?.trim().toUpperCase() === 'ACTIVE') {
+                item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('testing.iconPassed'));
+            }
+            return item;
+        });
+    } else {
+        agentsSection.children = [new vscode.TreeItem('No hay agentes activos', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(agentsSection);
+
+    // Parse File Locks
+    const locksSection = new SectionTreeItem('Bloqueos de Archivos', vscode.TreeItemCollapsibleState.Collapsed);
+    locksSection.iconPath = new vscode.ThemeIcon('lock');
+    const locks = this.parseTable(content, 'File Locks');
+    if (locks.length > 0) {
+        locksSection.children = locks.map(row => {
+            // | File Pattern | Claimed By | Since |
+            const [pattern, claimedBy, since] = row;
+            const item = new vscode.TreeItem(pattern || 'Unknown', vscode.TreeItemCollapsibleState.None);
+            item.description = `by ${claimedBy}`;
+            item.tooltip = `Claimed by: ${claimedBy}\nSince: ${since}`;
+            item.iconPath = new vscode.ThemeIcon('file');
+            return item;
+        });
+    } else {
+        locksSection.children = [new vscode.TreeItem('No hay bloqueos activos', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(locksSection);
+
+    // Parse Messages
+    const msgsSection = new SectionTreeItem('Mensajes del Sistema', vscode.TreeItemCollapsibleState.Collapsed);
+    msgsSection.iconPath = new vscode.ThemeIcon('comment-discussion');
+    const messages = this.parseBulletPoints(content, 'Agent Messages');
+    if (messages.length > 0) {
+        let displayMessages = messages;
+        if (messages.length > 10) {
+            displayMessages = messages.slice(-10); // Show last 10
+        }
+        
+        msgsSection.children = displayMessages.reverse().map(msg => {
+            const item = new vscode.TreeItem(msg, vscode.TreeItemCollapsibleState.None);
+            item.iconPath = new vscode.ThemeIcon('comment');
+            // Try to extract timestamp if present like [HH:MM:SS]
+            return item;
+        });
+    } else {
+        msgsSection.children = [new vscode.TreeItem('No hay mensajes', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(msgsSection);
+
+    return sections;
+  }
+
+  private parseTable(content: string, sectionTitle: string): string[][] {
+    const rows: string[][] = [];
+    const lines = content.split('\n');
+    let inSection = false;
+    let foundHeaderSep = false;
+
+    for (const line of lines) {
+        if (line.trim().startsWith('## ' + sectionTitle)) {
+            inSection = true;
+            continue;
+        }
+        if (inSection && line.startsWith('## ')) {
+            break; // Next section
+        }
+        if (inSection) {
+            if (line.trim().startsWith('|')) {
+                // Check if it's separator line |---|---|
+                if (line.includes('---')) {
+                    foundHeaderSep = true;
+                    continue;
+                }
+                // Skip header row if we haven't seen separator yet
+                if (!foundHeaderSep && !line.includes('---')) {
+                     // We assume first row is header, so if we haven't seen separator, wait for it?
+                     // Actually markdown tables usually have header then separator.
+                     // Simple heuristic: if we haven't seen separator, this might be header.
+                     // But simpler: just ignore the header row by looking for ---
+                     continue; 
+                }
+                
+                if (foundHeaderSep) {
+                    const cells = line.split('|').map(c => c.trim()).filter((c, i) => i > 0 && i < line.split('|').length - 1);
+                    if (cells.length > 0) {
+                        rows.push(cells);
+                    }
+                }
+            }
+        }
+    }
+    return rows;
+  }
+
+  private parseBulletPoints(content: string, sectionTitle: string): string[] {
+    const items: string[] = [];
+    const lines = content.split('\n');
+    let inSection = false;
+
+    for (const line of lines) {
+        if (line.trim().startsWith('## ' + sectionTitle)) {
+            inSection = true;
+            continue;
+        }
+        if (inSection && line.startsWith('## ')) {
+            break;
+        }
+        if (inSection && (line.trim().startsWith('- ') || line.trim().startsWith('* '))) {
+            items.push(line.trim().substring(2));
+        }
+    }
+    return items;
+  }
+}
+
+class SectionTreeItem extends vscode.TreeItem {
+    public children: vscode.TreeItem[] = [];
+    constructor(label: string, collapsibleState: vscode.TreeItemCollapsibleState) {
+        super(label, collapsibleState);
+    }
+}

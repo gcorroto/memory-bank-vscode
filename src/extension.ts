@@ -9,6 +9,7 @@ import { IndexedFilesProvider } from './IndexedFilesProvider';
 import { ProjectDocsProvider } from './ProjectDocsProvider';
 import { RelationsTreeProvider } from './RelationsTreeProvider';
 import { FrameworkComponentsProvider } from './FrameworkComponentsProvider';
+import { ActiveAgentsProvider } from './ActiveAgentsProvider';
 import { getMemoryBankService } from './services/memoryBankService';
 import { ProjectInfo } from './types/memoryBank';
 import * as relationsAnalyzerService from './services/relationsAnalyzerService';
@@ -48,6 +49,7 @@ const indexedFilesProvider = new IndexedFilesProvider(logger);
 const projectDocsProvider = new ProjectDocsProvider(logger);
 const relationsTreeProvider = new RelationsTreeProvider(logger);
 const frameworkComponentsProvider = new FrameworkComponentsProvider(logger);
+const activeAgentsProvider = new ActiveAgentsProvider(logger);
 
 // Relations viewer instance
 let relationsViewer: RelationsViewer | null = null;
@@ -125,6 +127,7 @@ function continueActivation(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider('memorybank-docs', projectDocsProvider);
   vscode.window.registerTreeDataProvider('memorybank-relations', relationsTreeProvider);
   vscode.window.registerTreeDataProvider('memorybank-frameworks', frameworkComponentsProvider);
+  vscode.window.registerTreeDataProvider('memorybank-agents', activeAgentsProvider);
 
   // Initialize Relations Viewer
   relationsViewer = new RelationsViewer(context);
@@ -178,6 +181,7 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
       memoryBankProjectsProvider.refresh();
       indexedFilesProvider.refresh();
       projectDocsProvider.refresh();
+      activeAgentsProvider.refresh();
     })
   );
 
@@ -187,9 +191,18 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
       logger.appendLine(`Selecting project: ${projectInfo.id}`);
       memoryBankProjectsProvider.setSelectedProject(projectInfo);
       projectDocsProvider.setSelectedProject(projectInfo);
+      activeAgentsProvider.setSelectedProject(projectInfo);
       
       // Show notification
       vscode.window.showInformationMessage(`Proyecto seleccionado: ${projectInfo.id}`);
+    })
+  );
+
+  // Refresh Agents view
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.agents.refresh', () => {
+      logger.appendLine('Refreshing Agents view...');
+      activeAgentsProvider.refresh();
     })
   );
 
