@@ -567,7 +567,7 @@ function extractComponents(
 }
 
 /**
- * Filter files that belong to a project
+ * Filter files that belong to a project (heuristic)
  */
 function filterFilesByProject(files: [string, any][], projectId: string): [string, any][] {
   const normalizedProjectId = projectId.toLowerCase();
@@ -578,6 +578,70 @@ function filterFilesByProject(files: [string, any][], projectId: string): [strin
            normalizedPath.includes(normalizedProjectId.replace(/_/g, '-')) ||
            normalizedPath.includes(normalizedProjectId.replace(/-/g, '_'));
   });
+}
+
+/**
+ * Load project config from metadata.json (contains sourcePath)
+ * COPIED FROM relationsAnalyzerService.ts - this is the working logic
+ */
+async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: string } | null> {
+  try {
+    const mbService = getMemoryBankService();
+    const mbPath = mbService.getMemoryBankPath();
+    if (!mbPath) return null;
+    
+    // Try multiple possible locations for metadata
+    const possiblePaths = [
+      // Standard location: memory-bank/projects/{projectId}/docs/metadata.json
+      path.join(path.dirname(mbPath), 'projects', projectId, 'docs', 'metadata.json'),
+      // Alternative: memory-bank/projects/{projectId}/metadata.json
+      path.join(path.dirname(mbPath), 'projects', projectId, 'metadata.json'),
+      // Direct in memory-bank: memory-bank/{projectId}/metadata.json
+      path.join(mbPath, projectId, 'metadata.json'),
+      // Inside projects folder of memory-bank
+      path.join(mbPath, 'projects', projectId, 'metadata.json'),
+      path.join(mbPath, 'projects', projectId, 'docs', 'metadata.json'),
+    ];
+    
+    for (const metadataPath of possiblePaths) {
+      if (fs.existsSync(metadataPath)) {
+        console.log(`[FrameworkDetector] Found metadata at: ${metadataPath}`);
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        const data = JSON.parse(content);
+        
+        // Check for sourcePath in various locations
+        const sourcePath = data._projectConfig?.sourcePath || 
+                          data.sourcePath || 
+                          data.projectPath ||
+                          data.rootPath;
+        
+        if (sourcePath) {
+          console.log(`[FrameworkDetector] Found sourcePath in config: ${sourcePath}`);
+          return { sourcePath };
+        }
+      }
+    }
+    
+    // Also try to get from index-metadata.json which might have the root path
+    const indexMetaPath = path.join(mbPath, 'index-metadata.json');
+    if (fs.existsSync(indexMetaPath)) {
+      const indexContent = fs.readFileSync(indexMetaPath, 'utf-8');
+      const indexData = JSON.parse(indexContent);
+      
+      // The index might have projectRoot or similar
+      const rootPath = indexData.projectRoot || indexData.rootPath || indexData.basePath;
+      if (rootPath) {
+        console.log(`[FrameworkDetector] Found rootPath in index-metadata: ${rootPath}`);
+        return { sourcePath: rootPath };
+      }
+    }
+    
+    console.log(`[FrameworkDetector] No sourcePath found in any config for project ${projectId}`);
+    return null;
+  } catch (error) {
+    console.error(`[FrameworkDetector] Error loading project config:`, error);
+    return null;
+  }
 }
 
 /**
@@ -609,8 +673,31 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
     throw new Error('Index metadata contains no files.');
   }
   
-  // Filter files for this project
-  const projectFiles = filterFilesByProject(allFiles, projectId);
+  // Log sample of indexed files for debugging
+  console.log(`[FrameworkDetector] Sample of indexed files (first 5):`);
+  allFiles.slice(0, 5).forEach(([f]) => console.log(`[FrameworkDetector]   - ${f}`));
+  
+  // First, try to get sourcePath from project config (SAME AS relationsAnalyzerService)
+  const projectConfig = await loadProjectConfig(projectId);
+  
+  let projectFiles: [string, any][];
+  
+  if (projectConfig?.sourcePath) {
+    // Use sourcePath from config - filter files that contain this path
+    const sourcePath = projectConfig.sourcePath.replace(/\\/g, '/').toLowerCase();
+    console.log(`[FrameworkDetector] Using sourcePath from config: "${projectConfig.sourcePath}"`);
+    console.log(`[FrameworkDetector] Normalized sourcePath: "${sourcePath}"`);
+    projectFiles = allFiles.filter(([filePath]) => {
+      const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+      return normalizedPath.includes(sourcePath);
+    });
+    console.log(`[FrameworkDetector] Files matching sourcePath: ${projectFiles.length}`);
+  } else {
+    // Fallback to heuristic detection
+    console.log(`[FrameworkDetector] No sourcePath in config, using heuristic detection for "${projectId}"...`);
+    projectFiles = filterFilesByProject(allFiles, projectId);
+  }
+  
   console.log(`[FrameworkDetector] Project files: ${projectFiles.length}`);
   
   if (projectFiles.length === 0) {
@@ -626,7 +713,7 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
     };
   }
   
-  // Determine base directory for resolving file paths (same as relationsAnalyzerService)
+  // Determine base directory for resolving file paths (SAME AS relationsAnalyzerService)
   const sampleFilePath = projectFiles[0]?.[0] || '';
   const isRelativePath = sampleFilePath.startsWith('.') || !path.isAbsolute(sampleFilePath);
   const baseDir = isRelativePath ? mbPath : '';
