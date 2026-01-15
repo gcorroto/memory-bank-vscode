@@ -209,14 +209,13 @@ export interface DashboardState {
   validator: ValidatorState;
   planner: PlannerState;
   testing: TestingState;
+  delegation: DelegationState;
   
   // Global
   isLoading: boolean;
   activeTab: TabType;
   theme: 'light' | 'dark' | 'high-contrast';
 }
-
-export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing';
 
 // ============================================================================
 // VSCode Message Types
@@ -270,6 +269,7 @@ export type DashboardAction =
   | { type: 'ADD_TEST_RESULT'; payload: TestResult }
   | { type: 'UPDATE_TEST_COVERAGE'; payload: number }
   | { type: 'SET_CURRENT_TEST'; payload: string }
+  | { type: 'UPDATE_DELEGATION_REQUESTS'; payload: ExternalRequest[] }
   | { type: 'RESET_STATE' }
   | { type: 'RESET' };
 
@@ -283,3 +283,23 @@ export interface VSCodeAPI {
 
 // Note: Window interface extended in react-flow/types/index.ts
 // with vscode and __INITIAL_STATE__ as any (avoids type conflicts between webviews)
+
+// ============================================================================
+// Delegation Types
+// ============================================================================
+
+export interface ExternalRequest {
+  id: string;
+  title: string;
+  fromProject: string;
+  context: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'IN_PROGRESS';
+  receivedAt: string;
+}
+
+export interface DelegationState {
+  externalRequests: ExternalRequest[];
+  pendingTasks: any[]; 
+}
+
+export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing' | 'delegation';

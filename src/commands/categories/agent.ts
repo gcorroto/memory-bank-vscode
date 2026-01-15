@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { CommandRegistration } from '../types';
 import { createCommandRegistration } from '../utils';
 import { getGlobalAgent } from '../../extension';
+import { getMemoryBankService } from '../../services/memoryBankService';
+import { ExternalRequestTreeItem } from '../../ActiveAgentsProvider';
 
 export const agentCommands: CommandRegistration[] = [
     createCommandRegistration('memorybank.createAgent', async () => {
@@ -314,5 +318,92 @@ export const agentCommands: CommandRegistration[] = [
         } finally {
             statusBarItem.dispose();
         }
+    }),
+
+    createCommandRegistration('memorybank.agent.acceptTask', async (item: ExternalRequestTreeItem) => {
+        if (!item || !item.id) { 
+             vscode.window.showErrorMessage('Invalid task item');
+             return;
+        }
+        await updateExternalRequestStatus(item, 'ACCEPTED');
+    }),
+
+    createCommandRegistration('memorybank.agent.rejectTask', async (item: ExternalRequestTreeItem) => {
+        if (!item || !item.id) { 
+             vscode.window.showErrorMessage('Invalid task item');
+             return;
+        }
+        await updateExternalRequestStatus(item, 'REJECTED');
+    }),
+
+    createCommandRegistration('memorybank.agent.delegateTask', async () => {
+        const option = await vscode.window.showInformationMessage(
+            'Para delegar una tarea, usa el chat con el comando @agent delegate ...',
+            'Abrir Chat'
+        );
+        
+        if (option === 'Abrir Chat') {
+            vscode.commands.executeCommand('memorybank.ask');
+        }
     })
 ]; 
+
+async function updateExternalRequestStatus(item: ExternalRequestTreeItem, newStatus: string) {
+    const service = getMemoryBankService();
+    const mbPath = service.getMemoryBankPath();
+    if (!mbPath || !item.projectId) {
+        vscode.window.showErrorMessage('Memory Bank path or Project ID missing');
+        return;
+    }
+
+    const boardPath = path.join(mbPath, 'projects', item.projectId, 'docs', 'agentBoard.md');
+    if (!fs.existsSync(boardPath)) {
+        vscode.window.showErrorMessage(`Agent board not found at ${boardPath}`);
+        return;
+    }
+
+    try {
+        let content = fs.readFileSync(boardPath, 'utf-8');
+        // Simple regex strategy: find the line with the ID and replace the status column
+        // Format: | ID | Title | From Project | Context | Status | Received At |
+        // We look for a line starting with | {id} | ...
+        
+        // Escape special chars in ID just in case
+        const escapedId = item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // We look for the line manually to be safer with spaces
+        const lines = content.split('\n');
+        let updated = false;
+        
+        const newLines = lines.map(line => {
+            const trimmed = line.trim();
+            // Check if it's a table row and has the ID in the first column
+            if (trimmed.startsWith('|') && (trimmed.includes(`| ${item.id} |`) || trimmed.includes(`|${item.id}|`))) {
+                 const parts = line.split('|');
+                 // parts[0] is typically empty string if line starts with |
+                 // Columns: [0] "", [1] ID, [2] Title, [3] From, [4] Context, [5] Status, [6] Received, [7] ""
+                 
+                 // We need to identify column index 5 (Status)
+                 // This assumes the standard layout defined in parseBoardContent
+                 if (parts.length >= 7) {
+                     parts[5] = ` ${newStatus} `;
+                     updated = true;
+                     return parts.join('|');
+                 }
+            }
+            return line;
+        });
+
+        if (updated) {
+            const newContent = newLines.join('\n');
+            fs.writeFileSync(boardPath, newContent, 'utf-8');
+            vscode.window.showInformationMessage(`Task ${item.id} marked as ${newStatus}`);
+            vscode.commands.executeCommand('memorybank.agents.refresh');
+        } else {
+             vscode.window.showWarningMessage(`Could not find task ${item.id} in agentBoard.md`);
+        }
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error updating task status: ${error}`);
+    }
+} 

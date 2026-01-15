@@ -7,6 +7,17 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { getMemoryBankService } from '../../services/memoryBankService';
+
+// Interface copied/adapted from frontend types to avoid import issues if any
+interface ExternalRequest {
+  id: string;
+  title: string;
+  fromProject: string;
+  context: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | string;
+  receivedAt: string;
+}
 
 export class DashboardViewer {
   private static instance: DashboardViewer | undefined;
@@ -18,6 +29,7 @@ export class DashboardViewer {
   private pollTimer: NodeJS.Timer | undefined;
   private lastHistoryLength: number = 0;
   private executionItems: Map<string, any> = new Map();
+  private currentProjectId: string | undefined;
 
   private constructor(extensionUri: vscode.Uri) {
     this.extensionUri = extensionUri;
@@ -39,16 +51,21 @@ export class DashboardViewer {
   public async show(
     agent?: any,
     contextManager?: any,
-    extensionContext?: vscode.ExtensionContext
+    extensionContext?: vscode.ExtensionContext,
+    projectId?: string
   ): Promise<void> {
     this.agent = agent;
     this.contextManager = contextManager;
+    this.currentProjectId = projectId;
 
     if (!this.panel) {
       this.createPanel(extensionContext);
     } else {
       this.panel.reveal(vscode.ViewColumn.Two);
     }
+    
+    // Force immediate update of data
+    this.updateDashboardState();
   }
 
   /**
@@ -182,6 +199,37 @@ export class DashboardViewer {
 
       case 'REQUEST_TESTING_STATE':
         this.sendTestingState();
+        break;
+
+      case 'REQUEST_DELEGATION_STATE':
+        this.sendDelegationState();
+        break;
+
+      case 'ACCEPT_TASK':
+        if (message.data && this.currentProjectId) {
+           vscode.commands.executeCommand('memorybank.agent.acceptTask', {
+               id: message.data.requestId,
+               projectId: this.currentProjectId
+           });
+           // Optimistic update or wait for file watcher? 
+           // File watcher should trigger reload eventually, but let's refresh quickly
+           setTimeout(() => this.sendDelegationState(), 500); 
+        }
+        break;
+
+      case 'REJECT_TASK':
+        if (message.data && this.currentProjectId) {
+           vscode.commands.executeCommand('memorybank.agent.rejectTask', {
+               id: message.data.requestId,
+               projectId: this.currentProjectId
+           });
+           setTimeout(() => this.sendDelegationState(), 500);
+        }
+        break;
+
+      case 'CREATE_DELEGATION':
+        // Prompt user via chat to delegate
+        vscode.commands.executeCommand('memorybank.agent.delegateTask');
         break;
 
       case 'TRIGGER_AGENT_ACTION':
@@ -545,5 +593,104 @@ export class DashboardViewer {
     if (this.panel) {
       this.panel.dispose();
     }
+  }
+
+  /**
+   * Force update all dashboard state
+   */
+  public updateDashboardState(): void {
+    this.sendInitialState();
+    this.sendMCPsState();
+    this.sendHistoricoState();
+    this.sendExecutionState();
+    this.sendValidatorState();
+    this.sendPlannerState();
+    this.sendTestingState();
+    this.sendDelegationState();
+  }
+
+  /**
+   * Send Delegation state
+   */
+  private sendDelegationState(): void {
+    if (!this.currentProjectId && this.agent && this.agent.context && this.agent.context.workspaceState) {
+         // Try to recover projectId from context/state if possible, or default to current workspace
+    }
+    const projectId = this.currentProjectId || 'memory_bank_vscode_extension'; // Fallback for dev
+
+    const requests = projectId ? this.parseExternalRequests(projectId) : [];
+    
+    this.sendToWebview({
+      type: 'UPDATE_DELEGATION_REQUESTS',
+      data: {
+        requests: requests
+      }
+    });
+  }
+
+  private parseExternalRequests(projectId: string): ExternalRequest[] {
+      try {
+        const service = getMemoryBankService();
+        const mbPath = service.getMemoryBankPath();
+        if (!mbPath) return [];
+
+        const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
+        if (!fs.existsSync(boardPath)) return [];
+
+        const content = fs.readFileSync(boardPath, 'utf-8');
+        const requests = this.parseTable(content, 'External Requests');
+        
+        return requests.map(row => {
+            // | ID | Title | From Project | Context | Status | Received At |
+            const [id, title, fromProject, context, status, receivedAt] = row;
+            return {
+                id: id || 'Unknown',
+                title: title || 'Unknown',
+                fromProject: fromProject || 'Unknown',
+                context: context || '',
+                status: status ? status.trim() : 'PENDING',
+                receivedAt: receivedAt || ''
+            };
+        });
+      } catch (e) {
+          console.error('[DashboardViewer] Error parsing external requests:', e);
+          return [];
+      }
+  }
+
+  private parseTable(content: string, sectionTitle: string): string[][] {
+    const rows: string[][] = [];
+    const lines = content.split('\n');
+    let inSection = false;
+    let foundHeaderSep = false;
+
+    for (const line of lines) {
+        if (line.trim().startsWith('## ' + sectionTitle)) {
+            inSection = true;
+            continue;
+        }
+        if (inSection && line.startsWith('## ')) {
+            break; // Next section
+        }
+        if (inSection) {
+            if (line.trim().startsWith('|')) {
+                if (line.includes('---')) {
+                    foundHeaderSep = true;
+                    continue;
+                }
+                if (!foundHeaderSep && !line.includes('---')) {
+                     continue; 
+                }
+                
+                if (foundHeaderSep) {
+                    const cells = line.split('|').map(c => c.trim()).filter((c, i) => i > 0 && i < line.split('|').length - 1);
+                    if (cells.length > 0) {
+                        rows.push(cells);
+                    }
+                }
+            }
+        }
+    }
+    return rows;
   }
 }

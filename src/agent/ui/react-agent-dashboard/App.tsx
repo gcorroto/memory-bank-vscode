@@ -15,6 +15,7 @@ import ExecutionTab from './components/Tabs/ExecutionTab';
 import ValidatorTab from './components/Tabs/ValidatorTab';
 import PlannerTab from './components/Tabs/PlannerTab';
 import TestingTab from './components/Tabs/TestingTab';
+import DelegationTab from './components/Tabs/DelegationTab';
 
 const TabComponents: Record<TabType, React.ComponentType<any>> = {
   mcps: MCPsTab,
@@ -23,6 +24,7 @@ const TabComponents: Record<TabType, React.ComponentType<any>> = {
   validator: ValidatorTab,
   planner: PlannerTab,
   testing: TestingTab,
+  delegation: DelegationTab,
 };
 
 const TabLabels: Record<TabType, string> = {
@@ -32,6 +34,7 @@ const TabLabels: Record<TabType, string> = {
   validator: 'Validador',
   planner: 'Planificador',
   testing: 'Testing',
+  delegation: 'Delegación',
 };
 
 export const App: React.FC = () => {
@@ -85,6 +88,11 @@ export const App: React.FC = () => {
           message.data.results.forEach((result: any) => dashboard.addTestResult(result));
         }
         if (message.data.coverage) dashboard.updateTestCoverage(message.data.coverage);
+        break;
+      case 'UPDATE_DELEGATION_REQUESTS':
+        if (message.data.requests) {
+          dashboard.updateDelegationRequests(message.data.requests);
+        }
         break;
     }
   });
@@ -170,7 +178,7 @@ export const App: React.FC = () => {
       {/* Tab Content */}
       {!dashboard.state.isLoading && (
         <main className="tab-content">
-          <CurrentTab state={dashboard.state} dispatch={dashboard} />
+          <CurrentTab state={dashboard.state} dispatch={dashboard} postMessage={postMessage} />
         </main>
       )}
 

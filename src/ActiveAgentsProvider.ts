@@ -218,7 +218,8 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
                 fromProject || 'Unknown',
                 context || '',
                 status || 'PENDING',
-                receivedAt || ''
+                receivedAt || '',
+                this.selectedProject?.id || ''
             );
         });
     } else {
@@ -357,7 +358,8 @@ export class ExternalRequestTreeItem extends vscode.TreeItem {
         public readonly fromProject: string,
         public readonly context: string,
         public readonly status: string,
-        public readonly receivedAt: string
+        public readonly receivedAt: string,
+        public readonly projectId: string
     ) {
         super(title, vscode.TreeItemCollapsibleState.None);
         this.contextValue = 'external-request';

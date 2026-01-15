@@ -46,6 +46,10 @@ const initialState: DashboardState = {
     coverage: 0,
     currentTest: '',
   },
+  delegation: {
+    externalRequests: [],
+    pendingTasks: [],
+  },
   isLoading: true,
   activeTab: 'mcps',
   theme: 'light',
@@ -194,6 +198,15 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
         },
       };
 
+    case 'UPDATE_DELEGATION_REQUESTS':
+      return {
+        ...state,
+        delegation: {
+            ...state.delegation,
+            externalRequests: action.payload,
+        }
+      };
+
     case 'RESET_STATE':
       return initialState;
 
@@ -281,6 +294,10 @@ export const useDashboard = () => {
     dispatch({ type: 'RESET_STATE' });
   }, []);
 
+  const updateDelegationRequests = useCallback((requests: any[]) => {
+    dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests });
+  }, []);
+
   return {
     state,
     updateMCPsConnections,
@@ -302,5 +319,20 @@ export const useDashboard = () => {
     setActiveTab,
     setTheme,
     resetState,
+    updateDelegationRequests,
   };
 };
+
+    case 'UPDATE_DELEGATION_REQUESTS':
+      return {
+        ...state,
+        delegation: {
+            ...state.delegation,
+            externalRequests: action.payload
+        }
+      };
+
+  const updateDelegationRequests = useCallback((requests: any[]) => {
+    dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests });
+  }, []);
+
