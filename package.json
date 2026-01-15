@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -274,6 +274,24 @@
           "dark": "resources/icons/dark/refresh.svg",
           "light": "resources/icons/light/refresh.svg"
         }
+      },
+      {
+        "command": "memorybank.agent.acceptTask",
+        "title": "Aceptar Tarea Delegada",
+        "category": "Memory Bank Agent",
+        "icon": "$(check)"
+      },
+      {
+        "command": "memorybank.agent.rejectTask",
+        "title": "Rechazar Tarea Delegada",
+        "category": "Memory Bank Agent",
+        "icon": "$(close)"
+      },
+      {
+        "command": "memorybank.agent.delegateTask",
+        "title": "Delegar Tarea a Proyecto",
+        "category": "Memory Bank Agent",
+        "icon": "$(arrow-right)"
       }
     ],
     "menus": {
@@ -327,6 +345,23 @@
           "command": "memorybank.agents.refresh",
           "when": "view == memorybank-agents",
           "group": "navigation"
+        },
+        {
+          "command": "memorybank.agent.delegateTask",
+          "when": "view == memorybank-agents",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "memorybank.agent.acceptTask",
+          "when": "view == memorybank-agents && viewItem == external-request",
+          "group": "inline"
+        },
+        {
+          "command": "memorybank.agent.rejectTask",
+          "when": "view == memorybank-agents && viewItem == external-request",
+          "group": "inline"
         }
       ],
       "editor/context": [

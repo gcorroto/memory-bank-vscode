@@ -2,6 +2,8 @@
 
 // VS Code extensibility API
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Import Memory Bank providers
 import { MemoryBankProjectsProvider, ProjectTreeItem } from './MemoryBankProjectsProvider';
@@ -9,7 +11,7 @@ import { IndexedFilesProvider } from './IndexedFilesProvider';
 import { ProjectDocsProvider } from './ProjectDocsProvider';
 import { RelationsTreeProvider } from './RelationsTreeProvider';
 import { FrameworkComponentsProvider } from './FrameworkComponentsProvider';
-import { ActiveAgentsProvider } from './ActiveAgentsProvider';
+import { ActiveAgentsProvider, ExternalRequestTreeItem } from './ActiveAgentsProvider';
 import { getMemoryBankService } from './services/memoryBankService';
 import { ProjectInfo } from './types/memoryBank';
 import * as relationsAnalyzerService from './services/relationsAnalyzerService';
@@ -204,6 +206,73 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
       logger.appendLine('Refreshing Agents view...');
       activeAgentsProvider.refresh();
     })
+  );
+
+  // Helper function to update request status in agentBoard.md
+  async function updateExternalRequestStatus(item: ExternalRequestTreeItem, newStatus: string) {
+    const project = activeAgentsProvider.getSelectedProject();
+    if (!project) {
+        vscode.window.showErrorMessage('No project selected');
+        return;
+    }
+    
+    const service = getMemoryBankService();
+    const mbPath = service.getMemoryBankPath();
+    if (!mbPath) {
+        vscode.window.showErrorMessage('Memory Bank not configured');
+        return;
+    }
+
+    const boardPath = path.join(mbPath, 'projects', project.id, 'docs', 'agentBoard.md');
+    if (!fs.existsSync(boardPath)) {
+        vscode.window.showErrorMessage('Agent Board not found');
+        return;
+    }
+
+    try {
+        let content = fs.readFileSync(boardPath, 'utf-8');
+        const lines = content.split('\n');
+        const newLines = lines.map(line => {
+            if (line.includes(`| ${item.id} |`)) {
+                const parts = line.split('|');
+                if (parts.length >= 7) {
+                    // Update Status column (Index 5)
+                    parts[5] = ` ${newStatus} `;
+                    return parts.join('|');
+                }
+            }
+            return line;
+        });
+
+        fs.writeFileSync(boardPath, newLines.join('\n'));
+        vscode.window.showInformationMessage(`Request ${item.id} marked as ${newStatus}`);
+        activeAgentsProvider.refresh();
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to update board: ${error}`);
+    }
+  }
+
+  // Accept Delegated Task
+  context.subscriptions.push(
+      vscode.commands.registerCommand('memorybank.agent.acceptTask', async (item: ExternalRequestTreeItem) => {
+          if (!item) return;
+          await updateExternalRequestStatus(item, 'ACCEPTED');
+      })
+  );
+
+  // Reject Delegated Task
+  context.subscriptions.push(
+      vscode.commands.registerCommand('memorybank.agent.rejectTask', async (item: ExternalRequestTreeItem) => {
+          if (!item) return;
+          await updateExternalRequestStatus(item, 'REJECTED');
+      })
+  );
+
+  // Delegate Task
+  context.subscriptions.push(
+      vscode.commands.registerCommand('memorybank.agent.delegateTask', async () => {
+          vscode.window.showInformationMessage('To delegate a task, use the "delegate_task" tool via the Agent Chat.');
+      })
   );
 
   // Delete a project (including embeddings and project directory)

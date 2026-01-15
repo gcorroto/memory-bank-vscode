@@ -17,6 +17,10 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     this.logger = logger;
   }
 
+  public getSelectedProject(): ProjectInfo | null {
+    return this.selectedProject;
+  }
+
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
@@ -181,6 +185,47 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     }
     sections.push(agentsSection);
 
+    // Parse Pending Tasks
+    const tasksSection = new SectionTreeItem('Tareas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
+    tasksSection.iconPath = new vscode.ThemeIcon('checklist');
+    const tasks = this.parseTable(content, 'Pending Tasks');
+    if (tasks.length > 0) {
+        tasksSection.children = tasks.map(row => {
+            // | ID | Title | Assigned To | From | Status | Created At |
+            const [id, title, assignedTo, from, status, createdAt] = row;
+            const item = new vscode.TreeItem(title || 'Unknown Task', vscode.TreeItemCollapsibleState.None);
+            item.description = status;
+            item.tooltip = `ID: ${id}\nAssigned To: ${assignedTo}\nFrom: ${from}\nStatus: ${status}\nCreated: ${createdAt}`;
+            item.iconPath = new vscode.ThemeIcon('tasklist');
+            return item;
+        });
+    } else {
+        tasksSection.children = [new vscode.TreeItem('No hay tareas pendientes', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(tasksSection);
+
+    // Parse External Requests
+    const requestsSection = new SectionTreeItem('Peticiones Externas', vscode.TreeItemCollapsibleState.Collapsed);
+    requestsSection.iconPath = new vscode.ThemeIcon('broadcast');
+    const requests = this.parseTable(content, 'External Requests');
+    if (requests.length > 0) {
+        requestsSection.children = requests.map(row => {
+            // | ID | Title | From Project | Context | Status | Received At |
+            const [id, title, fromProject, context, status, receivedAt] = row;
+            return new ExternalRequestTreeItem(
+                id || 'Unknown',
+                title || 'Unknown Request',
+                fromProject || 'Unknown',
+                context || '',
+                status || 'PENDING',
+                receivedAt || ''
+            );
+        });
+    } else {
+        requestsSection.children = [new vscode.TreeItem('No hay peticiones externas', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(requestsSection);
+
     // Parse File Locks
     const locksSection = new SectionTreeItem('Bloqueos de Archivos', vscode.TreeItemCollapsibleState.Collapsed);
     locksSection.iconPath = new vscode.ThemeIcon('lock');
@@ -302,5 +347,22 @@ class AgentTreeItem extends vscode.TreeItem {
     ) {
         super(agentId, sessionId ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         this.contextValue = 'active-agent';
+    }
+}
+
+export class ExternalRequestTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly id: string,
+        public readonly title: string,
+        public readonly fromProject: string,
+        public readonly context: string,
+        public readonly status: string,
+        public readonly receivedAt: string
+    ) {
+        super(title, vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'external-request';
+        this.description = `${status} (from ${fromProject})`;
+        this.tooltip = `ID: ${id}\nFrom: ${fromProject}\nContext: ${context}\nStatus: ${status}\nReceived: ${receivedAt}`;
+        this.iconPath = new vscode.ThemeIcon('remote-explorer');
     }
 }
