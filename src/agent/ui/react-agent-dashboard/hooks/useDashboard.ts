@@ -323,16 +323,3 @@ export const useDashboard = () => {
   };
 };
 
-    case 'UPDATE_DELEGATION_REQUESTS':
-      return {
-        ...state,
-        delegation: {
-            ...state.delegation,
-            externalRequests: action.payload
-        }
-      };
-
-  const updateDelegationRequests = useCallback((requests: any[]) => {
-    dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests });
-  }, []);
-
