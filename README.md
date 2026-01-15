@@ -1,7 +1,7 @@
 # Memory Bank Inspector — VS Code Extension
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=grec0.memory-bank-vscode)
-[![Version](https://img.shields.io/badge/Version-0.0.20-green)](https://github.com/gcorroto/memory-bank-vscode)
+[![Version](https://img.shields.io/badge/Version-0.0.21-green)](https://github.com/gcorroto/memory-bank-vscode)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
 
 > **PREREQUISITE**: This extension requires [Memory Bank MCP](https://www.npmjs.com/package/@grec0/memory-bank-mcp) installed and configured with at least one indexed project. Without the MCP, this extension will not display any data.
@@ -119,6 +119,17 @@ Opening generated project documentation file
 - View file information (chunks, hash)
 - Open files directly in the editor
 
+### Framework Components Explorer
+
+![Framework Components](images/framework_components_placeholder.png)
+
+Automatically detects frameworks (React, Spring Boot, NestJS, etc.) and lists components:
+
+- **Component organization**: Groups files by their role (Controllers, Services, Components, Hooks, Stores)
+- **Endpoint detection**: Shows HTTP endpoints and routes defined in the code
+- **Easy navigation**: Jump directly to the component implementation
+- **Supported frameworks**: Spring Boot, NestJS, Angular, React, Vue, Django, FastAPI, Flask, Express
+
 ### Documentation Viewer
 
 ![Documentation](images/extension_init_index_4.png)
@@ -166,6 +177,16 @@ opening file directly from the dataflow
 ![Code Relations Detail](images/extension_init_index_10.png)
 
 creating a React project and querying the previously indexed Java project to implement the necessary views and services
+
+### Active Agents Monitor (Multi-Agent)
+
+![Active Agents](images/active_agents_placeholder.png)
+
+Real-time visualization of multi-agent activity (requires `agentBoard.md` from MCP):
+
+- **Active Agents**: Shows connected agents, their status, and current focus/task
+- **File Locks**: Visualizes which files are locked by which agent to prevent conflicts
+- **System Activity**: Live log of agent coordination messages
 
 ### Working with AI Agents
 
