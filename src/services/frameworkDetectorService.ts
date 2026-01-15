@@ -687,11 +687,20 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
     const sourcePath = projectConfig.sourcePath.replace(/\\/g, '/').toLowerCase();
     console.log(`[FrameworkDetector] Using sourcePath from config: "${projectConfig.sourcePath}"`);
     console.log(`[FrameworkDetector] Normalized sourcePath: "${sourcePath}"`);
+    
+    // Collect all config files from rules to ensure they are included
+    const configFiles = new Set<string>();
+    FRAMEWORK_DETECTION_RULES.forEach(rule => {
+      rule.configFiles.forEach(cf => configFiles.add(cf.toLowerCase()));
+    });
+
     projectFiles = allFiles.filter(([filePath]) => {
       const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
-      return normalizedPath.includes(sourcePath);
+      const fileName = path.basename(filePath).toLowerCase();
+      // Include if matches sourcePath OR is a framework config file
+      return normalizedPath.includes(sourcePath) || configFiles.has(fileName);
     });
-    console.log(`[FrameworkDetector] Files matching sourcePath: ${projectFiles.length}`);
+    console.log(`[FrameworkDetector] Files matching sourcePath (inc. config files): ${projectFiles.length}`);
   } else {
     // Fallback to heuristic detection
     console.log(`[FrameworkDetector] No sourcePath in config, using heuristic detection for "${projectId}"...`);
