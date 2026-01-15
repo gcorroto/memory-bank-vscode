@@ -83,7 +83,8 @@ export class DocTreeItem extends vscode.TreeItem {
       techContext: 'tools',
       activeContext: 'pulse',
       progress: 'tasklist',
-      decisionLog: 'history'
+      decisionLog: 'history',
+      agentBoard: 'circuit-board'
     };
     
     const iconName = iconMap[this.docType] || 'markdown';

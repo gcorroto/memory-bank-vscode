@@ -126,7 +126,8 @@ export const KNOWN_DOC_TYPES = [
   'techContext',
   'activeContext',
   'progress',
-  'decisionLog'
+  'decisionLog',
+  'agentBoard'
 ] as const;
 
 export type KnownDocType = typeof KNOWN_DOC_TYPES[number];
@@ -141,5 +142,6 @@ export const DOC_TYPE_LABELS: Record<KnownDocType, string> = {
   techContext: 'Tech Context',
   activeContext: 'Active Context',
   progress: 'Progress',
-  decisionLog: 'Decision Log'
+  decisionLog: 'Decision Log',
+  agentBoard: 'Agent Board'
 };

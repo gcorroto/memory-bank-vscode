@@ -1,7 +1,7 @@
 # Memory Bank Inspector — VS Code Extension
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=grec0.memory-bank-vscode)
-[![Version](https://img.shields.io/badge/Version-0.0.21-green)](https://github.com/gcorroto/memory-bank-vscode)
+[![Version](https://img.shields.io/badge/Version-0.0.22-green)](https://github.com/gcorroto/memory-bank-vscode)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
 
 > **PREREQUISITE**: This extension requires [Memory Bank MCP](https://www.npmjs.com/package/@grec0/memory-bank-mcp) installed and configured with at least one indexed project. Without the MCP, this extension will not display any data.
@@ -180,13 +180,17 @@ creating a React project and querying the previously indexed Java project to imp
 
 ### Active Agents Monitor (Multi-Agent)
 
-![Active Agents](images/active_agents_placeholder.png)
+![Active Agents](images/active_agents.png)
 
-Real-time visualization of multi-agent activity (requires `agentBoard.md` from MCP):
+This view provides real-time visibility into the **Memory Bank MCP Multi-Agent System**. It visualizes the state of the `agentBoard.md` file, allowing developers to coordinate with AI agents.
 
-- **Active Agents**: Shows connected agents, their status, and current focus/task
-- **File Locks**: Visualizes which files are locked by which agent to prevent conflicts
-- **System Activity**: Live log of agent coordination messages
+**Features:**
+- **Active Agents**: Displays all agents registered in the system (e.g., `Dev-Agent`, `Architect-Agent`), their current status (`ACTIVE`, `IDLE`), and their current task focus.
+- **Resource Locking**: visualizes the **File Locks** system. See exactly which files are currently "claimed" by an agent to prevent race conditions during parallel work.
+- **System Logs**: A live feed of coordination messages, showing when agents register, claim resources, or complete tasks.
+
+**How it works:**
+The extension watches for changes in `.memorybank/projects/{projectId}/docs/agentBoard.md`. When an MCP agent (using tools like `memorybank_manage_agents`) updates its status or locks a file, this view updates automatically.
 
 ### Working with AI Agents
 

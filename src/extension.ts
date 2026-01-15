@@ -578,6 +578,7 @@ function setupMemoryBankWatcher(context: vscode.ExtensionContext) {
       indexedFilesProvider.refresh();
       projectDocsProvider.refresh();
       relationsTreeProvider.refresh();
+      activeAgentsProvider.refresh();
     }, 1000); // 1 second debounce
   };
 

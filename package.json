@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",

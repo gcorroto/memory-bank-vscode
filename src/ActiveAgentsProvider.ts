@@ -64,7 +64,77 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         return element.children;
     }
 
+    // Handle session history navigation
+    if (element instanceof AgentTreeItem && element.sessionId && element.projectId) {
+        return this.getSessionHistory(element.projectId, element.sessionId);
+    }
+
     return [];
+  }
+
+  private async getSessionHistory(projectId: string, sessionId: string): Promise<vscode.TreeItem[]> {
+      const service = getMemoryBankService();
+      const mbPath = service.getMemoryBankPath();
+      if (!mbPath) return [];
+
+      const sessionPath = path.join(mbPath, 'projects', projectId, 'sessions', `${sessionId}.jsonl`);
+      
+      if (!fs.existsSync(sessionPath)) {
+          return [new vscode.TreeItem('No session history available', vscode.TreeItemCollapsibleState.None)];
+      }
+
+      try {
+          const content = fs.readFileSync(sessionPath, 'utf-8');
+          const lines = content.split('\n').filter(l => l.trim().length > 0);
+          
+          if (lines.length === 0) {
+               return [new vscode.TreeItem('Session log is empty', vscode.TreeItemCollapsibleState.None)];
+          }
+
+          // Limit to last 20 events reversed
+          const recentLines = lines.slice(-20).reverse();
+
+          return recentLines.map(line => {
+              try {
+                  const event = JSON.parse(line);
+                  const type = event.type || 'UNKNOWN';
+                  const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
+                  
+                  // Friendly label based on type
+                  let label = `[${type}]`;
+                  let description = timestamp;
+                  let icon = 'record';
+
+                  if (type === 'read_doc') {
+                      label = `Read ${path.basename(event.data?.path || 'doc')}`;
+                      icon = 'book';
+                  } else if (type === 'tool_use') {
+                      label = `Used ${event.data?.tool || 'tool'}`;
+                      icon = 'tools';
+                  } else if (type === 'memory_search') {
+                      label = `Searched memory`;
+                      description = `${timestamp} - "${event.data?.query?.substring(0, 20)}..."`;
+                      icon = 'search';
+                  }
+
+                  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+                  item.description = description;
+                  item.iconPath = new vscode.ThemeIcon(icon);
+                  
+                  // Tooltip with full JSON data
+                  item.tooltip = new vscode.MarkdownString();
+                  item.tooltip.appendCodeblock(JSON.stringify(event, null, 2), 'json');
+                  
+                  return item;
+              } catch (e) {
+                  return new vscode.TreeItem('Invalid log entry', vscode.TreeItemCollapsibleState.None);
+              }
+          });
+
+      } catch (error) {
+          this.logger.appendLine(`Error reading session log: ${error}`);
+          return [new vscode.TreeItem('Error reading session log', vscode.TreeItemCollapsibleState.None)];
+      }
   }
 
   private parseBoardContent(content: string): vscode.TreeItem[] {
@@ -74,16 +144,35 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     const agentsSection = new SectionTreeItem('Agentes Activos', vscode.TreeItemCollapsibleState.Expanded);
     agentsSection.iconPath = new vscode.ThemeIcon('organization');
     const agents = this.parseTable(content, 'Active Agents');
+    
     if (agents.length > 0) {
         agentsSection.children = agents.map(row => {
-            // | Agent ID | Status | Current Focus | Last Heartbeat |
-            const [id, status, focus, heartbeat] = row;
-            const item = new vscode.TreeItem(id || 'Unknown', vscode.TreeItemCollapsibleState.None);
+            // New Format: | Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
+            // Old Format: | Agent ID | Status | Current Focus | Last Heartbeat |
+            
+            let id, status, focus, sessionId, heartbeat;
+            
+            if (row.length >= 5) {
+                [id, status, focus, sessionId, heartbeat] = row;
+            } else {
+                [id, status, focus, heartbeat] = row;
+                sessionId = undefined;
+            }
+
+            const item = new AgentTreeItem(
+                id || 'Unknown', 
+                sessionId === '-' ? undefined : sessionId, 
+                this.selectedProject?.id || ''
+            );
+            
             item.description = status;
-            item.tooltip = `Status: ${status}\nFocus: ${focus}\nHeartbeat: ${heartbeat}`;
-            item.iconPath = new vscode.ThemeIcon('person');
+            item.tooltip = `Status: ${status}\nFocus: ${focus}\nSession: ${sessionId}\nHeartbeat: ${heartbeat}`;
+            
             if (status?.trim().toUpperCase() === 'ACTIVE') {
-                item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('testing.iconPassed'));
+                // Use a spinning icon for real-time activity feedback
+                item.iconPath = new vscode.ThemeIcon('loading~spin', new vscode.ThemeColor('testing.iconPassed'));
+            } else {
+                item.iconPath = new vscode.ThemeIcon('person');
             }
             return item;
         });
@@ -202,5 +291,16 @@ class SectionTreeItem extends vscode.TreeItem {
     public children: vscode.TreeItem[] = [];
     constructor(label: string, collapsibleState: vscode.TreeItemCollapsibleState) {
         super(label, collapsibleState);
+    }
+}
+
+class AgentTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly agentId: string,
+        public readonly sessionId: string | undefined,
+        public readonly projectId: string
+    ) {
+        super(agentId, sessionId ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'active-agent';
     }
 }
