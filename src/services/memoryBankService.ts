@@ -27,8 +27,26 @@ export class MemoryBankService {
   private lastCacheTime: number = 0;
   private readonly CACHE_TTL = 5000; // 5 seconds cache
   private sqliteService: SqliteService | null = null;
+  private outputChannel: vscode.OutputChannel | null = null;
 
   private constructor() {}
+
+  /**
+   * Set the output channel for logging
+   */
+  public setOutputChannel(channel: vscode.OutputChannel): void {
+    this.outputChannel = channel;
+    // Reset SqliteService so it gets recreated with the proper logger
+    this.sqliteService = null;
+    this.log('[MemoryBank] OutputChannel configured, SqliteService reset');
+  }
+
+  private log(msg: string): void {
+    if (this.outputChannel) {
+      this.outputChannel.appendLine(msg);
+    }
+    console.log(msg);
+  }
 
   /**
    * Get singleton instance
@@ -64,7 +82,7 @@ export class MemoryBankService {
 
   public getSqliteService(): SqliteService | null {
     if (this.sqliteService) {
-        console.log(`[MemoryBank] Returning cached SqliteService`);
+        this.log(`[MemoryBank] Returning cached SqliteService`);
         return this.sqliteService;
     }
     
@@ -73,36 +91,38 @@ export class MemoryBankService {
     const globalPath = path.join(os.homedir(), '.memorybank');
     const globalDbFile = path.join(globalPath, 'agentboard.db');
     
-    console.log(`[MemoryBank] ===== getSqliteService DEBUG ====`);
-    console.log(`[MemoryBank] os.homedir(): ${os.homedir()}`);
-    console.log(`[MemoryBank] Expected global DB path: ${globalDbFile}`);
-    console.log(`[MemoryBank] Global DB exists: ${fs.existsSync(globalDbFile)}`);
+    this.log(`[MemoryBank] ===== getSqliteService DEBUG ====`);
+    this.log(`[MemoryBank] os.homedir(): ${os.homedir()}`);
+    this.log(`[MemoryBank] Expected global DB path: ${globalDbFile}`);
+    this.log(`[MemoryBank] Global DB exists: ${fs.existsSync(globalDbFile)}`);
     
     // Also check workspace path for reference
     const workspacePath = this.getMemoryBankPath();
     if (workspacePath) {
         const workspaceDbFile = path.join(workspacePath, 'agentboard.db');
-        console.log(`[MemoryBank] Workspace path: ${workspacePath}`);
-        console.log(`[MemoryBank] Workspace DB file: ${workspaceDbFile}`);
-        console.log(`[MemoryBank] Workspace DB exists: ${fs.existsSync(workspaceDbFile)}`);
+        this.log(`[MemoryBank] Workspace path: ${workspacePath}`);
+        this.log(`[MemoryBank] Workspace DB file: ${workspaceDbFile}`);
+        this.log(`[MemoryBank] Workspace DB exists: ${fs.existsSync(workspaceDbFile)}`);
     }
     
     // Use global path - this is the source of truth from MCP
     const dbPath = globalPath;
     
     if (!fs.existsSync(globalDbFile)) {
-        console.error(`[MemoryBank] CRITICAL: agentboard.db NOT FOUND at ${globalDbFile}`);
-        console.error(`[MemoryBank] The MCP server should create this file. Run memorybank_manage_agents first.`);
+        this.log(`[MemoryBank] CRITICAL: agentboard.db NOT FOUND at ${globalDbFile}`);
+        this.log(`[MemoryBank] The MCP server should create this file. Run memorybank_manage_agents first.`);
         return null;
     }
     
     try {
-        console.log(`[MemoryBank] Initializing SqliteService with path: ${dbPath}`);
-        this.sqliteService = new SqliteService(dbPath, (msg) => console.log(msg));
-        console.log(`[MemoryBank] SqliteService initialized successfully`);
+        this.log(`[MemoryBank] Initializing SqliteService with path: ${dbPath}`);
+        // Pass the logger so SqliteService can log to the same OutputChannel
+        const logFn = (msg: string) => this.log(msg);
+        this.sqliteService = new SqliteService(dbPath, logFn);
+        this.log(`[MemoryBank] SqliteService initialized successfully`);
         return this.sqliteService;
     } catch (e) {
-        console.error('[MemoryBank] Failed to initialize SqliteService:', e);
+        this.log(`[MemoryBank] Failed to initialize SqliteService: ${e}`);
         return null;
     }
   }

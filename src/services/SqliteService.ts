@@ -56,45 +56,60 @@ export class SqliteService {
     }
 
     private runQueryFallback(sql: string, params: any[]): any[] {
-        if (!this.useFallback) return [];
+        this.logger(`[SqliteService] runQueryFallback called - useFallback: ${this.useFallback}`);
+        if (!this.useFallback) {
+            this.logger(`[SqliteService] Fallback not enabled, returning empty`);
+            return [];
+        }
+        
+        // Use a simple inline script that requires better-sqlite3 from the extension's node_modules
+        // The script receives DB_PATH, SQL and PARAMS via environment variables
+        const extensionRoot = path.resolve(__dirname, '..', '..');
+        const modulePath = path.join(extensionRoot, 'node_modules', 'better-sqlite3');
+        
+        this.logger(`[SqliteService] Fallback extensionRoot: ${extensionRoot}`);
+        this.logger(`[SqliteService] Fallback modulePath: ${modulePath}`);
+        this.logger(`[SqliteService] Fallback dbPath: ${this.dbPath}`);
+        this.logger(`[SqliteService] Fallback SQL: ${sql}`);
+        this.logger(`[SqliteService] Fallback params: ${JSON.stringify(params)}`);
         
         const script = `
-        try {
-            const Database = require(process.env.MODULE_PATH);
-            const db = new Database(process.env.DB_PATH, { fileMustExist: false });
-            const stmt = db.prepare(process.env.SQL);
-            console.log(JSON.stringify(stmt.all(...JSON.parse(process.env.PARAMS))));
-        } catch(e) { console.error(e); process.exit(1); }
+const Database = require('${modulePath.replace(/\\/g, '\\\\')}');
+const db = new Database('${this.dbPath.replace(/\\/g, '\\\\')}', { fileMustExist: true });
+const stmt = db.prepare(\`${sql}\`);
+const params = ${JSON.stringify(params)};
+const result = stmt.all(...params);
+console.log(JSON.stringify(result));
         `;
         
         try {
-            // Find better-sqlite3 path relative to this file or from node_modules
-            // We assume 'better-sqlite3' is resolvable. If not, we might need a fixed path.
-            let modulePath = '';
-            try {
-                modulePath = require.resolve('better-sqlite3');
-            } catch {
-                modulePath = 'better-sqlite3'; // Hope it's in node_path
-            }
-
-            const env = { 
-                ...process.env, 
-                DB_PATH: this.dbPath, 
-                SQL: sql, 
-                PARAMS: JSON.stringify(params),
-                MODULE_PATH: modulePath
-            };
+            this.logger(`[SqliteService] Executing fallback via system node...`);
+            const res = cp.spawnSync('node', ['-e', script], { 
+                encoding: 'utf-8',
+                timeout: 10000 
+            });
             
-            // Prefer full path to node if possible, but 'node' from PATH is usually safe on dev machines
-            const res = cp.spawnSync('node', ['-e', script], { env });
+            this.logger(`[SqliteService] Fallback exit code: ${res.status}`);
+            
+            if (res.stderr) {
+                this.logger(`[SqliteService] Fallback stderr: ${String(res.stderr)}`);
+            }
             
             if (res.status !== 0) {
-                const errorMsg = res.stderr ? res.stderr.toString() : 'Unknown error';
-                this.logger(`[SqliteService] Fallback query failed: ${errorMsg}`);
+                this.logger(`[SqliteService] Fallback query failed with code ${res.status}`);
                 return [];
             }
-            if (!res.stdout) return [];
-            return JSON.parse(res.stdout.toString());
+            
+            const stdout = String(res.stdout || '');
+            if (!stdout || stdout.trim() === '') {
+                this.logger(`[SqliteService] Fallback returned empty stdout`);
+                return [];
+            }
+            
+            this.logger(`[SqliteService] Fallback stdout: ${stdout.substring(0, 500)}`);
+            const result = JSON.parse(stdout);
+            this.logger(`[SqliteService] Fallback parsed ${result.length} rows`);
+            return result;
         } catch (e) {
             this.logger(`[SqliteService] Fallback execution error: ${e}`);
             return [];

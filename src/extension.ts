@@ -163,8 +163,9 @@ function continueActivation(context: vscode.ExtensionContext) {
     logger.appendLine(`Error initializing agent system: ${error.message}`);
   });
 
-  // Log Memory Bank status
+  // Log Memory Bank status and set up logging
   const mbService = getMemoryBankService();
+  mbService.setOutputChannel(logger); // Enable logging to the OutputChannel
   if (mbService.memoryBankExists()) {
     logger.appendLine('Memory Bank found at: ' + mbService.getMemoryBankPath());
   } else {
