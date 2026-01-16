@@ -51,6 +51,8 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
       // Try SQLite (New implementation)
       if (sqlite) {
         try {
+            // Ensure sql.js is initialized (async)
+            await sqlite.ensureInitialized();
             return this.getChildrenFromSqlite(this.selectedProject.id);
         } catch (error) {
             this.logger.appendLine(`SQLite retrieval failed: ${error}, falling back to markdown`);

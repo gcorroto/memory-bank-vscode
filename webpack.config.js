@@ -21,7 +21,6 @@ const extensionConfig = {
   externals: {
     vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded
     '@lancedb/lancedb': 'commonjs @lancedb/lancedb', // LanceDB has native modules that can't be bundled
-    'better-sqlite3': 'commonjs better-sqlite3', // Native SQLite module - must not be bundled
   },
   resolve: {
     // support reading TypeScript and JavaScript files
