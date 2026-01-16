@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import {
   IndexMetadata,
   FileEntry,
@@ -64,11 +65,29 @@ export class MemoryBankService {
   public getSqliteService(): SqliteService | null {
     if (this.sqliteService) return this.sqliteService;
     
-    const mbPath = this.getMemoryBankPath();
-    if (!mbPath) return null;
+    // Priority: configured path -> user home directory -> workspace
+    // But for agentboard.db, it is usually global/centralized.
+    
+    let dbPath = this.getMemoryBankPath();
+    const globalPath = path.join(os.homedir(), '.memorybank');
+    
+    // If workspace path doesn't have the DB, check global path
+    if (dbPath && !fs.existsSync(path.join(dbPath, 'agentboard.db'))) {
+        if (fs.existsSync(path.join(globalPath, 'agentboard.db'))) {
+            dbPath = globalPath;
+            console.log(`[MemoryBank] Using global agentboard.db at ${globalPath}`);
+        }
+    }
+    
+    // Fallback: Use global path if no configured path
+    if (!dbPath) {
+        dbPath = globalPath;
+    }
+
+    if (!dbPath) return null;
     
     try {
-        this.sqliteService = new SqliteService(mbPath);
+        this.sqliteService = new SqliteService(dbPath);
         return this.sqliteService;
     } catch (e) {
         console.error('[MemoryBank] Failed to initialize SqliteService:', e);
