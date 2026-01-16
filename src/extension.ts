@@ -252,29 +252,6 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
     }
   }
 
-  // Accept Delegated Task
-  context.subscriptions.push(
-      vscode.commands.registerCommand('memorybank.agent.acceptTask', async (item: ExternalRequestTreeItem) => {
-          if (!item) return;
-          await updateExternalRequestStatus(item, 'ACCEPTED');
-      })
-  );
-
-  // Reject Delegated Task
-  context.subscriptions.push(
-      vscode.commands.registerCommand('memorybank.agent.rejectTask', async (item: ExternalRequestTreeItem) => {
-          if (!item) return;
-          await updateExternalRequestStatus(item, 'REJECTED');
-      })
-  );
-
-  // Delegate Task
-  context.subscriptions.push(
-      vscode.commands.registerCommand('memorybank.agent.delegateTask', async () => {
-          vscode.window.showInformationMessage('To delegate a task, use the "delegate_task" tool via the Agent Chat.');
-      })
-  );
-
   // Delete a project (including embeddings and project directory)
   context.subscriptions.push(
     vscode.commands.registerCommand('memorybank.deleteProject', async (item: any) => {
