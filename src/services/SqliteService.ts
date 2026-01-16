@@ -2,6 +2,7 @@ import * as Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import * as os from 'os';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
 
 export class SqliteService {
@@ -62,19 +63,34 @@ export class SqliteService {
             return [];
         }
         
-        // Use a simple inline script that requires better-sqlite3 from the extension's node_modules
-        // The script receives DB_PATH, SQL and PARAMS via environment variables
-        const extensionRoot = path.resolve(__dirname, '..', '..');
-        const modulePath = path.join(extensionRoot, 'node_modules', 'better-sqlite3');
+        // Strategy: Use better-sqlite3 as a simple npm module that node can resolve
+        // We run node from a working directory where better-sqlite3 is installed
+        // The memory-bank-mcp project has it, so we use that path
+        const mcpProjectPath = path.join(os.homedir(), 'workspaces', 'grecoLab', 'memory-bank-mcp');
+        const altProjectPath = 'C:\\workspaces\\grecoLab\\memory-bank-mcp';
         
-        this.logger(`[SqliteService] Fallback extensionRoot: ${extensionRoot}`);
-        this.logger(`[SqliteService] Fallback modulePath: ${modulePath}`);
+        // Check which path exists
+        let workingDir = '';
+        if (fs.existsSync(path.join(mcpProjectPath, 'node_modules', 'better-sqlite3'))) {
+            workingDir = mcpProjectPath;
+        } else if (fs.existsSync(path.join(altProjectPath, 'node_modules', 'better-sqlite3'))) {
+            workingDir = altProjectPath;
+        }
+        
+        this.logger(`[SqliteService] Fallback workingDir: ${workingDir || 'NOT FOUND'}`);
         this.logger(`[SqliteService] Fallback dbPath: ${this.dbPath}`);
         this.logger(`[SqliteService] Fallback SQL: ${sql}`);
         this.logger(`[SqliteService] Fallback params: ${JSON.stringify(params)}`);
         
+        if (!workingDir) {
+            this.logger(`[SqliteService] ERROR: Could not find memory-bank-mcp with better-sqlite3 installed`);
+            this.logger(`[SqliteService] Tried: ${mcpProjectPath} and ${altProjectPath}`);
+            return [];
+        }
+        
+        // Simple script that uses better-sqlite3 - node will resolve it from workingDir's node_modules
         const script = `
-const Database = require('${modulePath.replace(/\\/g, '\\\\')}');
+const Database = require('better-sqlite3');
 const db = new Database('${this.dbPath.replace(/\\/g, '\\\\')}', { fileMustExist: true });
 const stmt = db.prepare(\`${sql}\`);
 const params = ${JSON.stringify(params)};
@@ -83,10 +99,11 @@ console.log(JSON.stringify(result));
         `;
         
         try {
-            this.logger(`[SqliteService] Executing fallback via system node...`);
+            this.logger(`[SqliteService] Executing fallback via system node from ${workingDir}...`);
             const res = cp.spawnSync('node', ['-e', script], { 
                 encoding: 'utf-8',
-                timeout: 10000 
+                timeout: 10000,
+                cwd: workingDir  // Run from the directory with node_modules
             });
             
             this.logger(`[SqliteService] Fallback exit code: ${res.status}`);
