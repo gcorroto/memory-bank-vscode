@@ -63,32 +63,43 @@ export class MemoryBankService {
   }
 
   public getSqliteService(): SqliteService | null {
-    if (this.sqliteService) return this.sqliteService;
+    if (this.sqliteService) {
+        console.log(`[MemoryBank] Returning cached SqliteService`);
+        return this.sqliteService;
+    }
     
-    // Priority: configured path -> user home directory -> workspace
-    // But for agentboard.db, it is usually global/centralized.
-    
-    let dbPath = this.getMemoryBankPath();
+    // CRITICAL: agentboard.db is ALWAYS at ~/.memorybank/ (global, not per-workspace)
+    // This is where the MCP server writes it (see memory-bank-mcp/common/database.ts)
     const globalPath = path.join(os.homedir(), '.memorybank');
+    const globalDbFile = path.join(globalPath, 'agentboard.db');
     
-    // If workspace path doesn't have the DB, check global path
-    if (dbPath && !fs.existsSync(path.join(dbPath, 'agentboard.db'))) {
-        if (fs.existsSync(path.join(globalPath, 'agentboard.db'))) {
-            dbPath = globalPath;
-            console.log(`[MemoryBank] Using global agentboard.db at ${globalPath}`);
-        }
+    console.log(`[MemoryBank] ===== getSqliteService DEBUG ====`);
+    console.log(`[MemoryBank] os.homedir(): ${os.homedir()}`);
+    console.log(`[MemoryBank] Expected global DB path: ${globalDbFile}`);
+    console.log(`[MemoryBank] Global DB exists: ${fs.existsSync(globalDbFile)}`);
+    
+    // Also check workspace path for reference
+    const workspacePath = this.getMemoryBankPath();
+    if (workspacePath) {
+        const workspaceDbFile = path.join(workspacePath, 'agentboard.db');
+        console.log(`[MemoryBank] Workspace path: ${workspacePath}`);
+        console.log(`[MemoryBank] Workspace DB file: ${workspaceDbFile}`);
+        console.log(`[MemoryBank] Workspace DB exists: ${fs.existsSync(workspaceDbFile)}`);
     }
     
-    // Fallback: Use global path if no configured path
-    if (!dbPath) {
-        dbPath = globalPath;
+    // Use global path - this is the source of truth from MCP
+    const dbPath = globalPath;
+    
+    if (!fs.existsSync(globalDbFile)) {
+        console.error(`[MemoryBank] CRITICAL: agentboard.db NOT FOUND at ${globalDbFile}`);
+        console.error(`[MemoryBank] The MCP server should create this file. Run memorybank_manage_agents first.`);
+        return null;
     }
-
-    if (!dbPath) return null;
     
     try {
-        console.log(`[MemoryBank] initializing SqliteService with path: ${dbPath}`);
+        console.log(`[MemoryBank] Initializing SqliteService with path: ${dbPath}`);
         this.sqliteService = new SqliteService(dbPath, (msg) => console.log(msg));
+        console.log(`[MemoryBank] SqliteService initialized successfully`);
         return this.sqliteService;
     } catch (e) {
         console.error('[MemoryBank] Failed to initialize SqliteService:', e);

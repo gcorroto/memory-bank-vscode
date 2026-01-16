@@ -158,14 +158,29 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
   }
 
   private getChildrenFromSqlite(projectId: string): vscode.TreeItem[] {
+    this.logger.appendLine(`[ActiveAgentsProvider] ===== getChildrenFromSqlite DEBUG =====`);
+    this.logger.appendLine(`[ActiveAgentsProvider] projectId: "${projectId}"`);
+    
     const service = getMemoryBankService();
     const sqlite = service.getSqliteService();
-    if (!sqlite) return [];
+    
+    this.logger.appendLine(`[ActiveAgentsProvider] sqlite service obtained: ${!!sqlite}`);
+    
+    if (!sqlite) {
+        this.logger.appendLine(`[ActiveAgentsProvider] ERROR: SqliteService is null!`);
+        return [new vscode.TreeItem('Error: SqliteService no disponible', vscode.TreeItemCollapsibleState.None)];
+    }
 
     const sections: vscode.TreeItem[] = [];
 
     // Active Agents
+    this.logger.appendLine(`[ActiveAgentsProvider] Calling sqlite.getActiveAgents("${projectId}")...`);
     const agents = sqlite.getActiveAgents(projectId);
+    this.logger.appendLine(`[ActiveAgentsProvider] Agents returned: ${agents.length}`);
+    if (agents.length > 0) {
+        this.logger.appendLine(`[ActiveAgentsProvider] First agent: ${JSON.stringify(agents[0])}`);
+    }
+    
     const agentsSection = new SectionTreeItem('Agentes Activos (SQLite)', vscode.TreeItemCollapsibleState.Expanded);
     agentsSection.iconPath = new vscode.ThemeIcon('organization');
     if (agents.length > 0) {

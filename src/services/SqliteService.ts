@@ -14,17 +14,42 @@ export class SqliteService {
         this.logger = logger || console.log;
         // Do not create directory if we are looking for existing DB in global path
         this.dbPath = path.join(storagePath, 'agentboard.db');
-        this.logger(`[SqliteService] Initializing with DB path: ${this.dbPath}`);
+        this.logger(`[SqliteService] ===== CONSTRUCTOR DEBUG =====`);
+        this.logger(`[SqliteService] storagePath received: ${storagePath}`);
+        this.logger(`[SqliteService] Full DB path: ${this.dbPath}`);
+        this.logger(`[SqliteService] File exists: ${fs.existsSync(this.dbPath)}`);
+        
+        if (fs.existsSync(this.dbPath)) {
+            const stats = fs.statSync(this.dbPath);
+            this.logger(`[SqliteService] File size: ${stats.size} bytes`);
+            this.logger(`[SqliteService] Last modified: ${stats.mtime.toISOString()}`);
+        }
+        
         this.init();
     }
 
     private init() {
+        if (!fs.existsSync(this.dbPath)) {
+            this.logger(`[SqliteService] ERROR: Database file does not exist at ${this.dbPath}`);
+            this.db = null;
+            return;
+        }
+        
         try {
             this.logger(`[SqliteService] Attempting to open database with better-sqlite3...`);
-            this.db = new Database(this.dbPath, { fileMustExist: false, verbose: this.logger });
-            this.logger(`[SqliteService] Database opened successfully.`);
+            this.db = new Database(this.dbPath, { fileMustExist: true });
+            this.logger(`[SqliteService] Database opened successfully!`);
+            
+            // Quick sanity check - list tables
+            try {
+                const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {name: string}[];
+                this.logger(`[SqliteService] Tables in DB: ${tables.map(t => t.name).join(', ')}`);
+            } catch (e) {
+                this.logger(`[SqliteService] Could not list tables: ${e}`);
+            }
         } catch (error) {
-            this.logger(`[SqliteService] Failed to initialize SQLite native driver: ${error}. Switching to fallback mode (system node).`);
+            this.logger(`[SqliteService] Failed to initialize SQLite native driver: ${error}`);
+            this.logger(`[SqliteService] Switching to fallback mode (system node).`);
             this.db = null;
             this.useFallback = true;
         }
@@ -79,17 +104,44 @@ export class SqliteService {
     // --- Agents ---
 
     public getActiveAgents(projectId: string): AgentInfo[] {
-        if (!this.db && !this.useFallback) return [];
+        this.logger(`[SqliteService] ===== getActiveAgents DEBUG =====`);
+        this.logger(`[SqliteService] projectId: "${projectId}"`);
+        this.logger(`[SqliteService] this.db is set: ${!!this.db}`);
+        this.logger(`[SqliteService] this.useFallback: ${this.useFallback}`);
+        
+        if (!this.db && !this.useFallback) {
+            this.logger(`[SqliteService] ABORT: No DB and no fallback available`);
+            return [];
+        }
+        
         try {
             // Table: agents (id, project_id, session_id, status, focus, last_heartbeat, created_at)
             const sql = 'SELECT * FROM agents WHERE project_id = ?';
+            this.logger(`[SqliteService] SQL: ${sql}`);
+            this.logger(`[SqliteService] Params: [${projectId}]`);
             
             let rows: any[] = [];
             if (this.db) {
+                this.logger(`[SqliteService] Using native better-sqlite3`);
                 const stmt = this.db.prepare(sql);
                 rows = stmt.all(projectId) as any[];
             } else {
+                this.logger(`[SqliteService] Using fallback (system node)`);
                 rows = this.runQueryFallback(sql, [projectId]);
+            }
+            
+            this.logger(`[SqliteService] Raw rows returned: ${rows.length}`);
+            if (rows.length > 0) {
+                this.logger(`[SqliteService] First row: ${JSON.stringify(rows[0])}`);
+            }
+            
+            // Also check ALL agents in DB regardless of project
+            if (this.db) {
+                const allAgents = this.db.prepare('SELECT * FROM agents').all() as any[];
+                this.logger(`[SqliteService] Total agents in DB (all projects): ${allAgents.length}`);
+                if (allAgents.length > 0) {
+                    this.logger(`[SqliteService] All project_ids in DB: ${[...new Set(allAgents.map((a: any) => a.project_id))].join(', ')}`);
+                }
             }
 
             return rows.map(r => ({
@@ -101,7 +153,7 @@ export class SqliteService {
                 lastHeartbeat: r.last_heartbeat
             }));
         } catch (e) {
-            console.error('Error querying agents:', e);
+            this.logger(`[SqliteService] ERROR querying agents: ${e}`);
             return [];
         }
     }
