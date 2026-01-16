@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as crypto from 'crypto';
 
 // Use fs.promises for async file operations
@@ -1153,61 +1154,52 @@ function filterFilesByProject(
 
 /**
  * Load project config from metadata.json (contains sourcePath)
- * Searches in multiple possible locations within the Memory Bank structure
+ * 
+ * IMPORTANT: Memory Bank stores all data in ~/.memorybank/ (GLOBAL)
+ * This matches how the MCP server works (see memory-bank-mcp/common/database.ts)
  */
 async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: string } | null> {
   try {
-    const mbService = getMemoryBankService();
-    const mbPath = mbService.getMemoryBankPath();
-    if (!mbPath) return null;
+    // GLOBAL path: ~/.memorybank/ - this is where the MCP stores everything
+    const globalMbPath = path.join(os.homedir(), '.memorybank');
     
-    // Try multiple possible locations for metadata
-    const possiblePaths = [
-      // Standard location: memory-bank/projects/{projectId}/docs/metadata.json
-      path.join(path.dirname(mbPath), 'projects', projectId, 'docs', 'metadata.json'),
-      // Alternative: memory-bank/projects/{projectId}/metadata.json
-      path.join(path.dirname(mbPath), 'projects', projectId, 'metadata.json'),
-      // Direct in memory-bank: memory-bank/{projectId}/metadata.json
-      path.join(mbPath, projectId, 'metadata.json'),
-      // Inside projects folder of memory-bank
-      path.join(mbPath, 'projects', projectId, 'metadata.json'),
-      path.join(mbPath, 'projects', projectId, 'docs', 'metadata.json'),
-    ];
+    // Metadata is at: ~/.memorybank/projects/{projectId}/docs/metadata.json
+    const metadataPath = path.join(globalMbPath, 'projects', projectId, 'docs', 'metadata.json');
     
-    for (const metadataPath of possiblePaths) {
-      if (fs.existsSync(metadataPath)) {
-        console.log(`[Relations] Found metadata at: ${metadataPath}`);
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        const data = JSON.parse(content);
-        
-        // Check for sourcePath in various locations
-        const sourcePath = data._projectConfig?.sourcePath || 
-                          data.sourcePath || 
-                          data.projectPath ||
-                          data.rootPath;
-        
-        if (sourcePath) {
-          console.log(`[Relations] Found sourcePath in config: ${sourcePath}`);
-          return { sourcePath };
-        }
-      }
-    }
+    console.log(`[Relations] Looking for metadata at: ${metadataPath}`);
     
-    // Also try to get from index-metadata.json which might have the root path
-    const indexMetaPath = path.join(mbPath, 'index-metadata.json');
-    if (fs.existsSync(indexMetaPath)) {
-      const indexContent = fs.readFileSync(indexMetaPath, 'utf-8');
-      const indexData = JSON.parse(indexContent);
+    if (fs.existsSync(metadataPath)) {
+      console.log(`[Relations] Found metadata.json`);
+      const content = fs.readFileSync(metadataPath, 'utf-8');
+      const data = JSON.parse(content);
       
-      // The index might have projectRoot or similar
-      const rootPath = indexData.projectRoot || indexData.rootPath || indexData.basePath;
-      if (rootPath) {
-        console.log(`[Relations] Found rootPath in index-metadata: ${rootPath}`);
-        return { sourcePath: rootPath };
+      // Check for sourcePath in various locations within the JSON
+      const sourcePath = data._projectConfig?.sourcePath || 
+                        data.sourcePath || 
+                        data.projectPath ||
+                        data.rootPath;
+      
+      if (sourcePath) {
+        console.log(`[Relations] Found sourcePath in config: ${sourcePath}`);
+        return { sourcePath };
+      }
+      console.log(`[Relations] metadata.json found but no sourcePath field`);
+    }
+    
+    // Fallback: try global_registry.json which has project paths
+    const registryPath = path.join(globalMbPath, 'global_registry.json');
+    if (fs.existsSync(registryPath)) {
+      const registryContent = fs.readFileSync(registryPath, 'utf-8');
+      const registry = JSON.parse(registryContent);
+      
+      const project = registry.projects?.find((p: any) => p.projectId === projectId);
+      if (project?.path) {
+        console.log(`[Relations] Found project path in global_registry: ${project.path}`);
+        return { sourcePath: project.path };
       }
     }
     
-    console.log(`[Relations] No sourcePath found in any config for project ${projectId}`);
+    console.log(`[Relations] No sourcePath found for project ${projectId}`);
     return null;
   } catch (error) {
     console.error(`[Relations] Error loading project config:`, error);
