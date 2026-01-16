@@ -1,12 +1,13 @@
-import Database from 'better-sqlite3';
-import type { Database as DatabaseType } from 'better-sqlite3';
+// Use require for native module - ES imports don't work well with native addons
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Database = require('better-sqlite3');
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
 
 export class SqliteService {
-    private db: DatabaseType | null = null;
+    private db: any = null;  // better-sqlite3 Database instance
     private dbPath: string;
     private logger: (msg: string) => void;
 
