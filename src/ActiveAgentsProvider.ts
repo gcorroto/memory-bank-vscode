@@ -42,9 +42,24 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
       }
 
       const service = getMemoryBankService();
+      const mbPath = service.getMemoryBankPath();
+      
+      // Try to sync/read from Markdown to SQLite first
+      const sqlite = service.getSqliteService();
+      if (sqlite && mbPath) {
+         try {
+             // Read agentBoard.md and sync to SQLite
+             const boardPath = path.join(mbPath, 'projects', this.selectedProject.id, 'docs', 'agentBoard.md');
+             if (fs.existsSync(boardPath)) {
+                 const content = fs.readFileSync(boardPath, 'utf-8');
+                 this.syncBoardToSqlite(content, sqlite, this.selectedProject.id);
+             }
+         } catch (e) {
+             this.logger.appendLine(`Failed to sync Markdown to SQLite: ${e}`);
+         }
+      }
       
       // Try SQLite (New implementation)
-      const sqlite = service.getSqliteService();
       if (sqlite) {
         try {
             return this.getChildrenFromSqlite(this.selectedProject.id);
@@ -53,7 +68,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         }
       }
 
-      const mbPath = service.getMemoryBankPath();
+      // Fallback relative path check...
       if (!mbPath) {
         return [new vscode.TreeItem('Memory Bank no configurado', vscode.TreeItemCollapsibleState.None)];
       }
@@ -423,6 +438,73 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         }
     }
     return rows;
+  }
+
+  private syncBoardToSqlite(content: string, sqlite: SqliteService, projectId: string) {
+      // Parse Agents
+      const agentsData = this.parseTable(content, 'Active Agents');
+      const agents = agentsData.map(row => {
+          let id, status, focus, sessionId, heartbeat;
+          if (row.length >= 5) {
+              [id, status, focus, sessionId, heartbeat] = row;
+          } else {
+              [id, status, focus, heartbeat] = row;
+          }
+          return {
+              id: id || '',
+              projectId,
+              status: status || '',
+              focus: focus || '',
+              sessionId: sessionId === '-' ? undefined : sessionId,
+              lastHeartbeat: heartbeat || ''
+          };
+      }).filter(a => a.id);
+      sqlite.syncAgents(agents);
+
+      // Parse Pending Tasks
+      const tasksData = this.parseTable(content, 'Pending Tasks');
+      const tasks = tasksData.map(row => {
+          const [id, title, assignedTo, from, status, createdAt] = row;
+           return {
+               id: id || '',
+               projectId,
+               title: title || '',
+               assignedTo: assignedTo || '',
+               from: from || '',
+               status: status || '',
+               createdAt: createdAt || ''
+           };
+      }).filter(t => t.id);
+      sqlite.syncPendingTasks(tasks);
+
+      // Parse External Requests
+      const requestsData = this.parseTable(content, 'External Requests');
+      const requests = requestsData.map(row => {
+          const [id, title, fromProject, context, status, receivedAt] = row;
+          return {
+              id: id || '',
+              projectId,
+              title: title || '',
+              fromProject: fromProject || '',
+              context: context || '',
+              status: status || '',
+              receivedAt: receivedAt || ''
+          };
+      }).filter(r => r.id);
+      sqlite.syncExternalRequests(requests);
+
+      // Parse File Locks
+      const locksData = this.parseTable(content, 'File Locks');
+      const locks = locksData.map(row => {
+          const [pattern, claimedBy, since] = row;
+          return {
+              pattern: pattern || '',
+              projectId,
+              claimedBy: claimedBy || '',
+              since: since || ''
+          };
+      }).filter(l => l.pattern);
+      sqlite.syncFileLocks(locks);
   }
 
   private parseBulletPoints(content: string, sectionTitle: string): string[] {
