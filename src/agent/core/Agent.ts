@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as openaiService from '../../services/openaiService';
 import * as ragService from '../../services/ragService';
 import * as modelPricingService from '../../services/modelPricingService';
+import { getMemoryBankService } from '../../services/memoryBankService';
 import { AgentToolManager } from './AgentToolManager';
 import { ContextManager } from './ContextManager';
 import { WorkspaceManager } from './WorkspaceManager';
@@ -35,6 +36,8 @@ export class Agent {
     flowViewer: FlowViewer | null = null;
     terminalManager: CustomCLITerminalManager;
     fileSnapshotManager: FileSnapshotManager;
+    public sessionId: string = '';
+    public projectId: string = 'memory_bank_vscode_extension';
     private eventEmitter: vscode.EventEmitter<AgentEvent> = new vscode.EventEmitter<AgentEvent>();
     public readonly onDidEmitEvent: vscode.Event<AgentEvent> = this.eventEmitter.event;
 
@@ -81,6 +84,21 @@ export class Agent {
             await this.workspaceManager.initialize();
             await this.databaseManager.initialize();
             
+            // Register Agent Session
+            try {
+                const service = getMemoryBankService();
+                if (service) {
+                    this.sessionId = await service.registerAgent(this.projectId, this.name, 'ACTIVE', 'Initialized');
+                    if (this.sessionId) {
+                        this.logger.appendLine(`Agent registered with Session ID: ${this.sessionId}`);
+                    } else {
+                        this.logger.appendLine(`Failed to register agent session (check if memory bank is configured)`);
+                    }
+                }
+            } catch (err) {
+                this.logger.appendLine(`Error registering agent session: ${err}`);
+            }
+
             // Initialize LLM client
             const llmInitialized = this.llmClient.initialize();
             

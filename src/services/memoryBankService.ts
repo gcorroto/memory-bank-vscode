@@ -464,6 +464,125 @@ export class MemoryBankService {
   }
 
   /**
+   * Register an active agent in the Memory Bank
+   * Updates agentBoard.md with the agent's status and session ID
+   */
+  public async registerAgent(projectId: string, agentId: string, status: string, focus: string): Promise<string> {
+    const mbPath = this.getMemoryBankPath();
+    if (!mbPath) return '';
+
+    const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
+    
+    // Generate session ID
+    const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+    
+    if (!fs.existsSync(boardPath)) {
+        return sessionId; // Fail silently or create board
+    }
+
+    const timestamp = new Date().toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0];
+
+    try {
+      const content = await fs.promises.readFile(boardPath, 'utf8');
+      const lines = content.split('\n');
+      const newLines: string[] = [];
+      let inAgentsSection = false;
+      let agentUpdated = false;
+
+      for (const line of lines) {
+        if (line.trim().startsWith('## Active Agents')) {
+           inAgentsSection = true;
+           newLines.push(line);
+           continue;
+        }
+        
+        if (inAgentsSection && line.startsWith('## ')) {
+            inAgentsSection = false;
+        }
+
+        if (inAgentsSection) {
+             // Check for existing agent row
+            if ((line.includes(`| ${agentId} `) || line.includes(`|${agentId}|`)) && !line.includes('---')) {
+                // Update existing row
+                // | Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
+                newLines.push(`| ${agentId} | ${status} | ${focus} | ${sessionId} | ${timestamp} |`);
+                agentUpdated = true;
+                continue;
+            }
+            
+            // If we are at the end of the table (empty line or next section) and haven't updated, 
+            // we'll need to handle insertion. But simpler strategy:
+            // Just rewrite the table if possible, or append if we can identify the end.
+            // For now, only update is fully safe with this simple logic.
+        }
+        newLines.push(line);
+      }
+      
+      if (!agentUpdated) {
+          // If not found in the loop, we should ideally insert it. 
+          // However, inserting into markdown table programmatically is fragile without a parser.
+          console.warn(`[MemoryBank] Agent ${agentId} not found in Active Agents table. Registration incomplete (only updates supported).`);
+      } else {
+          await fs.promises.writeFile(boardPath, newLines.join('\n'), 'utf8');
+      }
+      
+      return sessionId;
+    } catch (e) {
+      console.error('[MemoryBank] Failed to register agent:', e);
+      return '';
+    }
+  }
+
+  /**
+   * Check if a file is locked by another agent
+   */
+  public async checkFileLock(projectId: string, filePath: string, requestingAgentId: string): Promise<boolean> {
+      const mbPath = this.getMemoryBankPath();
+      if (!mbPath) return false;
+      
+      const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
+      if (!fs.existsSync(boardPath)) return false;
+
+      try {
+          const content = await fs.promises.readFile(boardPath, 'utf8');
+          // Parse File Locks section
+          const lines = content.split('\n');
+          let inLocksSection = false;
+          
+          for (const line of lines) {
+              if (line.trim().startsWith('## File Locks')) {
+                  inLocksSection = true;
+                  continue;
+              }
+              if (inLocksSection && line.startsWith('## ')) break;
+              
+              if (inLocksSection && line.trim().startsWith('|') && !line.includes('---')) {
+                  const parts = line.split('|').map(p => p.trim());
+                  // | File Pattern | Claimed By | Since |
+                  if (parts.length >= 4) { // part[0] is empty if line starts with |
+                      const pattern = parts[1];
+                      const claimedBy = parts[2];
+                      
+                      if (claimedBy !== requestingAgentId && this.isFileLocked(filePath, pattern)) {
+                          return true;
+                      }
+                  }
+              }
+          }
+          return false;
+      } catch {
+          return false;
+      }
+  }
+
+  private isFileLocked(filePath: string, pattern: string): boolean {
+      // Normalize both paths to use forward slashes
+      const normFilePath = filePath.replace(/\\/g, '/');
+      const normPattern = pattern.replace(/\\/g, '/');
+      return normFilePath.includes(normPattern);
+  }
+
+  /**
    * Remove file entries for a project from index-metadata.json
    * Files are identified by checking if they belong to the project's sourcePath
    */

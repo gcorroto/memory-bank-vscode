@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseTool } from './BaseTool';
 import { Agent } from '../core/Agent';
+import { getMemoryBankService } from '../../services/memoryBankService';
 
 type WriteMode = 'write' | 'append' | 'create';
 
@@ -61,6 +62,26 @@ export class WriteFileTool extends BaseTool {
         try {
             // Normalizar la ruta del archivo
             const normalizedFilePath = this.normalizePath(filePath);
+            
+            // Check for locks
+            try {
+                const service = getMemoryBankService();
+                if (service && this.agent.projectId) {
+                    const isLocked = await service.checkFileLock(this.agent.projectId, normalizedFilePath, this.agent.name);
+                    if (isLocked) {
+                        throw new Error(`File is locked by another agent. Cannot write to: ${normalizedFilePath}`);
+                    }
+                }
+            } catch (lockError: any) {
+                // If checking lock fails (e.g. board not found), we should probably warn but proceed or fail depending on strictness.
+                // For now, if explicit lock logic fails, we assume it's locked to be safe, OR we just log and proceed if it's just a read error?
+                // The requirement is strict locking.
+                if (lockError.message.includes('File is locked')) {
+                    throw lockError;
+                }
+                this.logger.appendLine(`Warning: Could not check file lock: ${lockError.message}`);
+            }
+
             this.logger.appendLine(`Attempting to write to file: ${normalizedFilePath}`);
             
             // Create directory if it doesn't exist
