@@ -205,6 +205,8 @@ export class FrameworkComponentsProvider implements vscode.TreeDataProvider<Fram
 
   constructor(logger: vscode.OutputChannel) {
     this.logger = logger;
+    // Configure framework detector to use the same logger
+    frameworkDetectorService.setLogger((msg: string) => this.logger.appendLine(msg));
   }
 
   /**

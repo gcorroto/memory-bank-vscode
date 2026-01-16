@@ -24,6 +24,24 @@ import {
 } from '../types/framework';
 
 // ============================================================================
+// Configurable Logger (allows OutputChannel logging)
+// ============================================================================
+
+let logger: (msg: string) => void = console.log;
+
+/**
+ * Set the logger function for the framework detector
+ * Call this from the extension to route logs to OutputChannel
+ */
+export function setLogger(logFn: (msg: string) => void): void {
+  logger = logFn;
+}
+
+function log(msg: string): void {
+  logger(msg);
+}
+
+// ============================================================================
 // Framework Detection Rules (by config files)
 // ============================================================================
 
@@ -429,7 +447,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
           if (pattern.test(content)) {
             if (!detectedFrameworks.includes(rule.framework)) {
               detectedFrameworks.push(rule.framework);
-              console.log(`[FrameworkDetector] Detected ${rule.framework} via ${configFile}`);
+              log(`[FrameworkDetector] Detected ${rule.framework} via ${configFile}`);
             }
             break;
           }
@@ -444,7 +462,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
     if (/@RestController|@Service|@Repository|@Entity|@Component|@Configuration/.test(content)) {
       if (!detectedFrameworks.includes('spring-boot')) {
         detectedFrameworks.push('spring-boot');
-        console.log(`[FrameworkDetector] Detected spring-boot from annotations in ${filePath}`);
+        log(`[FrameworkDetector] Detected spring-boot from annotations in ${filePath}`);
       }
     }
     
@@ -452,7 +470,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
     if (/@Component\s*\(\s*\{[\s\S]*?selector/.test(content) || /@NgModule\s*\(/.test(content)) {
       if (!detectedFrameworks.includes('angular')) {
         detectedFrameworks.push('angular');
-        console.log(`[FrameworkDetector] Detected angular from decorators in ${filePath}`);
+        log(`[FrameworkDetector] Detected angular from decorators in ${filePath}`);
       }
     }
     
@@ -460,7 +478,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
     if (/@Controller\s*\(/.test(content) && (/@Injectable\s*\(/.test(content) || /@Module\s*\(/.test(content))) {
       if (!detectedFrameworks.includes('nestjs')) {
         detectedFrameworks.push('nestjs');
-        console.log(`[FrameworkDetector] Detected nestjs from decorators in ${filePath}`);
+        log(`[FrameworkDetector] Detected nestjs from decorators in ${filePath}`);
       }
     }
     
@@ -468,7 +486,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
     if (/<script\s+setup|defineComponent|defineStore/.test(content) || filePath.endsWith('.vue')) {
       if (!detectedFrameworks.includes('vue') && !detectedFrameworks.includes('nuxt')) {
         detectedFrameworks.push('vue');
-        console.log(`[FrameworkDetector] Detected vue from patterns in ${filePath}`);
+        log(`[FrameworkDetector] Detected vue from patterns in ${filePath}`);
       }
     }
     
@@ -476,7 +494,7 @@ function detectFrameworkFromFiles(fileContents: Map<string, string>): FrameworkT
     if (/class\s+\w+\s*\(\s*(?:models\.Model|APIView|ViewSet)/.test(content)) {
       if (!detectedFrameworks.includes('django')) {
         detectedFrameworks.push('django');
-        console.log(`[FrameworkDetector] Detected django from patterns in ${filePath}`);
+        log(`[FrameworkDetector] Detected django from patterns in ${filePath}`);
       }
     }
   }
@@ -529,7 +547,7 @@ function extractComponents(
           metadata,
         });
         
-        console.log(`[FrameworkDetector] Found ${pattern.type}: ${name} in ${path.basename(filePath)}`);
+        log(`[FrameworkDetector] Found ${pattern.type}: ${name} in ${path.basename(filePath)}`);
       }
     }
     
@@ -605,7 +623,7 @@ async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: stri
     
     for (const metadataPath of possiblePaths) {
       if (fs.existsSync(metadataPath)) {
-        console.log(`[FrameworkDetector] Found metadata at: ${metadataPath}`);
+        log(`[FrameworkDetector] Found metadata at: ${metadataPath}`);
         const content = fs.readFileSync(metadataPath, 'utf-8');
         const data = JSON.parse(content);
         
@@ -616,7 +634,7 @@ async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: stri
                           data.rootPath;
         
         if (sourcePath) {
-          console.log(`[FrameworkDetector] Found sourcePath in config: ${sourcePath}`);
+          log(`[FrameworkDetector] Found sourcePath in config: ${sourcePath}`);
           return { sourcePath };
         }
       }
@@ -631,15 +649,15 @@ async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: stri
       // The index might have projectRoot or similar
       const rootPath = indexData.projectRoot || indexData.rootPath || indexData.basePath;
       if (rootPath) {
-        console.log(`[FrameworkDetector] Found rootPath in index-metadata: ${rootPath}`);
+        log(`[FrameworkDetector] Found rootPath in index-metadata: ${rootPath}`);
         return { sourcePath: rootPath };
       }
     }
     
-    console.log(`[FrameworkDetector] No sourcePath found in any config for project ${projectId}`);
+    log(`[FrameworkDetector] No sourcePath found in any config for project ${projectId}`);
     return null;
   } catch (error) {
-    console.error(`[FrameworkDetector] Error loading project config:`, error);
+    log(`[FrameworkDetector] ERROR: Error loading project config: ${error}`);
     return null;
   }
 }
@@ -648,13 +666,13 @@ async function loadProjectConfig(projectId: string): Promise<{ sourcePath?: stri
  * Main analysis function - follows same pattern as relationsAnalyzerService
  */
 export async function analyzeFrameworks(projectId: string): Promise<FrameworkAnalysis> {
-  console.log(`[FrameworkDetector] ========================================`);
-  console.log(`[FrameworkDetector] Analyzing project: ${projectId}`);
+  log(`[FrameworkDetector] ========================================`);
+  log(`[FrameworkDetector] Analyzing project: ${projectId}`);
   
   const mbService = getMemoryBankService();
   const mbPath = mbService.getMemoryBankPath();
   
-  console.log(`[FrameworkDetector] Memory Bank path: ${mbPath || 'NOT CONFIGURED'}`);
+  log(`[FrameworkDetector] Memory Bank path: ${mbPath || 'NOT CONFIGURED'}`);
   
   if (!mbPath) {
     throw new Error('Memory Bank path not configured');
@@ -667,15 +685,15 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   }
   
   const allFiles = Object.entries(indexMeta.files || {});
-  console.log(`[FrameworkDetector] Total indexed files: ${allFiles.length}`);
+  log(`[FrameworkDetector] Total indexed files: ${allFiles.length}`);
   
   if (allFiles.length === 0) {
     throw new Error('Index metadata contains no files.');
   }
   
   // Log sample of indexed files for debugging
-  console.log(`[FrameworkDetector] Sample of indexed files (first 5):`);
-  allFiles.slice(0, 5).forEach(([f]) => console.log(`[FrameworkDetector]   - ${f}`));
+  log(`[FrameworkDetector] Sample of indexed files (first 5):`);
+  allFiles.slice(0, 5).forEach(([f]) => log(`[FrameworkDetector]   - ${f}`));
   
   // First, try to get sourcePath from project config (SAME AS relationsAnalyzerService)
   const projectConfig = await loadProjectConfig(projectId);
@@ -685,8 +703,8 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   if (projectConfig?.sourcePath) {
     // Use sourcePath from config - filter files that contain this path
     const sourcePath = projectConfig.sourcePath.replace(/\\/g, '/').toLowerCase();
-    console.log(`[FrameworkDetector] Using sourcePath from config: "${projectConfig.sourcePath}"`);
-    console.log(`[FrameworkDetector] Normalized sourcePath: "${sourcePath}"`);
+    log(`[FrameworkDetector] Using sourcePath from config: "${projectConfig.sourcePath}"`);
+    log(`[FrameworkDetector] Normalized sourcePath: "${sourcePath}"`);
     
     // Collect all config files from rules to ensure they are included
     const configFiles = new Set<string>();
@@ -700,17 +718,17 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
       // Include if matches sourcePath OR is a framework config file
       return normalizedPath.includes(sourcePath) || configFiles.has(fileName);
     });
-    console.log(`[FrameworkDetector] Files matching sourcePath (inc. config files): ${projectFiles.length}`);
+    log(`[FrameworkDetector] Files matching sourcePath (inc. config files): ${projectFiles.length}`);
   } else {
     // Fallback to heuristic detection
-    console.log(`[FrameworkDetector] No sourcePath in config, using heuristic detection for "${projectId}"...`);
+    log(`[FrameworkDetector] No sourcePath in config, using heuristic detection for "${projectId}"...`);
     projectFiles = filterFilesByProject(allFiles, projectId);
   }
   
-  console.log(`[FrameworkDetector] Project files: ${projectFiles.length}`);
+  log(`[FrameworkDetector] Project files: ${projectFiles.length}`);
   
   if (projectFiles.length === 0) {
-    console.log(`[FrameworkDetector] No files found for project "${projectId}"`);
+    log(`[FrameworkDetector] No files found for project "${projectId}"`);
     return {
       projectId,
       frameworks: [],
@@ -727,8 +745,8 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   const isRelativePath = sampleFilePath.startsWith('.') || !path.isAbsolute(sampleFilePath);
   const baseDir = isRelativePath ? mbPath : '';
   
-  console.log(`[FrameworkDetector] File paths are ${isRelativePath ? 'relative' : 'absolute'}`);
-  console.log(`[FrameworkDetector] Base directory: ${baseDir || '(absolute paths)'}`);
+  log(`[FrameworkDetector] File paths are ${isRelativePath ? 'relative' : 'absolute'}`);
+  log(`[FrameworkDetector] Base directory: ${baseDir || '(absolute paths)'}`);
   
   // Read file contents from disk
   const fileContents = new Map<string, string>();
@@ -758,10 +776,10 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
     }
   }
   
-  console.log(`[FrameworkDetector] Files read: ${filesRead}, skipped: ${filesSkipped}`);
+  log(`[FrameworkDetector] Files read: ${filesRead}, skipped: ${filesSkipped}`);
   
   if (filesRead === 0) {
-    console.log(`[FrameworkDetector] No files could be read from disk`);
+    log(`[FrameworkDetector] No files could be read from disk`);
     return {
       projectId,
       frameworks: [],
@@ -775,7 +793,7 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   
   // Step 1: Detect framework(s)
   const detectedFrameworks = detectFrameworkFromFiles(fileContents);
-  console.log(`[FrameworkDetector] Detected frameworks: ${detectedFrameworks.join(', ') || 'None'}`);
+  log(`[FrameworkDetector] Detected frameworks: ${detectedFrameworks.join(', ') || 'None'}`);
   
   // Step 2: Extract components for each detected framework
   const allComponents: FrameworkComponent[] = [];
@@ -808,11 +826,11 @@ export async function analyzeFrameworks(projectId: string): Promise<FrameworkAna
   
   analysisCache.set(projectId, analysis);
   
-  console.log(`[FrameworkDetector] Analysis complete:`);
-  console.log(`[FrameworkDetector]   - Frameworks: ${analysis.frameworks.join(', ') || 'None'}`);
-  console.log(`[FrameworkDetector]   - Components: ${allComponents.length}`);
-  console.log(`[FrameworkDetector]   - Endpoints: ${allEndpoints.length}`);
-  console.log(`[FrameworkDetector] ========================================`);
+  log(`[FrameworkDetector] Analysis complete:`);
+  log(`[FrameworkDetector]   - Frameworks: ${analysis.frameworks.join(', ') || 'None'}`);
+  log(`[FrameworkDetector]   - Components: ${allComponents.length}`);
+  log(`[FrameworkDetector]   - Endpoints: ${allEndpoints.length}`);
+  log(`[FrameworkDetector] ========================================`);
   
   return analysis;
 }
@@ -828,7 +846,7 @@ export async function getFrameworkAnalysis(projectId: string, forceRefresh: bool
   try {
     return await analyzeFrameworks(projectId);
   } catch (error) {
-    console.error(`[FrameworkDetector] Error analyzing project ${projectId}:`, error);
+    log(`[FrameworkDetector] ERROR: Error analyzing project ${projectId}: ${error}`);
     return null;
   }
 }
