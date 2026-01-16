@@ -1,11 +1,12 @@
-import * as Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
+import type { Database as DatabaseType } from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
 
 export class SqliteService {
-    private db: Database.Database | null = null;
+    private db: DatabaseType | null = null;
     private dbPath: string;
     private logger: (msg: string) => void;
 
