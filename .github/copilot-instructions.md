@@ -152,7 +152,7 @@ CONFIRM TO USER
      "projectId": "memory_bank_vscode_extension", 
      "action": "register", 
      "agentId": "Dev-VSCode-GPT4",
-     "workspacePath": "C:\\workspaces\\grecoLab"
+     "workspacePath": "C:\\workspaces\\grecoLab\\autofixer_extension"
    }
    ```
    - The system returns your full agentId with hash (e.g., `Dev-VSCode-GPT4-a1b2c3d4`)
@@ -171,7 +171,7 @@ CONFIRM TO USER
 // memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "memory_bank_vscode_extension",
-  "projectPath": "C:\\workspaces\\grecoLab",
+  "projectPath": "C:\\workspaces\\grecoLab\\autofixer_extension",
   "projectName": "Project Name"
 }
 ```
