@@ -81,10 +81,7 @@ export class MemoryBankService {
   }
 
   public getSqliteService(): SqliteService | null {
-    if (this.sqliteService) {
-        this.log(`[MemoryBank] Returning cached SqliteService`);
-        return this.sqliteService;
-    }
+    // NO CACHE - always create fresh to see logs and pick up DB changes
     
     // CRITICAL: agentboard.db is ALWAYS at ~/.memorybank/ (global, not per-workspace)
     // This is where the MCP server writes it (see memory-bank-mcp/common/database.ts)
@@ -96,18 +93,6 @@ export class MemoryBankService {
     this.log(`[MemoryBank] Expected global DB path: ${globalDbFile}`);
     this.log(`[MemoryBank] Global DB exists: ${fs.existsSync(globalDbFile)}`);
     
-    // Also check workspace path for reference
-    const workspacePath = this.getMemoryBankPath();
-    if (workspacePath) {
-        const workspaceDbFile = path.join(workspacePath, 'agentboard.db');
-        this.log(`[MemoryBank] Workspace path: ${workspacePath}`);
-        this.log(`[MemoryBank] Workspace DB file: ${workspaceDbFile}`);
-        this.log(`[MemoryBank] Workspace DB exists: ${fs.existsSync(workspaceDbFile)}`);
-    }
-    
-    // Use global path - this is the source of truth from MCP
-    const dbPath = globalPath;
-    
     if (!fs.existsSync(globalDbFile)) {
         this.log(`[MemoryBank] CRITICAL: agentboard.db NOT FOUND at ${globalDbFile}`);
         this.log(`[MemoryBank] The MCP server should create this file. Run memorybank_manage_agents first.`);
@@ -115,12 +100,9 @@ export class MemoryBankService {
     }
     
     try {
-        this.log(`[MemoryBank] Initializing SqliteService with path: ${dbPath}`);
-        // Pass the logger so SqliteService can log to the same OutputChannel
+        this.log(`[MemoryBank] Initializing SqliteService with path: ${globalPath}`);
         const logFn = (msg: string) => this.log(msg);
-        this.sqliteService = new SqliteService(dbPath, logFn);
-        this.log(`[MemoryBank] SqliteService initialized successfully`);
-        return this.sqliteService;
+        return new SqliteService(globalPath, logFn);
     } catch (e) {
         this.log(`[MemoryBank] Failed to initialize SqliteService: ${e}`);
         return null;

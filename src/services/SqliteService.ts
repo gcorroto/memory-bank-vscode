@@ -1,6 +1,7 @@
 import * as Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
 
 export class SqliteService {
@@ -11,8 +12,16 @@ export class SqliteService {
     constructor(storagePath: string, logger?: (msg: string) => void) {
         this.logger = logger || console.log;
         this.dbPath = path.join(storagePath, 'agentboard.db');
-        this.logger(`[SqliteService] DB path: ${this.dbPath}`);
-        this.logger(`[SqliteService] File exists: ${fs.existsSync(this.dbPath)}`);
+        
+        // CRITICAL DEBUG: Log EVERYTHING about paths
+        this.logger(`[SqliteService] ========== INIT DEBUG ==========`);
+        this.logger(`[SqliteService] storagePath received: "${storagePath}"`);
+        this.logger(`[SqliteService] Computed dbPath: "${this.dbPath}"`);
+        this.logger(`[SqliteService] os.homedir(): "${os.homedir()}"`);
+        this.logger(`[SqliteService] Expected MCP path: "${path.join(os.homedir(), '.memorybank', 'agentboard.db')}"`);
+        this.logger(`[SqliteService] File exists at dbPath: ${fs.existsSync(this.dbPath)}`);
+        this.logger(`[SqliteService] ================================`);
+        
         this.init();
     }
 
@@ -26,6 +35,15 @@ export class SqliteService {
             this.db = new Database(this.dbPath, { fileMustExist: true });
             const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {name: string}[];
             this.logger(`[SqliteService] Connected. Tables: ${tables.map(t => t.name).join(', ')}`);
+            
+            // DEBUG: Count agents in DB
+            const agentCount = this.db.prepare('SELECT COUNT(*) as cnt FROM agents').get() as {cnt: number};
+            this.logger(`[SqliteService] Total agents in DB: ${agentCount.cnt}`);
+            
+            // DEBUG: Show all agents with their project_id
+            const allAgents = this.db.prepare('SELECT id, project_id, status FROM agents').all() as any[];
+            this.logger(`[SqliteService] All agents: ${JSON.stringify(allAgents)}`);
+            
         } catch (error) {
             this.logger(`[SqliteService] ERROR: Failed to open database: ${error}`);
             this.db = null;
@@ -35,10 +53,22 @@ export class SqliteService {
     // --- Agents ---
 
     public getActiveAgents(projectId: string): AgentInfo[] {
-        if (!this.db) return [];
+        this.logger(`[SqliteService] getActiveAgents called with projectId: "${projectId}"`);
+        this.logger(`[SqliteService] DB connection active: ${!!this.db}`);
+        
+        if (!this.db) {
+            this.logger(`[SqliteService] ERROR: No DB connection!`);
+            return [];
+        }
         
         try {
+            // First, let's see what project_ids exist in the agents table
+            const distinctProjects = this.db.prepare('SELECT DISTINCT project_id FROM agents').all() as any[];
+            this.logger(`[SqliteService] Distinct project_ids in agents table: ${JSON.stringify(distinctProjects.map(p => p.project_id))}`);
+            
             const rows = this.db.prepare('SELECT * FROM agents WHERE project_id = ?').all(projectId) as any[];
+            this.logger(`[SqliteService] Query result: ${rows.length} agents for project "${projectId}"`);
+            
             return rows.map(r => ({
                 id: r.id,
                 projectId: r.project_id,
