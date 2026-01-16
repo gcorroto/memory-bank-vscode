@@ -13,6 +13,7 @@ import {
   ProjectInfo,
   KNOWN_DOC_TYPES
 } from '../types/memoryBank';
+import { SqliteService } from './SqliteService';
 
 /**
  * Memory Bank Service
@@ -24,6 +25,7 @@ export class MemoryBankService {
   private cachedProjects: Map<string, ProjectInfo> = new Map();
   private lastCacheTime: number = 0;
   private readonly CACHE_TTL = 5000; // 5 seconds cache
+  private sqliteService: SqliteService | null = null;
 
   private constructor() {}
 
@@ -57,6 +59,21 @@ export class MemoryBankService {
     
     // Otherwise, resolve relative to workspace
     return path.join(workspaceFolders[0].uri.fsPath, configuredPath);
+  }
+
+  public getSqliteService(): SqliteService | null {
+    if (this.sqliteService) return this.sqliteService;
+    
+    const mbPath = this.getMemoryBankPath();
+    if (!mbPath) return null;
+    
+    try {
+        this.sqliteService = new SqliteService(mbPath);
+        return this.sqliteService;
+    } catch (e) {
+        console.error('[MemoryBank] Failed to initialize SqliteService:', e);
+        return null;
+    }
   }
 
   /**
@@ -471,16 +488,33 @@ export class MemoryBankService {
     const mbPath = this.getMemoryBankPath();
     if (!mbPath) return '';
 
-    const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
-    
     // Generate session ID
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+    const timestamp = new Date().toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0];
+
+    // Update SQLite
+    try {
+        const sqlite = this.getSqliteService();
+        if (sqlite) {
+            sqlite.updateAgent({
+                id: agentId,
+                projectId,
+                status,
+                focus,
+                sessionId,
+                lastHeartbeat: timestamp
+            });
+        }
+    } catch (e) {
+        console.error('[MemoryBank] Failed to update SQLite in registerAgent:', e);
+    }
+
+    const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
     
+    // Legacy Markdown update (for compatibility)
     if (!fs.existsSync(boardPath)) {
         return sessionId; // Fail silently or create board
     }
-
-    const timestamp = new Date().toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0];
 
     try {
       const content = await fs.promises.readFile(boardPath, 'utf8');

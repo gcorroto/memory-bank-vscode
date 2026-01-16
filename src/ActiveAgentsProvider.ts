@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { getMemoryBankService } from './services/memoryBankService';
 import { ProjectInfo } from './types/memoryBank';
+import { SqliteService } from './services/SqliteService';
 
 export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = 
@@ -41,6 +42,17 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
       }
 
       const service = getMemoryBankService();
+      
+      // Try SQLite (New implementation)
+      const sqlite = service.getSqliteService();
+      if (sqlite) {
+        try {
+            return this.getChildrenFromSqlite(this.selectedProject.id);
+        } catch (error) {
+            this.logger.appendLine(`SQLite retrieval failed: ${error}, falling back to markdown`);
+        }
+      }
+
       const mbPath = service.getMemoryBankPath();
       if (!mbPath) {
         return [new vscode.TreeItem('Memory Bank no configurado', vscode.TreeItemCollapsibleState.None)];
@@ -139,6 +151,107 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
           this.logger.appendLine(`Error reading session log: ${error}`);
           return [new vscode.TreeItem('Error reading session log', vscode.TreeItemCollapsibleState.None)];
       }
+  }
+
+  private getChildrenFromSqlite(projectId: string): vscode.TreeItem[] {
+    const service = getMemoryBankService();
+    const sqlite = service.getSqliteService();
+    if (!sqlite) return [];
+
+    const sections: vscode.TreeItem[] = [];
+
+    // Active Agents
+    const agents = sqlite.getActiveAgents(projectId);
+    const agentsSection = new SectionTreeItem('Agentes Activos (SQLite)', vscode.TreeItemCollapsibleState.Expanded);
+    agentsSection.iconPath = new vscode.ThemeIcon('organization');
+    if (agents.length > 0) {
+        agentsSection.children = agents.map(agent => {
+            const item = new AgentTreeItem(agent.id, agent.sessionId, projectId);
+            item.description = agent.status;
+            item.tooltip = `Status: ${agent.status}\nFocus: ${agent.focus}\nSession: ${agent.sessionId}\nHeartbeat: ${agent.lastHeartbeat}`;
+            if (agent.status.trim().toUpperCase() === 'ACTIVE') {
+                 item.iconPath = new vscode.ThemeIcon('loading~spin', new vscode.ThemeColor('testing.iconPassed'));
+            } else {
+                 item.iconPath = new vscode.ThemeIcon('person');
+            }
+            return item;
+        });
+    } else {
+        agentsSection.children = [new vscode.TreeItem('No hay agentes activos', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(agentsSection);
+
+    // Pending Tasks
+    const tasks = sqlite.getPendingTasks(projectId);
+    const tasksSection = new SectionTreeItem('Tareas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
+    tasksSection.iconPath = new vscode.ThemeIcon('checklist');
+    if (tasks.length > 0) {
+        tasksSection.children = tasks.map(task => {
+            const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
+            item.description = task.status;
+            item.tooltip = `ID: ${task.id}\nAssigned To: ${task.assignedTo}\nFrom: ${task.from}\nStatus: ${task.status}\nCreated: ${task.createdAt}`;
+            item.iconPath = new vscode.ThemeIcon('tasklist');
+            return item;
+        });
+    } else {
+        tasksSection.children = [new vscode.TreeItem('No hay tareas pendientes', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(tasksSection);
+
+    // External Requests
+    const requests = sqlite.getExternalRequests(projectId);
+    const requestsSection = new SectionTreeItem('Peticiones Externas', vscode.TreeItemCollapsibleState.Collapsed);
+    requestsSection.iconPath = new vscode.ThemeIcon('broadcast');
+    if (requests.length > 0) {
+        requestsSection.children = requests.map(req => {
+            return new ExternalRequestTreeItem(
+                req.id,
+                req.title,
+                req.fromProject,
+                req.context,
+                req.status,
+                req.receivedAt,
+                projectId
+            );
+        });
+    } else {
+        requestsSection.children = [new vscode.TreeItem('No hay peticiones externas', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(requestsSection);
+
+    // File Locks
+    const locks = sqlite.getFileLocks(projectId);
+    const locksSection = new SectionTreeItem('Bloqueos de Archivos', vscode.TreeItemCollapsibleState.Collapsed);
+    locksSection.iconPath = new vscode.ThemeIcon('lock');
+    if (locks.length > 0) {
+        locksSection.children = locks.map(lock => {
+             const item = new vscode.TreeItem(lock.pattern, vscode.TreeItemCollapsibleState.None);
+             item.description = `by ${lock.claimedBy}`;
+             item.tooltip = `Claimed by: ${lock.claimedBy}\nSince: ${lock.since}`;
+             item.iconPath = new vscode.ThemeIcon('file');
+             return item;
+        });
+    } else {
+        locksSection.children = [new vscode.TreeItem('No hay bloqueos activos', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(locksSection);
+
+    // Agent Messages
+    const messages = sqlite.getMessages(projectId, 10);
+    const msgsSection = new SectionTreeItem('Mensajes del Sistema', vscode.TreeItemCollapsibleState.Collapsed);
+    msgsSection.iconPath = new vscode.ThemeIcon('comment-discussion');
+    if (messages.length > 0) {
+        msgsSection.children = messages.map(msg => {
+             const item = new vscode.TreeItem(`${msg.timestamp ? `[${msg.timestamp.split('T')[1].split('.')[0]}] ` : ''}${msg.message}`, vscode.TreeItemCollapsibleState.None);
+             item.iconPath = new vscode.ThemeIcon('comment');
+             return item;
+        });
+    } else {
+        msgsSection.children = [new vscode.TreeItem('No hay mensajes', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(msgsSection);
+
+    return sections;
   }
 
   private parseBoardContent(content: string): vscode.TreeItem[] {

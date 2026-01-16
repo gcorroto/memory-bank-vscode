@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -354,14 +354,29 @@
       ],
       "view/item/context": [
         {
-          "command": "memorybank.agent.acceptTask",
-          "when": "view == memorybank-agents && viewItem == external-request",
-          "group": "inline"
+          "command": "memorybank.openDoc",
+          "when": "view == memorybank-docs && viewItem == memorybank-doc",
+          "group": "navigation"
         },
         {
-          "command": "memorybank.agent.rejectTask",
-          "when": "view == memorybank-agents && viewItem == external-request",
-          "group": "inline"
+          "command": "memorybank.openIndexedFile",
+          "when": "view == memorybank-files && viewItem == memorybank-indexed-file",
+          "group": "navigation"
+        },
+        {
+          "command": "memorybank.deleteProject",
+          "when": "view == memorybank-projects && viewItem == memorybank-project",
+          "group": "danger@1"
+        },
+        {
+          "command": "memorybank.deleteOrphanedProject",
+          "when": "view == memorybank-files && viewItem == memorybank-orphan-project",
+          "group": "danger@1"
+        },
+        {
+          "command": "memorybank.cleanupOrphanedEmbeddings",
+          "when": "view == memorybank-files && viewItem == memorybank-orphan-section",
+          "group": "danger@1"
         }
       ],
       "editor/context": [
@@ -400,33 +415,6 @@
         {
           "command": "memorybank.runAutofixer",
           "group": "memorybank-agent"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "memorybank.openDoc",
-          "when": "view == memorybank-docs && viewItem == memorybank-doc",
-          "group": "navigation"
-        },
-        {
-          "command": "memorybank.openIndexedFile",
-          "when": "view == memorybank-files && viewItem == memorybank-indexed-file",
-          "group": "navigation"
-        },
-        {
-          "command": "memorybank.deleteProject",
-          "when": "view == memorybank-projects && viewItem == memorybank-project",
-          "group": "danger@1"
-        },
-        {
-          "command": "memorybank.deleteOrphanedProject",
-          "when": "view == memorybank-files && viewItem == memorybank-orphan-project",
-          "group": "danger@1"
-        },
-        {
-          "command": "memorybank.cleanupOrphanedEmbeddings",
-          "when": "view == memorybank-files && viewItem == memorybank-orphan-section",
-          "group": "danger@1"
         }
       ]
     },
@@ -583,6 +571,7 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.15.0",
+    "better-sqlite3": "12.6.0",
     "dagre": "0.8.5",
     "gray-matter": "^4.0.3",
     "openai": "^4.103.0",

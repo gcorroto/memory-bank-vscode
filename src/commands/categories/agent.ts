@@ -350,6 +350,17 @@ export const agentCommands: CommandRegistration[] = [
 
 async function updateExternalRequestStatus(item: ExternalRequestTreeItem, newStatus: string) {
     const service = getMemoryBankService();
+    
+    // Update SQLite
+    try {
+        const sqlite = service.getSqliteService();
+        if (sqlite) {
+            sqlite.updateExternalRequestStatus(item.id, newStatus);
+        }
+    } catch (e) {
+        console.error('Failed to update SQLite external request status:', e);
+    }
+
     const mbPath = service.getMemoryBankPath();
     if (!mbPath || !item.projectId) {
         vscode.window.showErrorMessage('Memory Bank path or Project ID missing');
