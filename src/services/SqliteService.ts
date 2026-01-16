@@ -61,14 +61,15 @@ export class SqliteService {
             };
             
             // Prefer full path to node if possible, but 'node' from PATH is usually safe on dev machines
-            const res = cp.spawnSync('node', ['-e', script], { env, encoding: 'utf-8' });
+            const res = cp.spawnSync('node', ['-e', script], { env });
             
             if (res.status !== 0) {
-                this.logger(`[SqliteService] Fallback query failed: ${res.stderr}`);
+                const errorMsg = res.stderr ? res.stderr.toString() : 'Unknown error';
+                this.logger(`[SqliteService] Fallback query failed: ${errorMsg}`);
                 return [];
             }
             if (!res.stdout) return [];
-            return JSON.parse(res.stdout);
+            return JSON.parse(res.stdout.toString());
         } catch (e) {
             this.logger(`[SqliteService] Fallback execution error: ${e}`);
             return [];
