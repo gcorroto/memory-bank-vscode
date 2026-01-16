@@ -1,41 +1,96 @@
 import * as Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as cp from 'child_process';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
 
 export class SqliteService {
     private db: Database.Database | null = null;
     private dbPath: string;
+    private logger: (msg: string) => void;
+    private useFallback: boolean = false;
 
-    constructor(storagePath: string) {
-        if (!fs.existsSync(storagePath)) {
-            fs.mkdirSync(storagePath, { recursive: true });
-        }
+    constructor(storagePath: string, logger?: (msg: string) => void) {
+        this.logger = logger || console.log;
+        // Do not create directory if we are looking for existing DB in global path
         this.dbPath = path.join(storagePath, 'agentboard.db');
+        this.logger(`[SqliteService] Initializing with DB path: ${this.dbPath}`);
         this.init();
     }
 
     private init() {
         try {
-            this.db = new Database(this.dbPath, { fileMustExist: false });
-            // Note: We don't force CreateTables here because we expect the schema to match agentboard.db
-            // If it doesn't exist, we might want to create it, but adhering to the NEW schema.
-            // But usually this DB is shared/managed by the server.
-            // For safety, we can define the schema if not exists, but using the CORRECT schema.
+            this.logger(`[SqliteService] Attempting to open database with better-sqlite3...`);
+            this.db = new Database(this.dbPath, { fileMustExist: false, verbose: this.logger });
+            this.logger(`[SqliteService] Database opened successfully.`);
         } catch (error) {
-            console.error('Failed to initialize SQLite database:', error);
+            this.logger(`[SqliteService] Failed to initialize SQLite native driver: ${error}. Switching to fallback mode (system node).`);
             this.db = null;
+            this.useFallback = true;
+        }
+    }
+
+    private runQueryFallback(sql: string, params: any[]): any[] {
+        if (!this.useFallback) return [];
+        
+        const script = `
+        try {
+            const Database = require(process.env.MODULE_PATH);
+            const db = new Database(process.env.DB_PATH, { fileMustExist: false });
+            const stmt = db.prepare(process.env.SQL);
+            console.log(JSON.stringify(stmt.all(...JSON.parse(process.env.PARAMS))));
+        } catch(e) { console.error(e); process.exit(1); }
+        `;
+        
+        try {
+            // Find better-sqlite3 path relative to this file or from node_modules
+            // We assume 'better-sqlite3' is resolvable. If not, we might need a fixed path.
+            let modulePath = '';
+            try {
+                modulePath = require.resolve('better-sqlite3');
+            } catch {
+                modulePath = 'better-sqlite3'; // Hope it's in node_path
+            }
+
+            const env = { 
+                ...process.env, 
+                DB_PATH: this.dbPath, 
+                SQL: sql, 
+                PARAMS: JSON.stringify(params),
+                MODULE_PATH: modulePath
+            };
+            
+            // Prefer full path to node if possible, but 'node' from PATH is usually safe on dev machines
+            const res = cp.spawnSync('node', ['-e', script], { env, encoding: 'utf-8' });
+            
+            if (res.status !== 0) {
+                this.logger(`[SqliteService] Fallback query failed: ${res.stderr}`);
+                return [];
+            }
+            if (!res.stdout) return [];
+            return JSON.parse(res.stdout);
+        } catch (e) {
+            this.logger(`[SqliteService] Fallback execution error: ${e}`);
+            return [];
         }
     }
 
     // --- Agents ---
 
     public getActiveAgents(projectId: string): AgentInfo[] {
-        if (!this.db) return [];
+        if (!this.db && !this.useFallback) return [];
         try {
             // Table: agents (id, project_id, session_id, status, focus, last_heartbeat, created_at)
-            const stmt = this.db.prepare('SELECT * FROM agents WHERE project_id = ?');
-            const rows = stmt.all(projectId) as any[];
+            const sql = 'SELECT * FROM agents WHERE project_id = ?';
+            
+            let rows: any[] = [];
+            if (this.db) {
+                const stmt = this.db.prepare(sql);
+                rows = stmt.all(projectId) as any[];
+            } else {
+                rows = this.runQueryFallback(sql, [projectId]);
+            }
+
             return rows.map(r => ({
                 id: r.id, // mapped from id
                 projectId: r.project_id,
@@ -51,7 +106,8 @@ export class SqliteService {
     }
 
     public updateAgent(agent: AgentInfo): void {
-        if (!this.db) return;
+        // Updates only supported in native mode for now or need implementing fallback exec
+        if (!this.db) return; 
         try {
              // We need to match columns: id, project_id, status, focus, session_id, last_heartbeat
             const stmt = this.db.prepare(`
@@ -76,12 +132,20 @@ export class SqliteService {
     // --- Tasks (Merged PendingTasks + ExternalRequests) ---
 
     public getPendingTasks(projectId: string): PendingTask[] {
-        if (!this.db) return [];
+        if (!this.db && !this.useFallback) return [];
         try {
             // Table: tasks (id, project_id, title, description, from_project, from_agent, status, claimed_by, created_at...)
             // Local tasks: from_project IS NULL or empty
-            const stmt = this.db.prepare("SELECT * FROM tasks WHERE project_id = ? AND (from_project IS NULL OR from_project = '') AND status != 'COMPLETED'");
-            const rows = stmt.all(projectId) as any[];
+            const sql = "SELECT * FROM tasks WHERE project_id = ? AND (from_project IS NULL OR from_project = '') AND status != 'COMPLETED'";
+            
+            let rows: any[] = [];
+            if (this.db) {
+                const stmt = this.db.prepare(sql);
+                rows = stmt.all(projectId) as any[];
+            } else {
+                rows = this.runQueryFallback(sql, [projectId]);
+            }
+
             return rows.map(r => ({
                 id: r.id,
                 projectId: r.project_id,
@@ -122,11 +186,19 @@ export class SqliteService {
     // --- External Requests ---
 
     public getExternalRequests(projectId: string): ExternalRequest[] {
-        if (!this.db) return [];
+        if (!this.db && !this.useFallback) return [];
         try {
             // External requests: from_project IS NOT NULL
-            const stmt = this.db.prepare("SELECT * FROM tasks WHERE project_id = ? AND from_project IS NOT NULL AND from_project != ''");
-            const rows = stmt.all(projectId) as any[];
+            const sql = "SELECT * FROM tasks WHERE project_id = ? AND from_project IS NOT NULL AND from_project != ''";
+            
+            let rows: any[] = [];
+            if (this.db) {
+                const stmt = this.db.prepare(sql);
+                rows = stmt.all(projectId) as any[];
+            } else {
+                rows = this.runQueryFallback(sql, [projectId]);
+            }
+            
             return rows.map(r => ({
                 id: r.id,
                 projectId: r.project_id,
@@ -167,11 +239,19 @@ export class SqliteService {
     // --- File Locks ---
 
     public getFileLocks(projectId: string): FileLock[] {
-        if (!this.db) return [];
+        if (!this.db && !this.useFallback) return [];
         try {
             // Table: locks (resource, project_id, agent_id, acquired_at)
-            const stmt = this.db.prepare('SELECT * FROM locks WHERE project_id = ?');
-            const rows = stmt.all(projectId) as any[];
+            const sql = 'SELECT * FROM locks WHERE project_id = ?';
+            
+            let rows: any[] = [];
+            if (this.db) {
+                const stmt = this.db.prepare(sql);
+                rows = stmt.all(projectId) as any[];
+            } else {
+                rows = this.runQueryFallback(sql, [projectId]);
+            }
+
             return rows.map(r => ({
                 pattern: r.resource,
                 projectId: r.project_id,
@@ -209,11 +289,19 @@ export class SqliteService {
     // --- Messages ---
     
     public getMessages(projectId: string, limit: number = 20): AgentMessage[] {
-        if (!this.db) return [];
+        if (!this.db && !this.useFallback) return [];
         try {
             // Table: messages (id, project_id, agent_id, message, timestamp)
-            const stmt = this.db.prepare('SELECT * FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT ?');
-            const rows = stmt.all(projectId, limit) as any[];
+            const sql = 'SELECT * FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT ?';
+            
+            let rows: any[] = [];
+            if (this.db) {
+                const stmt = this.db.prepare(sql);
+                rows = stmt.all(projectId, limit) as any[];
+            } else {
+                rows = this.runQueryFallback(sql, [projectId, limit]);
+            }
+
             return rows.map(r => ({
                 id: r.id,
                 projectId: r.project_id,

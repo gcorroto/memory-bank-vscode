@@ -46,18 +46,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
       
       // Try to sync/read from Markdown to SQLite first
       const sqlite = service.getSqliteService();
-      if (sqlite && mbPath) {
-         try {
-             // Read agentBoard.md and sync to SQLite
-             const boardPath = path.join(mbPath, 'projects', this.selectedProject.id, 'docs', 'agentBoard.md');
-             if (fs.existsSync(boardPath)) {
-                 const content = fs.readFileSync(boardPath, 'utf-8');
-                 this.syncBoardToSqlite(content, sqlite, this.selectedProject.id);
-             }
-         } catch (e) {
-             this.logger.appendLine(`Failed to sync Markdown to SQLite: ${e}`);
-         }
-      }
+      // Sync logic removed: We treat SQLite (agentboard.db) as the source of truth managed by MCP
       
       // Try SQLite (New implementation)
       if (sqlite) {

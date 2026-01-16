@@ -87,7 +87,8 @@ export class MemoryBankService {
     if (!dbPath) return null;
     
     try {
-        this.sqliteService = new SqliteService(dbPath);
+        console.log(`[MemoryBank] initializing SqliteService with path: ${dbPath}`);
+        this.sqliteService = new SqliteService(dbPath, (msg) => console.log(msg));
         return this.sqliteService;
     } catch (e) {
         console.error('[MemoryBank] Failed to initialize SqliteService:', e);
