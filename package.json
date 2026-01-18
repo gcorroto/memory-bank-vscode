@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.40",
+  "version": "0.0.41",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -585,6 +585,7 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.26.0",
+    "copy-webpack-plugin": "13.0.1",
     "css-loader": "^6.8.1",
     "eslint": "^8.40.0",
     "style-loader": "^3.3.3",

@@ -1,19 +1,39 @@
 // sql.js - SQLite compiled to WebAssembly (no native compilation required)
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
+
+// sql.js types
+interface SqlJsDatabase {
+    exec(sql: string): { columns: string[]; values: any[][] }[];
+    run(sql: string, params?: any[]): void;
+    prepare(sql: string): SqlJsStatement;
+    close(): void;
+}
+
+interface SqlJsStatement {
+    bind(params?: any[]): boolean;
+    step(): boolean;
+    getAsObject(): Record<string, any>;
+    free(): void;
+}
+
+interface SqlJsStatic {
+    Database: new (data?: ArrayLike<number>) => SqlJsDatabase;
+}
 
 export class SqliteService {
     private db: SqlJsDatabase | null = null;
     private dbPath: string;
     private logger: (msg: string) => void;
     private initPromise: Promise<void>;
+    private extensionPath: string;
 
-    constructor(storagePath: string, logger?: (msg: string) => void) {
+    constructor(storagePath: string, logger?: (msg: string) => void, extensionPath?: string) {
         this.logger = logger || console.log;
         this.dbPath = path.join(storagePath, 'agentboard.db');
+        this.extensionPath = extensionPath || '';
         
         this.logger(`[SqliteService] ========== INIT DEBUG ==========`);
         this.logger(`[SqliteService] storagePath received: "${storagePath}"`);
@@ -21,6 +41,7 @@ export class SqliteService {
         this.logger(`[SqliteService] os.homedir(): "${os.homedir()}"`);
         this.logger(`[SqliteService] Expected MCP path: "${path.join(os.homedir(), '.memorybank', 'agentboard.db')}"`);
         this.logger(`[SqliteService] File exists at dbPath: ${fs.existsSync(this.dbPath)}`);
+        this.logger(`[SqliteService] extensionPath: "${this.extensionPath}"`);
         this.logger(`[SqliteService] ================================`);
         
         this.initPromise = this.init();
@@ -33,12 +54,47 @@ export class SqliteService {
         }
         
         try {
-            // Initialize sql.js
-            const SQL = await initSqlJs();
+            // Initialize sql.js with explicit WASM location
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const initSqlJs = require('sql.js');
+            
+            // Locate the WASM file - it should be copied to dist/ by webpack
+            let wasmPath: string | undefined;
+            
+            // Try different locations for the WASM file
+            const possiblePaths = [
+                // Primary: dist folder (copied by webpack CopyPlugin)
+                path.join(__dirname, 'sql-wasm.wasm'),
+                // Fallback: node_modules in extension folder
+                path.join(this.extensionPath, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+                // Fallback: relative to compiled output
+                path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+            ];
+            
+            for (const p of possiblePaths) {
+                this.logger(`[SqliteService] Checking WASM at: ${p}`);
+                if (fs.existsSync(p)) {
+                    wasmPath = p;
+                    this.logger(`[SqliteService] Found WASM at: ${p}`);
+                    break;
+                }
+            }
+            
+            let SQL: SqlJsStatic;
+            if (wasmPath) {
+                // Load WASM from file
+                const wasmBinary = fs.readFileSync(wasmPath);
+                SQL = await initSqlJs({ wasmBinary });
+                this.logger(`[SqliteService] sql.js initialized with WASM from: ${wasmPath}`);
+            } else {
+                // Fallback: let sql.js try to locate it (might fail in VS Code env)
+                this.logger(`[SqliteService] WASM not found at expected paths, trying default loading...`);
+                SQL = await initSqlJs();
+            }
             
             // Read the database file
             const fileBuffer = fs.readFileSync(this.dbPath);
-            this.db = new SQL.Database(fileBuffer);
+            this.db = new SQL.Database(new Uint8Array(fileBuffer));
             
             // Get tables
             const tablesResult = this.db.exec("SELECT name FROM sqlite_master WHERE type='table'");
