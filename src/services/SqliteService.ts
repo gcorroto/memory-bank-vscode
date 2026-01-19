@@ -80,22 +80,49 @@ export class SqliteService {
                 throw new Error('sql-wasm.wasm not found in any expected location');
             }
             
-            // Load WASM binary
-            const wasmBinary = fs.readFileSync(wasmPath);
-            this.logger(`[SqliteService] WASM file size: ${wasmBinary.length} bytes`);
+            // Get WASM file size for logging
+            const wasmStats = fs.statSync(wasmPath);
+            this.logger(`[SqliteService] WASM file size: ${wasmStats.size} bytes`);
             
-            // Initialize sql.js with wasmBinary option
+            // Initialize sql.js - read WASM as Buffer and convert to Uint8Array
+            // This approach works better in VS Code extension context
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const initSqlJs = require('sql.js');
             this.logger(`[SqliteService] initSqlJs type: ${typeof initSqlJs}`);
             
+            // Read WASM as buffer
+            const wasmBuffer = fs.readFileSync(wasmPath);
+            const wasmBinary = new Uint8Array(wasmBuffer.buffer, wasmBuffer.byteOffset, wasmBuffer.length);
+            this.logger(`[SqliteService] WASM loaded as Uint8Array, length: ${wasmBinary.length}`);
+            
             let SQL: SqlJsStatic;
-            if (typeof initSqlJs === 'function') {
-                SQL = await initSqlJs({ wasmBinary });
-            } else if (typeof initSqlJs.default === 'function') {
-                SQL = await initSqlJs.default({ wasmBinary });
-            } else {
-                throw new Error(`sql.js module is not a function: ${typeof initSqlJs}, keys: ${Object.keys(initSqlJs).join(', ')}`);
+            try {
+                // Try direct call with wasmBinary as Uint8Array
+                if (typeof initSqlJs === 'function') {
+                    this.logger(`[SqliteService] Calling initSqlJs as function...`);
+                    SQL = await initSqlJs({ wasmBinary: wasmBinary });
+                } else if (typeof initSqlJs.default === 'function') {
+                    this.logger(`[SqliteService] Calling initSqlJs.default as function...`);
+                    SQL = await initSqlJs.default({ wasmBinary: wasmBinary });
+                } else {
+                    throw new Error(`sql.js module is not a function: ${typeof initSqlJs}, keys: ${Object.keys(initSqlJs).join(', ')}`);
+                }
+            } catch (initError) {
+                this.logger(`[SqliteService] First init attempt failed: ${initError}`);
+                this.logger(`[SqliteService] Trying alternative: instantiateWasm callback...`);
+                
+                // Alternative: use instantiateWasm for more control
+                const wasmModule = await WebAssembly.compile(wasmBinary as BufferSource);
+                
+                const initFn = typeof initSqlJs === 'function' ? initSqlJs : initSqlJs.default;
+                SQL = await initFn({
+                    instantiateWasm: (imports: WebAssembly.Imports, successCallback: (instance: WebAssembly.Instance) => void) => {
+                        WebAssembly.instantiate(wasmModule, imports).then(instance => {
+                            successCallback(instance);
+                        });
+                        return {};
+                    }
+                });
             }
             this.logger(`[SqliteService] sql.js initialized successfully`);
             
