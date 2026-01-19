@@ -54,76 +54,31 @@ export class SqliteService {
         }
         
         try {
-            // Locate the WASM file - it should be copied to dist/ by webpack
-            let wasmPath: string | undefined;
+            // Use asm.js version of sql.js - it doesn't require WASM and avoids
+            // all the WASM loading issues in VS Code's extension host
+            const sqlAsmPath = path.join(__dirname, 'sql-asm.js');
+            this.logger(`[SqliteService] Loading sql-asm.js from: ${sqlAsmPath}`);
             
-            // Try different locations for the WASM file
-            const possiblePaths = [
-                // Primary: dist folder (copied by webpack CopyPlugin)
-                path.join(__dirname, 'sql-wasm.wasm'),
-                // Fallback: node_modules in extension folder
-                path.join(this.extensionPath, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
-                // Fallback: relative to compiled output
-                path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
-            ];
-            
-            for (const p of possiblePaths) {
-                this.logger(`[SqliteService] Checking WASM at: ${p}`);
-                if (fs.existsSync(p)) {
-                    wasmPath = p;
-                    this.logger(`[SqliteService] Found WASM at: ${p}`);
-                    break;
-                }
+            if (!fs.existsSync(sqlAsmPath)) {
+                throw new Error(`sql-asm.js not found at: ${sqlAsmPath}`);
             }
             
-            if (!wasmPath) {
-                throw new Error('sql-wasm.wasm not found in any expected location');
-            }
-            
-            // Get WASM file size for logging
-            const wasmStats = fs.statSync(wasmPath);
-            this.logger(`[SqliteService] WASM file size: ${wasmStats.size} bytes`);
-            
-            // Initialize sql.js - read WASM as Buffer and convert to Uint8Array
-            // This approach works better in VS Code extension context
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const initSqlJs = require('sql.js');
-            this.logger(`[SqliteService] initSqlJs type: ${typeof initSqlJs}`);
-            
-            // Read WASM as buffer
-            const wasmBuffer = fs.readFileSync(wasmPath);
-            const wasmBinary = new Uint8Array(wasmBuffer.buffer, wasmBuffer.byteOffset, wasmBuffer.length);
-            this.logger(`[SqliteService] WASM loaded as Uint8Array, length: ${wasmBinary.length}`);
+            // Use eval to bypass webpack's require transformation
+            // This loads the module using Node's native require
+            const nodeRequire = eval('require');
+            const initSqlJs = nodeRequire(sqlAsmPath);
+            this.logger(`[SqliteService] initSqlJs loaded, type: ${typeof initSqlJs}`);
             
             let SQL: SqlJsStatic;
-            try {
-                // Try direct call with wasmBinary as Uint8Array
-                if (typeof initSqlJs === 'function') {
-                    this.logger(`[SqliteService] Calling initSqlJs as function...`);
-                    SQL = await initSqlJs({ wasmBinary: wasmBinary });
-                } else if (typeof initSqlJs.default === 'function') {
-                    this.logger(`[SqliteService] Calling initSqlJs.default as function...`);
-                    SQL = await initSqlJs.default({ wasmBinary: wasmBinary });
-                } else {
-                    throw new Error(`sql.js module is not a function: ${typeof initSqlJs}, keys: ${Object.keys(initSqlJs).join(', ')}`);
-                }
-            } catch (initError) {
-                this.logger(`[SqliteService] First init attempt failed: ${initError}`);
-                this.logger(`[SqliteService] Trying alternative: instantiateWasm callback...`);
-                
-                // Alternative: use instantiateWasm for more control
-                const wasmModule = await WebAssembly.compile(wasmBinary as BufferSource);
-                
-                const initFn = typeof initSqlJs === 'function' ? initSqlJs : initSqlJs.default;
-                SQL = await initFn({
-                    instantiateWasm: (imports: WebAssembly.Imports, successCallback: (instance: WebAssembly.Instance) => void) => {
-                        WebAssembly.instantiate(wasmModule, imports).then(instance => {
-                            successCallback(instance);
-                        });
-                        return {};
-                    }
-                });
+            const initFn = typeof initSqlJs === 'function' ? initSqlJs : initSqlJs.default;
+            
+            if (!initFn) {
+                throw new Error(`sql-asm.js module is not callable: ${typeof initSqlJs}`);
             }
+            
+            // asm.js version doesn't need any config
+            this.logger(`[SqliteService] Initializing SQL (asm.js)...`);
+            SQL = await initFn();
             this.logger(`[SqliteService] sql.js initialized successfully`);
             
             // Read the database file

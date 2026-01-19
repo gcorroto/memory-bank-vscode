@@ -53,7 +53,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         try {
             // Ensure sql.js is initialized (async)
             await sqlite.ensureInitialized();
-            return this.getChildrenFromSqlite(this.selectedProject.id);
+            return await this.getChildrenFromSqlite(this.selectedProject.id);
         } catch (error) {
             this.logger.appendLine(`SQLite retrieval failed: ${error}, falling back to markdown`);
         }
@@ -159,7 +159,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
       }
   }
 
-  private getChildrenFromSqlite(projectId: string): vscode.TreeItem[] {
+  private async getChildrenFromSqlite(projectId: string): Promise<vscode.TreeItem[]> {
     this.logger.appendLine(`[ActiveAgentsProvider] ===== getChildrenFromSqlite DEBUG =====`);
     this.logger.appendLine(`[ActiveAgentsProvider] projectId: "${projectId}"`);
     
@@ -171,6 +171,15 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     if (!sqlite) {
         this.logger.appendLine(`[ActiveAgentsProvider] ERROR: SqliteService is null!`);
         return [new vscode.TreeItem('Error: SqliteService no disponible', vscode.TreeItemCollapsibleState.None)];
+    }
+
+    // Wait for SQLite to be fully initialized
+    const isReady = await sqlite.ensureInitialized();
+    this.logger.appendLine(`[ActiveAgentsProvider] SQLite initialized: ${isReady}`);
+    
+    if (!isReady) {
+        this.logger.appendLine(`[ActiveAgentsProvider] ERROR: SQLite failed to initialize`);
+        return [new vscode.TreeItem('Error: SQLite no inicializado', vscode.TreeItemCollapsibleState.None)];
     }
 
     const sections: vscode.TreeItem[] = [];
