@@ -54,10 +54,6 @@ export class SqliteService {
         }
         
         try {
-            // Initialize sql.js with explicit WASM location
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const initSqlJs = require('sql.js');
-            
             // Locate the WASM file - it should be copied to dist/ by webpack
             let wasmPath: string | undefined;
             
@@ -80,17 +76,28 @@ export class SqliteService {
                 }
             }
             
-            let SQL: SqlJsStatic;
-            if (wasmPath) {
-                // Load WASM from file
-                const wasmBinary = fs.readFileSync(wasmPath);
-                SQL = await initSqlJs({ wasmBinary });
-                this.logger(`[SqliteService] sql.js initialized with WASM from: ${wasmPath}`);
-            } else {
-                // Fallback: let sql.js try to locate it (might fail in VS Code env)
-                this.logger(`[SqliteService] WASM not found at expected paths, trying default loading...`);
-                SQL = await initSqlJs();
+            if (!wasmPath) {
+                throw new Error('sql-wasm.wasm not found in any expected location');
             }
+            
+            // Load WASM binary
+            const wasmBinary = fs.readFileSync(wasmPath);
+            this.logger(`[SqliteService] WASM file size: ${wasmBinary.length} bytes`);
+            
+            // Initialize sql.js with wasmBinary option
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const initSqlJs = require('sql.js');
+            this.logger(`[SqliteService] initSqlJs type: ${typeof initSqlJs}`);
+            
+            let SQL: SqlJsStatic;
+            if (typeof initSqlJs === 'function') {
+                SQL = await initSqlJs({ wasmBinary });
+            } else if (typeof initSqlJs.default === 'function') {
+                SQL = await initSqlJs.default({ wasmBinary });
+            } else {
+                throw new Error(`sql.js module is not a function: ${typeof initSqlJs}, keys: ${Object.keys(initSqlJs).join(', ')}`);
+            }
+            this.logger(`[SqliteService] sql.js initialized successfully`);
             
             // Read the database file
             const fileBuffer = fs.readFileSync(this.dbPath);

@@ -1,22 +1,20 @@
 'use strict';
 
 // VS Code extensibility API
-import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 
 // Import Memory Bank providers
-import { MemoryBankProjectsProvider, ProjectTreeItem } from './MemoryBankProjectsProvider';
+import { ActiveAgentsProvider, ExternalRequestTreeItem } from './ActiveAgentsProvider';
+import { RelationsViewer } from './agent/ui/RelationsViewer';
+import { FrameworkComponentsProvider } from './FrameworkComponentsProvider';
 import { IndexedFilesProvider } from './IndexedFilesProvider';
+import { MemoryBankProjectsProvider } from './MemoryBankProjectsProvider';
 import { ProjectDocsProvider } from './ProjectDocsProvider';
 import { RelationsTreeProvider } from './RelationsTreeProvider';
-import { FrameworkComponentsProvider } from './FrameworkComponentsProvider';
-import { ActiveAgentsProvider, ExternalRequestTreeItem } from './ActiveAgentsProvider';
 import { getMemoryBankService } from './services/memoryBankService';
 import { ProjectInfo } from './types/memoryBank';
-import * as relationsAnalyzerService from './services/relationsAnalyzerService';
-import * as frameworkDetectorService from './services/frameworkDetectorService';
-import { RelationsViewer } from './agent/ui/RelationsViewer';
 
 // Import de WebSocket con dynamic import
 let WebSocket: any;
@@ -79,10 +77,10 @@ export function getGlobalAgent(createIfNotExists: boolean = false): Agent | null
 async function loadDynamicModules(): Promise<boolean> {
   try {
     // Cargar WebSocket
-    if (!WebSocket) {
-      const wsModule = await import('ws');
-      WebSocket = wsModule.default || wsModule.WebSocket;
-    }
+    // if (!WebSocket) {
+    //   const wsModule = await import('ws');
+    //   WebSocket = wsModule.default || wsModule.WebSocket;
+    // }
     
     // Cargar AgentLogsView
     if (!AgentLogsView) {

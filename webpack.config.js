@@ -22,7 +22,6 @@ const extensionConfig = {
   externals: {
     vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded
     '@lancedb/lancedb': 'commonjs @lancedb/lancedb', // LanceDB has native modules that can't be bundled
-    'sql.js': 'commonjs sql.js', // sql.js needs special handling for WASM
   },
   plugins: [
     new CopyPlugin({
