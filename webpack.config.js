@@ -22,11 +22,13 @@ const extensionConfig = {
   externals: {
     vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded
     '@lancedb/lancedb': 'commonjs @lancedb/lancedb', // LanceDB has native modules that can't be bundled
+    'sql.js': 'commonjs sql.js', // sql.js must be loaded at runtime to properly handle WASM
   },
   plugins: [
     new CopyPlugin({
       patterns: [
         { from: 'node_modules/sql.js/dist/sql-wasm.wasm', to: 'sql-wasm.wasm' },
+        { from: 'node_modules/sql.js/dist/sql-wasm.js', to: 'node_modules/sql.js/dist/sql-wasm.js' },
       ],
     }),
   ],
