@@ -317,21 +317,44 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
              item.description = log.timestamp;
              
              // Construct tooltip with all details
-             const tooltipData = {
-                 ...log,
-                 myResponsibilities: log.myResponsibilities,
-                 delegations: log.delegations,
-                 suggestedImports: log.suggestedImports,
-                 searchesPerformed: log.searchesPerformed
-             };
-             
              const md = new vscode.MarkdownString();
-             md.appendMarkdown(`**Action:** ${log.action}\n\n`);
+             md.supportHtml = true;
+             
+             md.appendMarkdown(`### ${log.action.toUpperCase()}\n`);
              md.appendMarkdown(`**Task:** ${log.taskDescription}\n\n`);
+             md.appendMarkdown(`---\n\n`);
+
              if (log.warning) {
-                 md.appendMarkdown(`**Warning:** ${log.warning}\n\n`);
+                 md.appendMarkdown(`⚠️ **Warning:** ${log.warning}\n\n`);
              }
-             md.appendCodeblock(JSON.stringify(tooltipData, null, 2), 'json');
+
+             if (log.myResponsibilities && log.myResponsibilities.length > 0) {
+                 md.appendMarkdown(`**My Responsibilities:**\n`);
+                 log.myResponsibilities.forEach(resp => md.appendMarkdown(`- ${resp}\n`));
+                 md.appendMarkdown(`\n`);
+             }
+
+             if (log.delegations && log.delegations.length > 0) {
+                 md.appendMarkdown(`**Delegations:**\n`);
+                 log.delegations.forEach(del => {
+                     md.appendMarkdown(`- **${del.targetProject}**: ${del.taskTitle}\n`);
+                     md.appendMarkdown(`  > ${del.reasoning}\n`);
+                 });
+                 md.appendMarkdown(`\n`);
+             }
+
+             if (log.architectureNotes) {
+                 md.appendMarkdown(`**Architecture Notes:**\n`);
+                 md.appendMarkdown(`> ${log.architectureNotes}\n\n`);
+             }
+
+             if (log.suggestedImports && log.suggestedImports.length > 0) {
+                 md.appendMarkdown(`**Suggested Imports:** ${log.suggestedImports.map(i => `\`${i}\``).join(', ')}\n\n`);
+             }
+
+             md.appendMarkdown(`---\n`);
+             md.appendMarkdown(`*Model: ${log.modelUsed} | Success: ${log.success ? '✅' : '❌'} | Time: ${log.timestamp}*`);
+             
              item.tooltip = md;
              
              return item;
