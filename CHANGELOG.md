@@ -4,7 +4,14 @@ All notable changes to Memory Bank Inspector will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [3.0.0] - 2026-01-11
+## [0.0.47] - 2026-01-24
+
+### Added
+- Soporte para mostrar Keywords y Responsibilities en la vista de Agentes Activos (sincronizado desde SQLite).
+- Nueva sección para visualizar Orchestrator Logs en la actividad de agentes.
+- Mejores interfaces de datos para sincronización con memory-bank-mcp.
+
+## [0.0.1] - 2026-01-11
 
 ### Added
 - Initial public release as Memory Bank Inspector

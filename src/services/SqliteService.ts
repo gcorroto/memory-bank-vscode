@@ -2,7 +2,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage } from '../types/db';
+import { AgentInfo, PendingTask, ExternalRequest, FileLock, AgentMessage, OrchestratorLog } from '../types/db';
 
 // sql.js types
 interface SqlJsDatabase {
@@ -148,13 +148,26 @@ export class SqliteService {
             const rows: AgentInfo[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject() as any;
+                let keywords: string[] = [];
+                let responsibilities: string[] = [];
+                
+                try {
+                    if (row.keywords) keywords = JSON.parse(row.keywords);
+                } catch (e) {}
+                
+                try {
+                    if (row.responsibilities) responsibilities = JSON.parse(row.responsibilities);
+                } catch (e) {}
+
                 rows.push({
                     id: row.id,
                     projectId: row.project_id,
                     status: row.status,
                     focus: row.focus,
                     sessionId: row.session_id,
-                    lastHeartbeat: row.last_heartbeat
+                    lastHeartbeat: row.last_heartbeat,
+                    keywords,
+                    responsibilities
                 });
             }
             stmt.free();
@@ -172,9 +185,18 @@ export class SqliteService {
         if (!this.db) return; 
         try {
             this.db.run(`
-                INSERT OR REPLACE INTO agents (id, project_id, status, focus, session_id, last_heartbeat)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `, [agent.id, agent.projectId, agent.status, agent.focus, agent.sessionId, agent.lastHeartbeat]);
+                INSERT OR REPLACE INTO agents (id, project_id, status, focus, session_id, last_heartbeat, keywords, responsibilities)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                agent.id, 
+                agent.projectId, 
+                agent.status, 
+                agent.focus, 
+                agent.sessionId, 
+                agent.lastHeartbeat,
+                JSON.stringify(agent.keywords || []),
+                JSON.stringify(agent.responsibilities || [])
+            ]);
         } catch (e) {
             console.error('Error updating agent:', e);
         }
@@ -241,8 +263,76 @@ export class SqliteService {
          }
     }
 
+    /**
+     * Get completed local tasks (not from external projects)
+     */
+    public getCompletedTasks(projectId: string, limit: number = 20): PendingTask[] {
+        if (!this.db) return [];
+        try {
+            const stmt = this.db.prepare(
+                "SELECT * FROM tasks WHERE project_id = ? AND (from_project IS NULL OR from_project = '') AND status = 'COMPLETED' ORDER BY created_at DESC LIMIT ?"
+            );
+            stmt.bind([projectId, limit]);
+            
+            const rows: PendingTask[] = [];
+            while (stmt.step()) {
+                const r = stmt.getAsObject() as any;
+                rows.push({
+                    id: r.id,
+                    projectId: r.project_id,
+                    title: r.title,
+                    assignedTo: r.claimed_by || '', 
+                    from: r.from_agent || 'Local',
+                    status: r.status,
+                    createdAt: r.created_at
+                });
+            }
+            stmt.free();
+            return rows;
+        } catch (e) {
+            this.logger(`[SqliteService] ERROR querying completed tasks: ${e}`);
+            return [];
+        }
+    }
+
+    /**
+     * Get tasks claimed/completed by a specific agent
+     */
+    public getAgentTasks(projectId: string, agentId: string): PendingTask[] {
+        if (!this.db) return [];
+        try {
+            const stmt = this.db.prepare(
+                "SELECT * FROM tasks WHERE project_id = ? AND claimed_by = ? ORDER BY created_at DESC"
+            );
+            stmt.bind([projectId, agentId]);
+            
+            const rows: PendingTask[] = [];
+            while (stmt.step()) {
+                const r = stmt.getAsObject() as any;
+                rows.push({
+                    id: r.id,
+                    projectId: r.project_id,
+                    title: r.title,
+                    assignedTo: r.claimed_by || '', 
+                    from: r.from_agent || r.from_project || 'Local',
+                    status: r.status,
+                    createdAt: r.created_at
+                });
+            }
+            stmt.free();
+            return rows;
+        } catch (e) {
+            this.logger(`[SqliteService] ERROR querying agent tasks: ${e}`);
+            return [];
+        }
+    }
+
     // --- External Requests ---
 
+    /**
+     * Get all external requests (both pending and completed)
+     * @deprecated Use getPendingExternalRequests or getCompletedExternalRequests instead
+     */
     public getExternalRequests(projectId: string): ExternalRequest[] {
         if (!this.db) return [];
         try {
@@ -268,6 +358,70 @@ export class SqliteService {
             return rows;
         } catch (e) {
             this.logger(`[SqliteService] ERROR querying external requests: ${e}`);
+            return [];
+        }
+    }
+
+    /**
+     * Get pending external requests (not completed)
+     */
+    public getPendingExternalRequests(projectId: string): ExternalRequest[] {
+        if (!this.db) return [];
+        try {
+            const stmt = this.db.prepare(
+                "SELECT * FROM tasks WHERE project_id = ? AND from_project IS NOT NULL AND from_project != '' AND status != 'COMPLETED' ORDER BY created_at DESC"
+            );
+            stmt.bind([projectId]);
+            
+            const rows: ExternalRequest[] = [];
+            while (stmt.step()) {
+                const r = stmt.getAsObject() as any;
+                rows.push({
+                    id: r.id,
+                    projectId: r.project_id,
+                    title: r.title,
+                    fromProject: r.from_project,
+                    context: r.description || '',
+                    status: r.status,
+                    receivedAt: r.created_at
+                });
+            }
+            stmt.free();
+            return rows;
+        } catch (e) {
+            this.logger(`[SqliteService] ERROR querying pending external requests: ${e}`);
+            return [];
+        }
+    }
+
+    /**
+     * Get completed external requests
+     */
+    public getCompletedExternalRequests(projectId: string, limit: number = 20): ExternalRequest[] {
+        if (!this.db) return [];
+        try {
+            const stmt = this.db.prepare(
+                "SELECT * FROM tasks WHERE project_id = ? AND from_project IS NOT NULL AND from_project != '' AND status = 'COMPLETED' ORDER BY created_at DESC LIMIT ?"
+            );
+            stmt.bind([projectId, limit]);
+            
+            const rows: ExternalRequest[] = [];
+            while (stmt.step()) {
+                const r = stmt.getAsObject() as any;
+                rows.push({
+                    id: r.id,
+                    projectId: r.project_id,
+                    title: r.title,
+                    fromProject: r.from_project,
+                    context: r.description || '',
+                    status: r.status,
+                    receivedAt: r.created_at
+                });
+            }
+            stmt.free();
+            return rows;
+        } catch (e) {
+            this.logger(`[SqliteService] ERROR querying completed external requests: ${e}`);
             return [];
         }
     }
@@ -394,9 +548,18 @@ export class SqliteService {
             this.db.run('DELETE FROM agents WHERE project_id = ?', [projectId]);
             for (const agent of agents) {
                 this.db.run(`
-                    INSERT INTO agents (id, project_id, status, focus, session_id, last_heartbeat)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `, [agent.id, agent.projectId, agent.status, agent.focus, agent.sessionId, agent.lastHeartbeat]);
+                    INSERT INTO agents (id, project_id, status, focus, session_id, last_heartbeat, keywords, responsibilities)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    agent.id, 
+                    agent.projectId, 
+                    agent.status, 
+                    agent.focus, 
+                    agent.sessionId, 
+                    agent.lastHeartbeat,
+                    JSON.stringify(agent.keywords || []),
+                    JSON.stringify(agent.responsibilities || [])
+                ]);
             }
         } catch (e) {
              console.error('Error syncing agents:', e);
@@ -445,6 +608,68 @@ export class SqliteService {
             }
         } catch (e) {
              console.error('Error syncing locks:', e);
+        }
+    }
+
+    // --- Orchestrator Logs ---
+
+    public getOrchestratorLogs(projectId: string): OrchestratorLog[] {
+        if (!this.db) return [];
+        try {
+            // Check if table exists first (to avoid errors during migration period)
+            try {
+                this.db.exec("SELECT 1 FROM orchestrator_logs LIMIT 1");
+            } catch (e) {
+                // Table probably doesn't exist
+                return [];
+            }   
+
+            const stmt = this.db.prepare('SELECT * FROM orchestrator_logs WHERE project_id = ? ORDER BY timestamp DESC LIMIT 100');
+            stmt.bind([projectId]);
+            
+            const rows: OrchestratorLog[] = [];
+            while (stmt.step()) {
+                const row = stmt.getAsObject() as any;
+                let data = undefined;
+                try {
+                    if (row.data) data = JSON.parse(row.data);
+                } catch (e) {}
+
+                rows.push({
+                    id: row.id,
+                    projectId: row.project_id,
+                    type: row.type,
+                    message: row.message,
+                    data: data,
+                    timestamp: row.timestamp
+                });
+            }
+            stmt.free();
+            return rows;
+        } catch (e) {
+            console.error('Error querying orchestrator logs:', e);
+            return [];
+        }
+    }
+
+    public saveOrchestratorLog(log: OrchestratorLog): void {
+        if (!this.db) return;
+        try {
+            // Check if table exists (or just try insert and catch)
+            this.db.run(`
+                INSERT INTO orchestrator_logs (id, project_id, type, message, data, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [
+                log.id, 
+                log.projectId, 
+                log.type, 
+                log.message, 
+                JSON.stringify(log.data || {}), 
+                log.timestamp
+            ]);
+        } catch (e) {
+            // Probably table missing
+             console.error('Error saving orchestrator log:', e);
         }
     }
 }

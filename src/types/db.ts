@@ -5,6 +5,17 @@ export interface AgentInfo {
     focus: string;
     sessionId?: string;
     lastHeartbeat: string;
+    keywords?: string[];
+    responsibilities?: string[];
+}
+
+export interface OrchestratorLog {
+    id: string;
+    projectId: string;
+    type: string;
+    message: string;
+    data?: any;
+    timestamp: string;
 }
 
 export interface PendingTask {

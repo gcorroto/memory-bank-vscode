@@ -86,12 +86,96 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         return element.children;
     }
 
-    // Handle session history navigation
-    if (element instanceof AgentTreeItem && element.sessionId && element.projectId) {
-        return this.getSessionHistory(element.projectId, element.sessionId);
+    // Handle agent expansion - show tasks and session history
+    if (element instanceof AgentTreeItem && element.projectId) {
+        return this.getAgentDetails(
+            element.projectId, 
+            element.agentId, 
+            element.sessionId,
+            element.keywords,
+            element.responsibilities
+        );
     }
 
     return [];
+  }
+
+  private async getAgentDetails(projectId: string, agentId: string, sessionId?: string, keywords: string[] = [], responsibilities: string[] = []): Promise<vscode.TreeItem[]> {
+      const items: vscode.TreeItem[] = [];
+      const service = getMemoryBankService();
+      const sqlite = service.getSqliteService();
+
+      // Keywords
+      if (keywords && keywords.length > 0) {
+          const kwSection = new SectionTreeItem(`Keywords (${keywords.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+          kwSection.iconPath = new vscode.ThemeIcon('tag');
+          kwSection.children = keywords.map(k => {
+              const item = new vscode.TreeItem(k, vscode.TreeItemCollapsibleState.None);
+              item.iconPath = new vscode.ThemeIcon('tag');
+              return item;
+          });
+          items.push(kwSection);
+      }
+
+      // Responsibilities
+      if (responsibilities && responsibilities.length > 0) {
+           const respSection = new SectionTreeItem(`Responsibilities (${responsibilities.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+           respSection.iconPath = new vscode.ThemeIcon('shield');
+           respSection.children = responsibilities.map(r => {
+               const item = new vscode.TreeItem(r, vscode.TreeItemCollapsibleState.None);
+               item.iconPath = new vscode.ThemeIcon('check');
+               return item;
+           });
+           items.push(respSection);
+      }
+
+      // Get tasks claimed/completed by this agent
+      if (sqlite) {
+          await sqlite.ensureInitialized();
+          const agentTasks = sqlite.getAgentTasks(projectId, agentId);
+          
+          if (agentTasks.length > 0) {
+              const tasksHeader = new vscode.TreeItem(`📋 Tareas (${agentTasks.length})`, vscode.TreeItemCollapsibleState.None);
+              tasksHeader.iconPath = new vscode.ThemeIcon('list-ordered');
+              items.push(tasksHeader);
+              
+              agentTasks.forEach(task => {
+                  const statusIcon = task.status === 'COMPLETED' ? '✓' : task.status === 'IN_PROGRESS' ? '⏳' : '○';
+                  const item = new vscode.TreeItem(`  ${statusIcon} ${task.title}`, vscode.TreeItemCollapsibleState.None);
+                  item.description = task.status;
+                  item.tooltip = `ID: ${task.id}\nStatus: ${task.status}\nFrom: ${task.from}\nCreated: ${task.createdAt}`;
+                  if (task.status === 'COMPLETED') {
+                      item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
+                  } else if (task.status === 'IN_PROGRESS') {
+                      item.iconPath = new vscode.ThemeIcon('loading~spin');
+                  } else {
+                      item.iconPath = new vscode.ThemeIcon('circle-outline');
+                  }
+                  items.push(item);
+              });
+          } else {
+              const noTasks = new vscode.TreeItem('Sin tareas asignadas', vscode.TreeItemCollapsibleState.None);
+              noTasks.iconPath = new vscode.ThemeIcon('info');
+              items.push(noTasks);
+          }
+      }
+
+      // Add session history if available
+      if (sessionId) {
+          const sessionItems = await this.getSessionHistory(projectId, sessionId);
+          if (sessionItems.length > 0 && !(sessionItems.length === 1 && sessionItems[0].label === 'No session history available')) {
+              const sessionHeader = new vscode.TreeItem(`📜 Historial de sesión`, vscode.TreeItemCollapsibleState.None);
+              sessionHeader.iconPath = new vscode.ThemeIcon('history');
+              items.push(sessionHeader);
+              items.push(...sessionItems);
+          }
+      }
+
+      if (items.length === 0) {
+          return [new vscode.TreeItem('No hay historial disponible', vscode.TreeItemCollapsibleState.None)];
+      }
+
+      return items;
   }
 
   private async getSessionHistory(projectId: string, sessionId: string): Promise<vscode.TreeItem[]> {
@@ -196,9 +280,18 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     agentsSection.iconPath = new vscode.ThemeIcon('organization');
     if (agents.length > 0) {
         agentsSection.children = agents.map(agent => {
-            const item = new AgentTreeItem(agent.id, agent.sessionId, projectId);
+            // Agent is always expandable to show session history and tasks
+            const item = new AgentTreeItem(
+                agent.id, 
+                agent.sessionId, 
+                projectId,
+                agent.keywords,
+                agent.responsibilities
+            );
             item.description = agent.status;
             item.tooltip = `Status: ${agent.status}\nFocus: ${agent.focus}\nSession: ${agent.sessionId}\nHeartbeat: ${agent.lastHeartbeat}`;
+            // Always make it expandable to show history
+            item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
             if (agent.status.trim().toUpperCase() === 'ACTIVE') {
                  item.iconPath = new vscode.ThemeIcon('loading~spin', new vscode.ThemeColor('testing.iconPassed'));
             } else {
@@ -211,8 +304,26 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     }
     sections.push(agentsSection);
 
+    // Orchestrator Logs used to check OrchestratorLogs
+    const logs = sqlite.getOrchestratorLogs(projectId);
+    const logsSection = new SectionTreeItem('Orchestrator Logs', vscode.TreeItemCollapsibleState.Collapsed);
+    logsSection.iconPath = new vscode.ThemeIcon('output');
+    if (logs.length > 0) {
+        logsSection.children = logs.map(log => {
+             const label = `[${log.type}] ${log.message}`;
+             const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+             item.description = log.timestamp;
+             item.tooltip = log.data ? JSON.stringify(log.data, null, 2) : undefined;
+             return item;
+        });
+    } else {
+        logsSection.children = [new vscode.TreeItem('No logs available', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(logsSection);
+
     // Pending Tasks
     const tasks = sqlite.getPendingTasks(projectId);
+    this.logger.appendLine(`[ActiveAgentsProvider] PendingTasks for "${projectId}": ${tasks.length}`);
     const tasksSection = new SectionTreeItem('Tareas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
     tasksSection.iconPath = new vscode.ThemeIcon('checklist');
     if (tasks.length > 0) {
@@ -228,12 +339,31 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     }
     sections.push(tasksSection);
 
-    // External Requests
-    const requests = sqlite.getExternalRequests(projectId);
-    const requestsSection = new SectionTreeItem('Peticiones Externas', vscode.TreeItemCollapsibleState.Collapsed);
-    requestsSection.iconPath = new vscode.ThemeIcon('broadcast');
-    if (requests.length > 0) {
-        requestsSection.children = requests.map(req => {
+    // Completed Tasks
+    const completedTasks = sqlite.getCompletedTasks(projectId, 20);
+    this.logger.appendLine(`[ActiveAgentsProvider] CompletedTasks for "${projectId}": ${completedTasks.length}`);
+    const completedTasksSection = new SectionTreeItem('Tareas Completadas', vscode.TreeItemCollapsibleState.Collapsed);
+    completedTasksSection.iconPath = new vscode.ThemeIcon('pass-filled');
+    if (completedTasks.length > 0) {
+        completedTasksSection.children = completedTasks.map(task => {
+            const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
+            item.description = task.assignedTo ? `por ${task.assignedTo}` : '';
+            item.tooltip = `ID: ${task.id}\nCompleted By: ${task.assignedTo}\nFrom: ${task.from}\nStatus: ${task.status}\nCreated: ${task.createdAt}`;
+            item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
+            return item;
+        });
+    } else {
+        completedTasksSection.children = [new vscode.TreeItem('No hay tareas completadas', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(completedTasksSection);
+
+    // External Requests - Pending
+    const pendingRequests = sqlite.getPendingExternalRequests(projectId);
+    this.logger.appendLine(`[ActiveAgentsProvider] PendingExternalRequests for "${projectId}": ${pendingRequests.length}`);
+    const pendingRequestsSection = new SectionTreeItem('Peticiones Externas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
+    pendingRequestsSection.iconPath = new vscode.ThemeIcon('broadcast');
+    if (pendingRequests.length > 0) {
+        pendingRequestsSection.children = pendingRequests.map(req => {
             return new ExternalRequestTreeItem(
                 req.id,
                 req.title,
@@ -245,9 +375,28 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
             );
         });
     } else {
-        requestsSection.children = [new vscode.TreeItem('No hay peticiones externas', vscode.TreeItemCollapsibleState.None)];
+        pendingRequestsSection.children = [new vscode.TreeItem('No hay peticiones pendientes', vscode.TreeItemCollapsibleState.None)];
     }
-    sections.push(requestsSection);
+    sections.push(pendingRequestsSection);
+
+    // External Requests - Completed
+    const completedRequests = sqlite.getCompletedExternalRequests(projectId, 20);
+    this.logger.appendLine(`[ActiveAgentsProvider] CompletedExternalRequests for "${projectId}": ${completedRequests.length}`);
+    const completedRequestsSection = new SectionTreeItem('Peticiones Externas Completadas', vscode.TreeItemCollapsibleState.Collapsed);
+    completedRequestsSection.iconPath = new vscode.ThemeIcon('pass-filled');
+    if (completedRequests.length > 0) {
+        completedRequestsSection.children = completedRequests.map(req => {
+            const item = new vscode.TreeItem(req.title, vscode.TreeItemCollapsibleState.None);
+            item.description = `de ${req.fromProject}`;
+            item.tooltip = `ID: ${req.id}\nFrom: ${req.fromProject}\nContext: ${req.context}\nStatus: ${req.status}\nReceived: ${req.receivedAt}`;
+            item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
+            item.contextValue = 'external-request-completed';
+            return item;
+        });
+    } else {
+        completedRequestsSection.children = [new vscode.TreeItem('No hay peticiones completadas', vscode.TreeItemCollapsibleState.None)];
+    }
+    sections.push(completedRequestsSection);
 
     // File Locks
     const locks = sqlite.getFileLocks(projectId);
@@ -554,7 +703,9 @@ class AgentTreeItem extends vscode.TreeItem {
     constructor(
         public readonly agentId: string,
         public readonly sessionId: string | undefined,
-        public readonly projectId: string
+        public readonly projectId: string,
+        public readonly keywords: string[] = [],
+        public readonly responsibilities: string[] = []
     ) {
         super(agentId, sessionId ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         this.contextValue = 'active-agent';
