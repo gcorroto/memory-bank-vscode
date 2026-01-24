@@ -310,10 +310,30 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     logsSection.iconPath = new vscode.ThemeIcon('output');
     if (logs.length > 0) {
         logsSection.children = logs.map(log => {
-             const label = `[${log.type}] ${log.message}`;
+             const label = `[${log.action}] ${log.taskDescription.substring(0, 50)}${log.taskDescription.length > 50 ? '...' : ''}`;
              const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+             const successIcon = log.success ? 'check' : 'error';
+             item.iconPath = new vscode.ThemeIcon(successIcon);
              item.description = log.timestamp;
-             item.tooltip = log.data ? JSON.stringify(log.data, null, 2) : undefined;
+             
+             // Construct tooltip with all details
+             const tooltipData = {
+                 ...log,
+                 myResponsibilities: log.myResponsibilities,
+                 delegations: log.delegations,
+                 suggestedImports: log.suggestedImports,
+                 searchesPerformed: log.searchesPerformed
+             };
+             
+             const md = new vscode.MarkdownString();
+             md.appendMarkdown(`**Action:** ${log.action}\n\n`);
+             md.appendMarkdown(`**Task:** ${log.taskDescription}\n\n`);
+             if (log.warning) {
+                 md.appendMarkdown(`**Warning:** ${log.warning}\n\n`);
+             }
+             md.appendCodeblock(JSON.stringify(tooltipData, null, 2), 'json');
+             item.tooltip = md;
+             
              return item;
         });
     } else {

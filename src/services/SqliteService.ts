@@ -630,17 +630,20 @@ export class SqliteService {
             const rows: OrchestratorLog[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject() as any;
-                let data = undefined;
-                try {
-                    if (row.data) data = JSON.parse(row.data);
-                } catch (e) {}
-
+                
                 rows.push({
                     id: row.id,
                     projectId: row.project_id,
-                    type: row.type,
-                    message: row.message,
-                    data: data,
+                    taskDescription: row.task_description,
+                    action: row.action,
+                    myResponsibilities: JSON.parse(row.my_responsibilities || '[]'),
+                    delegations: JSON.parse(row.delegations || '[]'),
+                    suggestedImports: JSON.parse(row.suggested_imports || '[]'),
+                    architectureNotes: row.architecture_notes,
+                    searchesPerformed: JSON.parse(row.searches_performed || '[]'),
+                    warning: row.warning,
+                    success: row.success === 1,
+                    modelUsed: row.model_used,
                     timestamp: row.timestamp
                 });
             }
@@ -655,20 +658,27 @@ export class SqliteService {
     public saveOrchestratorLog(log: OrchestratorLog): void {
         if (!this.db) return;
         try {
-            // Check if table exists (or just try insert and catch)
             this.db.run(`
-                INSERT INTO orchestrator_logs (id, project_id, type, message, data, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO orchestrator_logs (
+                    project_id, task_description, action, my_responsibilities,
+                    delegations, suggested_imports, architecture_notes,
+                    searches_performed, warning, success, model_used, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
-                log.id, 
-                log.projectId, 
-                log.type, 
-                log.message, 
-                JSON.stringify(log.data || {}), 
+                log.projectId,
+                log.taskDescription,
+                log.action,
+                JSON.stringify(log.myResponsibilities),
+                JSON.stringify(log.delegations),
+                JSON.stringify(log.suggestedImports),
+                log.architectureNotes,
+                JSON.stringify(log.searchesPerformed),
+                log.warning,
+                log.success ? 1 : 0,
+                log.modelUsed,
                 log.timestamp
             ]);
         } catch (e) {
-            // Probably table missing
              console.error('Error saving orchestrator log:', e);
         }
     }

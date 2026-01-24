@@ -10,11 +10,23 @@ export interface AgentInfo {
 }
 
 export interface OrchestratorLog {
-    id: string;
+    id: number;
     projectId: string;
-    type: string;
-    message: string;
-    data?: any;
+    taskDescription: string;
+    action: 'proceed' | 'delegate' | 'mixed';
+    myResponsibilities: string[];
+    delegations: Array<{
+        targetProject: string;
+        taskTitle: string;
+        taskDescription: string;
+        reasoning: string;
+    }>;
+    suggestedImports: string[];
+    architectureNotes: string;
+    searchesPerformed: string[];
+    warning?: string;
+    success: boolean;
+    modelUsed: string;
     timestamp: string;
 }
 
