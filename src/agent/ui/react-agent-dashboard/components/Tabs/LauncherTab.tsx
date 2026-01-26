@@ -103,7 +103,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
 
   // Build the CLI command dynamically
   React.useEffect(() => {
-      if (agentType === 'cli') {
+      if (executionMode === 'cli') {
           const buildCommand = () => {
               let cmd = 'codex';
               
@@ -182,7 +182,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
           };
           setCliCommand(buildCommand());
       }
-  }, [agentType, model, approvalMode, sandboxMode, workDir, selectedMCPs, configuredMCPs, fullAuto, oss, noAltScreen, skipGitCheck, bypassSafety, addDirs]);
+  }, [executionMode, model, approvalMode, sandboxMode, workDir, selectedMCPs, configuredMCPs, fullAuto, oss, noAltScreen, skipGitCheck, bypassSafety, addDirs]);
 
   const copyToClipboard = (text: string) => {
       postMessage({
@@ -230,7 +230,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
     
     // Final command construction for CLI
     let finalCliCommand = cliCommand;
-    if (agentType === 'cli') {
+    if (executionMode === 'cli') {
         // Escape the prompt for shell
         const safePrompt = compositeTask.replace(/"/g, '\\"');
         finalCliCommand += ` "${safePrompt}"`;
@@ -249,12 +249,12 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
       payload: {
         agentType,
         task: compositeTask,
-        cliCommand: agentType === 'cli' ? finalCliCommand : undefined,
+        cliCommand: executionMode === 'cli' ? finalCliCommand : undefined,
         config: {
             model: agentType === 'vscode' ? 'default' : model,
             autoApprove,
             maxSteps,
-            selectedMCPs: agentType === 'cli' ? selectedMCPs : undefined
+            selectedMCPs: executionMode === 'cli' ? selectedMCPs : undefined
         }
       }
     });
@@ -566,7 +566,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                     </select>
                 </div>
 
-                {agentType === 'cli' && (
+                {executionMode === 'cli' && (
                     <div className="form-group">
                         <label className="section-label">MCP Servers</label>
                         <p style={{fontSize:'0.85em', color:'var(--vscode-descriptionForeground)', marginTop:'-5px', marginBottom:'10px'}}>
@@ -747,9 +747,14 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                                 + Add Custom MCP
                             </button>
                         </div>
-                        
+                    </div>
+                )}
+                
+                {/* Codex-specific options */}
+                {agentType === 'codex' && (
+                    <div className="form-group">
                         <div style={{marginTop: '15px'}}>
-                           <div className="Advanced Settings" style={{marginBottom: '10px', fontWeight: 'bold'}}>Opciones CLI (Avanzado)</div>
+                           <div className="Advanced Settings" style={{marginBottom: '10px', fontWeight: 'bold'}}>Opciones Codex (Avanzado)</div>
                            
                            {/* Safety & Permissions Group */}
                            <div style={{marginBottom:'15px', border:'1px solid var(--vscode-widget-border)', padding:'10px', borderRadius:'4px'}}>
