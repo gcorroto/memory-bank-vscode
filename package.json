@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.50",
+  "version": "0.0.51",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -91,6 +91,12 @@
       },
       {
         "command": "memorybank.agent.launchTask",
+        "title": "Lanzar Agente para Tarea",
+        "category": "Memory Bank",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "memorybank.agent.launchTaskFromTree",
         "title": "Lanzar Agente para Tarea",
         "category": "Memory Bank",
         "icon": "$(rocket)"
@@ -189,6 +195,12 @@
         "command": "memorybank.ask",
         "title": "Preguntar al Asistente",
         "category": "Memory Bank"
+      },
+      {
+        "command": "memorybank.agent.launchTaskFromTree",
+        "title": "Lanzar Agente para Tarea",
+        "category": "Memory Bank",
+        "icon": "$(rocket)"
       },
       {
         "command": "memorybank.agent.generateTest",
@@ -373,6 +385,11 @@
           "command": "memorybank.deleteProject",
           "when": "view == memorybank-projects && viewItem == memorybank-project",
           "group": "danger@1"
+        },
+        {
+          "command": "memorybank.agent.launchTaskFromTree",
+          "when": "view == memorybank-agents && (viewItem == pending-task || viewItem == external-request)",
+          "group": "inline"
         },
         {
           "command": "memorybank.deleteOrphanedProject",

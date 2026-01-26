@@ -276,7 +276,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         this.logger.appendLine(`[ActiveAgentsProvider] First agent: ${JSON.stringify(agents[0])}`);
     }
     
-    const agentsSection = new SectionTreeItem('Agentes Activos (SQLite)', vscode.TreeItemCollapsibleState.Expanded);
+    const agentsSection = new SectionTreeItem(`Agentes Activos (SQLite) (${agents.length})`, vscode.TreeItemCollapsibleState.Expanded);
     agentsSection.iconPath = new vscode.ThemeIcon('organization');
     if (agents.length > 0) {
         agentsSection.children = agents.map(agent => {
@@ -306,7 +306,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // Orchestrator Logs used to check OrchestratorLogs
     const logs = sqlite.getOrchestratorLogs(projectId);
-    const logsSection = new SectionTreeItem('Orchestrator Logs', vscode.TreeItemCollapsibleState.Collapsed);
+    const logsSection = new SectionTreeItem(`Orchestrator Logs (${logs.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     logsSection.iconPath = new vscode.ThemeIcon('output');
     if (logs.length > 0) {
         logsSection.children = logs.map(log => {
@@ -367,11 +367,13 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     // Pending Tasks
     const tasks = sqlite.getPendingTasks(projectId);
     this.logger.appendLine(`[ActiveAgentsProvider] PendingTasks for "${projectId}": ${tasks.length}`);
-    const tasksSection = new SectionTreeItem('Tareas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
+    const tasksSection = new SectionTreeItem(`Tareas Pendientes (${tasks.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     tasksSection.iconPath = new vscode.ThemeIcon('checklist');
     if (tasks.length > 0) {
         tasksSection.children = tasks.map(task => {
             const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
+            item.contextValue = 'pending-task';
+            (item as any).projectId = projectId;
             item.description = task.status;
             item.tooltip = new vscode.MarkdownString(`**${task.title}**\n\n${task.description || '(No description)'}\n\n---\n**ID:** ${task.id}\n**Assigned To:** ${task.assignedTo}\n**From:** ${task.from}\n**Status:** ${task.status}\n**Created:** ${task.createdAt}`);
             item.iconPath = new vscode.ThemeIcon('tasklist');
@@ -385,7 +387,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     // Completed Tasks
     const completedTasks = sqlite.getCompletedTasks(projectId, 20);
     this.logger.appendLine(`[ActiveAgentsProvider] CompletedTasks for "${projectId}": ${completedTasks.length}`);
-    const completedTasksSection = new SectionTreeItem('Tareas Completadas', vscode.TreeItemCollapsibleState.Collapsed);
+    const completedTasksSection = new SectionTreeItem(`Tareas Completadas (${completedTasks.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     completedTasksSection.iconPath = new vscode.ThemeIcon('pass-filled');
     if (completedTasks.length > 0) {
         completedTasksSection.children = completedTasks.map(task => {
@@ -403,7 +405,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     // External Requests - Pending
     const pendingRequests = sqlite.getPendingExternalRequests(projectId);
     this.logger.appendLine(`[ActiveAgentsProvider] PendingExternalRequests for "${projectId}": ${pendingRequests.length}`);
-    const pendingRequestsSection = new SectionTreeItem('Peticiones Externas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
+    const pendingRequestsSection = new SectionTreeItem(`Peticiones Externas Pendientes (${pendingRequests.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     pendingRequestsSection.iconPath = new vscode.ThemeIcon('broadcast');
     if (pendingRequests.length > 0) {
         pendingRequestsSection.children = pendingRequests.map(req => {
@@ -425,7 +427,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     // External Requests - Completed
     const completedRequests = sqlite.getCompletedExternalRequests(projectId, 20);
     this.logger.appendLine(`[ActiveAgentsProvider] CompletedExternalRequests for "${projectId}": ${completedRequests.length}`);
-    const completedRequestsSection = new SectionTreeItem('Peticiones Externas Completadas', vscode.TreeItemCollapsibleState.Collapsed);
+    const completedRequestsSection = new SectionTreeItem(`Peticiones Externas Completadas (${completedRequests.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     completedRequestsSection.iconPath = new vscode.ThemeIcon('pass-filled');
     if (completedRequests.length > 0) {
         completedRequestsSection.children = completedRequests.map(req => {
@@ -443,7 +445,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // File Locks
     const locks = sqlite.getFileLocks(projectId);
-    const locksSection = new SectionTreeItem('Bloqueos de Archivos', vscode.TreeItemCollapsibleState.Collapsed);
+    const locksSection = new SectionTreeItem(`Bloqueos de Archivos (${locks.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     locksSection.iconPath = new vscode.ThemeIcon('lock');
     if (locks.length > 0) {
         locksSection.children = locks.map(lock => {
@@ -460,7 +462,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
 
     // Agent Messages
     const messages = sqlite.getMessages(projectId, 10);
-    const msgsSection = new SectionTreeItem('Mensajes del Sistema', vscode.TreeItemCollapsibleState.Collapsed);
+    const msgsSection = new SectionTreeItem(`Mensajes del Sistema (${messages.length})`, vscode.TreeItemCollapsibleState.Collapsed);
     msgsSection.iconPath = new vscode.ThemeIcon('comment-discussion');
     if (messages.length > 0) {
         msgsSection.children = messages.map(msg => {
@@ -480,9 +482,9 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     const sections: vscode.TreeItem[] = [];
 
     // Parse Active Agents
-    const agentsSection = new SectionTreeItem('Agentes Activos', vscode.TreeItemCollapsibleState.Expanded);
-    agentsSection.iconPath = new vscode.ThemeIcon('organization');
     const agents = this.parseTable(content, 'Active Agents');
+    const agentsSection = new SectionTreeItem(`Agentes Activos (${agents.length})`, vscode.TreeItemCollapsibleState.Expanded);
+    agentsSection.iconPath = new vscode.ThemeIcon('organization');
     
     if (agents.length > 0) {
         agentsSection.children = agents.map(row => {
@@ -521,9 +523,9 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     sections.push(agentsSection);
 
     // Parse Pending Tasks
-    const tasksSection = new SectionTreeItem('Tareas Pendientes', vscode.TreeItemCollapsibleState.Collapsed);
-    tasksSection.iconPath = new vscode.ThemeIcon('checklist');
     const tasks = this.parseTable(content, 'Pending Tasks');
+    const tasksSection = new SectionTreeItem(`Tareas Pendientes (${tasks.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+    tasksSection.iconPath = new vscode.ThemeIcon('checklist');
     if (tasks.length > 0) {
         tasksSection.children = tasks.map(row => {
             // | ID | Title | Assigned To | From | Status | Created At |
@@ -540,9 +542,9 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     sections.push(tasksSection);
 
     // Parse External Requests
-    const requestsSection = new SectionTreeItem('Peticiones Externas', vscode.TreeItemCollapsibleState.Collapsed);
-    requestsSection.iconPath = new vscode.ThemeIcon('broadcast');
     const requests = this.parseTable(content, 'External Requests');
+    const requestsSection = new SectionTreeItem(`Peticiones Externas (${requests.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+    requestsSection.iconPath = new vscode.ThemeIcon('broadcast');
     if (requests.length > 0) {
         requestsSection.children = requests.map(row => {
             // | ID | Title | From Project | Context | Status | Received At |
@@ -563,9 +565,9 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     sections.push(requestsSection);
 
     // Parse File Locks
-    const locksSection = new SectionTreeItem('Bloqueos de Archivos', vscode.TreeItemCollapsibleState.Collapsed);
-    locksSection.iconPath = new vscode.ThemeIcon('lock');
     const locks = this.parseTable(content, 'File Locks');
+    const locksSection = new SectionTreeItem(`Bloqueos de Archivos (${locks.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+    locksSection.iconPath = new vscode.ThemeIcon('lock');
     if (locks.length > 0) {
         locksSection.children = locks.map(row => {
             // | File Pattern | Claimed By | Since |
@@ -582,9 +584,9 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
     sections.push(locksSection);
 
     // Parse Messages
-    const msgsSection = new SectionTreeItem('Mensajes del Sistema', vscode.TreeItemCollapsibleState.Collapsed);
-    msgsSection.iconPath = new vscode.ThemeIcon('comment-discussion');
     const messages = this.parseBulletPoints(content, 'Agent Messages');
+    const msgsSection = new SectionTreeItem(`Mensajes del Sistema (${messages.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+    msgsSection.iconPath = new vscode.ThemeIcon('comment-discussion');
     if (messages.length > 0) {
         let displayMessages = messages;
         if (messages.length > 10) {

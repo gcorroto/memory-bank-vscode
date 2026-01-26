@@ -605,10 +605,17 @@ export class DashboardViewer {
   /**
    * Send message to webview
    */
-  private sendToWebview(message: any): void {
+  public postMessage(message: any): void {
     if (this.panel) {
       this.panel.webview.postMessage(message);
     }
+  }
+
+  /**
+   * Send message to webview (internal)
+   */
+  private sendToWebview(message: any): void {
+    this.postMessage(message);
   }
 
   /**

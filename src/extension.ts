@@ -26,6 +26,7 @@ import * as configManager from './utils/configManager';
 // Import agent system
 import * as agentSystem from './agent';
 import { Agent } from './agent/core/Agent';
+import { DashboardViewer } from './agent/ui/DashboardViewer';
 
 // Import the new command structure
 import { registerAllCommands } from './commands';
@@ -250,6 +251,66 @@ function registerMemoryBankCommands(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Failed to update board: ${error}`);
     }
   }
+
+  // Launch Agent for Task (from Tree View)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('memorybank.agent.launchTaskFromTree', async (item: any) => {
+        let taskTitle = "";
+        let projectId = "";
+
+        if (item) {
+            // Project ID
+            if (item.projectId) {
+                projectId = item.projectId;
+            } else if (item.projectInfo && item.projectInfo.id) {
+                projectId = item.projectInfo.id;
+            }
+
+            // Task Title
+            if (typeof item.label === 'string') {
+                taskTitle = item.label;
+            } else if (item.label && item.label.label) {
+                taskTitle = item.label.label;
+            }
+        }
+        
+        // Si no hay título claro, pedir al usuario
+        if (!taskTitle) {
+            taskTitle = await vscode.window.showInputBox({ 
+                title: 'Lanzar Agente', 
+                prompt: 'Describe la tarea para el agente',
+                placeHolder: 'Ej: Implementar nueva ruta API'
+            }) || "";
+        }
+        
+        if (!taskTitle) return;
+
+        // Abrir dashboard
+        const dashboard = DashboardViewer.getInstance(context.extensionUri);
+        const agent = getGlobalAgent(true);
+        
+        // Si no hay projectId, intentamos obtenerlo del provider
+        if (!projectId && activeAgentsProvider.getSelectedProject()) {
+             projectId = activeAgentsProvider.getSelectedProject()?.id || "";
+        }
+
+        // Show dashboard with correct context
+        await dashboard.show(agent, (agent as any)?.contextManager, context, projectId);
+        
+        // Enviar mensaje para pre-rellenar
+        setTimeout(() => {
+            dashboard.postMessage({
+                type: 'SELECT_TAB_WITH_DATA',
+                payload: {
+                    tab: 'launcher',
+                    data: {
+                        task: taskTitle
+                    }
+                }
+            });
+        }, 1500); 
+    })
+  );
 
   // Delete a project (including embeddings and project directory)
   context.subscriptions.push(
