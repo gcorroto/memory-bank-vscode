@@ -345,6 +345,78 @@ export const agentCommands: CommandRegistration[] = [
         if (option === 'Abrir Chat') {
             vscode.commands.executeCommand('memorybank.ask');
         }
+    }),
+
+    createCommandRegistration('memorybank.agent.launchTask', async () => {
+        const agent = getGlobalAgent();
+        if (!agent) {
+             vscode.window.showErrorMessage('Agent system is not initialized.');
+             return;
+        }
+
+        const taskDescription = await vscode.window.showInputBox({
+            prompt: 'Describe the task to launch',
+            placeHolder: 'e.g., "Implement user authentication in the API project"'
+        });
+
+        if (!taskDescription) return;
+
+        const mode = await vscode.window.showQuickPick(
+            [
+                { label: 'Auto-Detect', description: 'Let the agent decide routing (Recommended)', value: 'auto' },
+                { label: 'Force Internal', description: 'Run in current project', value: 'internal' },
+                { label: 'Delegate', description: 'Delegate to another project', value: 'delegate' }
+            ],
+            { placeHolder: 'Select execution mode' }
+        );
+
+        if (!mode) return;
+
+        let prompt = taskDescription;
+        
+        if (mode.value === 'delegate') {
+             const service = getMemoryBankService();
+             const projects = await service.getProjects();
+             
+             if (projects.length === 0) {
+                 vscode.window.showErrorMessage('No available projects to delegate to.');
+                 return;
+             }
+
+             const targetProject = await vscode.window.showQuickPick(
+                 projects.map(p => ({ label: p.id, description: p.id })),
+                 { placeHolder: 'Select target project' }
+             );
+             
+             if (targetProject) {
+                 prompt = `Delegate task to project '${targetProject.label}': ${taskDescription}`;
+             } else {
+                 return;
+             }
+        } else if (mode.value === 'internal') {
+             prompt = `Internal Task: ${taskDescription}`;
+        }
+
+        // Run non-blocking so the notification doesn't freeze the UI forever if it takes too long
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Launching Agent Task...",
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                // Show logs view
+                agent.showLogsView();
+                
+                const result = await agent.handleUserInput(`Task: ${prompt}`);
+                if (result.success) {
+                    vscode.window.showInformationMessage('Task execution started. Check Agent Logs for details.');
+                } else {
+                    vscode.window.showErrorMessage(`Agent Error: ${result.error}`);
+                }
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to launch agent: ${error}`);
+            }
+        });
     })
 ]; 
 

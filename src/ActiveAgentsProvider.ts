@@ -143,7 +143,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
                   const statusIcon = task.status === 'COMPLETED' ? '✓' : task.status === 'IN_PROGRESS' ? '⏳' : '○';
                   const item = new vscode.TreeItem(`  ${statusIcon} ${task.title}`, vscode.TreeItemCollapsibleState.None);
                   item.description = task.status;
-                  item.tooltip = `ID: ${task.id}\nStatus: ${task.status}\nFrom: ${task.from}\nCreated: ${task.createdAt}`;
+                  item.tooltip = new vscode.MarkdownString(`**${task.title}**\n\n${task.description || '(No description)'}\n\n---\n**ID:** ${task.id}\n**Status:** ${task.status}\n**From:** ${task.from}\n**Created:** ${task.createdAt}`);
                   if (task.status === 'COMPLETED') {
                       item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
                   } else if (task.status === 'IN_PROGRESS') {
@@ -373,7 +373,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         tasksSection.children = tasks.map(task => {
             const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
             item.description = task.status;
-            item.tooltip = `ID: ${task.id}\nAssigned To: ${task.assignedTo}\nFrom: ${task.from}\nStatus: ${task.status}\nCreated: ${task.createdAt}`;
+            item.tooltip = new vscode.MarkdownString(`**${task.title}**\n\n${task.description || '(No description)'}\n\n---\n**ID:** ${task.id}\n**Assigned To:** ${task.assignedTo}\n**From:** ${task.from}\n**Status:** ${task.status}\n**Created:** ${task.createdAt}`);
             item.iconPath = new vscode.ThemeIcon('tasklist');
             return item;
         });
@@ -391,7 +391,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         completedTasksSection.children = completedTasks.map(task => {
             const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
             item.description = task.assignedTo ? `por ${task.assignedTo}` : '';
-            item.tooltip = `ID: ${task.id}\nCompleted By: ${task.assignedTo}\nFrom: ${task.from}\nStatus: ${task.status}\nCreated: ${task.createdAt}`;
+            item.tooltip = new vscode.MarkdownString(`**${task.title}**\n\n${task.description || '(No description)'}\n\n---\n**ID:** ${task.id}\n**Completed By:** ${task.assignedTo}\n**From:** ${task.from}\n**Status:** ${task.status}\n**Created:** ${task.createdAt}`);
             item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
             return item;
         });
@@ -431,7 +431,7 @@ export class ActiveAgentsProvider implements vscode.TreeDataProvider<vscode.Tree
         completedRequestsSection.children = completedRequests.map(req => {
             const item = new vscode.TreeItem(req.title, vscode.TreeItemCollapsibleState.None);
             item.description = `de ${req.fromProject}`;
-            item.tooltip = `ID: ${req.id}\nFrom: ${req.fromProject}\nContext: ${req.context}\nStatus: ${req.status}\nReceived: ${req.receivedAt}`;
+            item.tooltip = new vscode.MarkdownString(`**${req.title}**\n\n${req.context || '(No context)'}\n\n---\n**ID:** ${req.id}\n**From:** ${req.fromProject}\n**Status:** ${req.status}\n**Received:** ${req.receivedAt}`);
             item.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
             item.contextValue = 'external-request-completed';
             return item;
@@ -768,7 +768,7 @@ export class ExternalRequestTreeItem extends vscode.TreeItem {
         super(title, vscode.TreeItemCollapsibleState.None);
         this.contextValue = 'external-request';
         this.description = `${status} (from ${fromProject})`;
-        this.tooltip = `ID: ${id}\nFrom: ${fromProject}\nContext: ${context}\nStatus: ${status}\nReceived: ${receivedAt}`;
+        this.tooltip = new vscode.MarkdownString(`**${title}**\n\n${context || '(No context)'}\n\n---\n**ID:** ${id}\n**From:** ${fromProject}\n**Status:** ${status}\n**Received:** ${receivedAt}`);
         this.iconPath = new vscode.ThemeIcon('remote-explorer');
     }
 }

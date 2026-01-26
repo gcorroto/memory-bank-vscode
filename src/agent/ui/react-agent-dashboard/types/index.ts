@@ -302,4 +302,4 @@ export interface DelegationState {
   pendingTasks: any[]; 
 }
 
-export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing' | 'delegation';
+export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing' | 'delegation' | 'launcher';

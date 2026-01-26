@@ -34,6 +34,7 @@ export interface PendingTask {
     id: string;
     projectId: string;
     title: string;
+    description?: string;
     assignedTo: string;
     from: string; // from_source
     status: string;

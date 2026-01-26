@@ -16,6 +16,7 @@ import ValidatorTab from './components/Tabs/ValidatorTab';
 import PlannerTab from './components/Tabs/PlannerTab';
 import TestingTab from './components/Tabs/TestingTab';
 import DelegationTab from './components/Tabs/DelegationTab';
+import LauncherTab from './components/Tabs/LauncherTab';
 
 const TabComponents: Record<TabType, React.ComponentType<any>> = {
   mcps: MCPsTab,
@@ -25,6 +26,7 @@ const TabComponents: Record<TabType, React.ComponentType<any>> = {
   planner: PlannerTab,
   testing: TestingTab,
   delegation: DelegationTab,
+  launcher: LauncherTab,
 };
 
 const TabLabels: Record<TabType, string> = {
@@ -35,6 +37,7 @@ const TabLabels: Record<TabType, string> = {
   planner: 'Planificador',
   testing: 'Testing',
   delegation: 'Delegación',
+  launcher: 'Lanzador',
 };
 
 export const App: React.FC = () => {

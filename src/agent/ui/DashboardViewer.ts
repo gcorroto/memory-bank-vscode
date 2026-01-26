@@ -240,6 +240,33 @@ export class DashboardViewer {
         this.updateAgentConfig(message.data);
         break;
 
+      case 'LAUNCH_AGENT':
+        const { agentType, task, cliCommand, config } = message.payload;
+        
+        if (agentType === 'vscode') {
+          if (this.agent) {
+             // We use the same pattern as 'Launch Agent for Task' command
+             // Pass configuration options in the context
+             this.agent.handleUserInput(`Task: ${task}`, { 
+                 ...config,
+                 source: 'dashboard'
+             });
+             vscode.window.showInformationMessage(`Agent launched for task: ${task}`);
+             this.agent.showLogsView();
+          } else {
+             vscode.window.showErrorMessage('Internal agent not available');
+          }
+        } else if (agentType === 'cli') {
+          if (cliCommand) {
+             const terminal = vscode.window.createTerminal(`Agent CLI: ${new Date().toLocaleTimeString()}`);
+             terminal.show();
+             terminal.sendText(cliCommand);
+          } else {
+             vscode.window.showErrorMessage('No CLI command provided');
+          }
+        }
+        break;
+
       default:
         console.warn('Unknown message type:', message.type);
     }

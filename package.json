@@ -1,6 +1,6 @@
 {
   "name": "memory-bank-vscode",
-  "version": "0.0.49",
+  "version": "0.0.50",
   "icon": "resources/icons/logo_transparent.png",
   "displayName": "Memory Bank Inspector",
   "description": "Memory Bank Inspector - Explore and visualize indexed projects, code relationships, and documentation from your Memory Bank.",
@@ -88,6 +88,12 @@
           "dark": "resources/icons/dark/refresh.svg",
           "light": "resources/icons/light/refresh.svg"
         }
+      },
+      {
+        "command": "memorybank.agent.launchTask",
+        "title": "Lanzar Agente para Tarea",
+        "category": "Memory Bank",
+        "icon": "$(rocket)"
       },
       {
         "command": "memorybank.refresh",
