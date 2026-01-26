@@ -24,8 +24,10 @@ const TabComponents: Record<TabType, React.ComponentType<any>> = {
   execution: ExecutionTab,
   validator: ValidatorTab,
   planner: PlannerTab,
-  testing: TestingTab,
-  delegation: DelegationTab,
+  // testing: TestingTab, 
+  // delegation: DelegationTab, 
+  testing: () => null, // Hidden per user request
+  delegation: () => null, // Hidden per user request
   launcher: LauncherTab,
 };
 
@@ -35,8 +37,10 @@ const TabLabels: Record<TabType, string> = {
   execution: 'Ejecución',
   validator: 'Validador',
   planner: 'Planificador',
-  testing: 'Testing',
-  delegation: 'Delegación',
+  // testing: 'Testing',
+  // delegation: 'Delegación',
+  testing: '', // Hidden
+  delegation: '', // Hidden
   launcher: 'Lanzador',
 };
 
@@ -93,8 +97,20 @@ export const App: React.FC = () => {
         if (message.data.coverage) dashboard.updateTestCoverage(message.data.coverage);
         break;
       case 'UPDATE_DELEGATION_REQUESTS':
-        if (message.data.requests) {
-          dashboard.updateDelegationRequests(message.data.requests);
+        if (message.data.requests || message.data.pendingTasks) {
+          dashboard.updateDelegationRequests(
+              message.data.requests || [], 
+              message.data.pendingTasks || []
+          );
+        }
+        break;
+      case 'SELECT_TAB_WITH_DATA':
+        if (message.payload) {
+          dashboard.setActiveTab(message.payload.tab as TabType);
+          // If we have data for the launcher tab (task pre-fill)
+          if (message.payload.tab === 'launcher' && message.payload.data) {
+             dashboard.setLauncherData(message.payload.data);
+          }
         }
         break;
     }
@@ -159,13 +175,15 @@ export const App: React.FC = () => {
 
       {/* Tab Navigation */}
       <nav className="tab-navigation">
-        {(Object.keys(TabLabels) as TabType[]).map((tabKey) => (
+        {(Object.keys(TabLabels) as TabType[])
+         .filter(key => TabLabels[key] !== '') // Filter out hidden tabs
+         .map((tabKey) => (
           <button
             key={tabKey}
             className={`tab-button ${dashboard.state.activeTab === tabKey ? 'active' : ''}`}
             onClick={() => dashboard.setActiveTab(tabKey)}
           >
-            {TabLabels[tabKey]}
+            {TabLabels[tabKey].replace(/[\u{1F300}-\u{1F9FF}]/gu, '')} 
           </button>
         ))}
       </nav>

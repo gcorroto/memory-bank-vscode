@@ -269,7 +269,8 @@ export type DashboardAction =
   | { type: 'ADD_TEST_RESULT'; payload: TestResult }
   | { type: 'UPDATE_TEST_COVERAGE'; payload: number }
   | { type: 'SET_CURRENT_TEST'; payload: string }
-  | { type: 'UPDATE_DELEGATION_REQUESTS'; payload: ExternalRequest[] }
+  | { type: 'UPDATE_DELEGATION_REQUESTS'; payload: ExternalRequest[]; pendingTasks: any[] }
+  | { type: 'SET_LAUNCHER_DATA'; payload: { task: string } }
   | { type: 'RESET_STATE' }
   | { type: 'RESET' };
 
@@ -303,3 +304,17 @@ export interface DelegationState {
 }
 
 export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing' | 'delegation' | 'launcher';
+
+export interface DashboardState {
+  mcps: MCPsState;
+  historico: HistoricoState;
+  execution: ExecutionState;
+  validator: ValidatorState;
+  planner: PlannerState;
+  testing: TestingState;
+  delegation: DelegationState;
+  launcherData?: { task: string };
+  activeTab: TabType;
+  theme: 'light' | 'dark' | 'high-contrast';
+  isLoading: boolean;
+}

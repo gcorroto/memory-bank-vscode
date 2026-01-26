@@ -19,9 +19,17 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
   const [cliCommand, setCliCommand] = useState('npx @grec0/memory-bank-mcp');
   const [isLaunching, setIsLaunching] = useState(false);
   
-  // Advanced settings (mockup for now, could be real in future)
-  const [model, setModel] = useState('gpt-4');
-  const [autoApprove, setAutoApprove] = useState(false);
+  // Multi-task selection
+  const [selectedInternalTasks, setSelectedInternalTasks] = useState<string[]>([]);
+  const [selectedExternalRequests, setSelectedExternalRequests] = useState<string[]>([]);
+  
+  // MCP selection
+  const [selectedMCPs, setSelectedMCPs] = useState<string[]>([]);
+  const [configuredMCPs, setConfiguredMCPs] = useState<Record<string, any>>({});
+
+  // Advanced settings
+  const [model, setModel] = useState('gpt-5.1-codex'); // Default for Codex
+  const [autoApprove, setAutoApprove] = useState(false); // Default false for checks
   const [maxSteps, setMaxSteps] = useState(10);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [recentTasks, setRecentTasks] = useState<string[]>(() => {
@@ -33,45 +41,111 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
     }
   });
 
-  const COMMON_TASKS = [
-    "Analyze project structure and create documentation",
-    "Find and fix all linting errors in current file",
-    "Generate unit tests for the selected class",
-    "Refactor this component to use functional patterns",
-    "Explain how the authentication flow works"
-  ];
+  // Effect to handle pre-launch data
+  React.useEffect(() => {
+    if (state.launcherData && state.launcherData.task) {
+        // If it looks like ID, preselect. Otherwise text.
+        // For simplicity, we just put it in text for now as user might want to edit
+        setTask(state.launcherData.task);
+    }
+    
+    // Request config on mount
+    postMessage({ type: 'REQUEST_AGENT_CONFIG', command: 'REQUEST_AGENT_CONFIG' });
+    
+    // Default MCPs setup
+    const standardMCPs = {
+        "filesystem": { description: "Access local files" },
+        "git": { description: "Git repository control" },
+        "memory-bank": { description: "RAG & Knowledge Graph" }
+    };
+    setConfiguredMCPs(standardMCPs);
+    // Preselect memory-bank
+    setSelectedMCPs(['memory-bank']);
+  }, [state.launcherData]);
 
   const handleLaunch = () => {
-    if (!task && agentType === 'vscode') {
+    // Validation
+    const hasTask = task.trim().length > 0;
+    const hasSelection = selectedInternalTasks.length > 0 || selectedExternalRequests.length > 0;
+    
+    if (!hasTask && !hasSelection) {
       return; 
     }
     
-    // Save to recent tasks
+    setIsLaunching(true);
+
+    // Build composite prompt
+    let compositeTask = task;
+    
+    const internalTitles = state.delegation.pendingTasks
+        .filter(t => selectedInternalTasks.includes(t.id))
+        .map(t => `${t.title} (ID: ${t.id})`);
+        
+    const externalTitles = state.delegation.externalRequests
+        .filter(t => selectedExternalRequests.includes(t.id))
+        .map(t => `${t.title} (ID: ${t.id})`);
+
+    const allSelectedTitles = [...internalTitles, ...externalTitles];
+    
+    if (allSelectedTitles.length > 0) {
+        const prefix = "Realiza las siguientes tareas pendientes:\n- " + allSelectedTitles.join("\n- ");
+        if (compositeTask) {
+            compositeTask = prefix + "\n\nInstrucciones adicionales:\n" + compositeTask;
+        } else {
+            compositeTask = prefix;
+        }
+        compositeTask += "\n\nUna vez completado, reindexa los cambios.";
+    }
+    
+    // Save to recents if text provided
     if (task && agentType === 'vscode') {
         const updatedRecents = [task, ...recentTasks.filter(t => t !== task)].slice(0, 5);
         setRecentTasks(updatedRecents);
         localStorage.setItem('memorybank_recent_tasks', JSON.stringify(updatedRecents));
     }
 
-    setIsLaunching(true);
-    
     postMessage({
       type: 'LAUNCH_AGENT',
       command: 'LAUNCH_AGENT',
       payload: {
         agentType,
-        task,
+        task: compositeTask,
         cliCommand: agentType === 'cli' ? cliCommand : undefined,
         config: {
-            model,
+            model: agentType === 'vscode' ? 'default' : model,
             autoApprove,
-            maxSteps
+            maxSteps,
+            selectedMCPs: agentType === 'cli' ? selectedMCPs : undefined
         }
       }
     });
 
     // Reset status after a delay
     setTimeout(() => setIsLaunching(false), 2000);
+  };
+  
+  const toggleInternalTask = (id: string) => {
+      if (selectedInternalTasks.includes(id)) {
+          setSelectedInternalTasks(selectedInternalTasks.filter(k => k !== id));
+      } else {
+          setSelectedInternalTasks([...selectedInternalTasks, id]);
+      }
+  };
+
+  const toggleExternalRequest = (id: string) => {
+      if (selectedExternalRequests.includes(id)) {
+          setSelectedExternalRequests(selectedExternalRequests.filter(k => k !== id));
+      } else {
+          setSelectedExternalRequests([...selectedExternalRequests, id]);
+      }
+  };
+
+  const toggleMCP = (id: string) => {
+      if (selectedMCPs.includes(id)) {
+          setSelectedMCPs(selectedMCPs.filter(k => k !== id));
+      } else {
+          setSelectedMCPs([...selectedMCPs, id]);
+      }
   };
 
   const selectTask = (t: string) => {
@@ -93,72 +167,89 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                 border-radius: 6px;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             }
-            .launch-header {
+            .launch-card h3 {
+                margin-top: 0;
+                margin-bottom: 15px;
+                border-bottom: 1px solid var(--vscode-settings-dropdownBorder);
+                padding-bottom: 10px;
                 display: flex;
                 align-items: center;
-                margin-bottom: 20px;
-                border-bottom: 1px solid var(--vscode-widget-border);
-                padding-bottom: 15px;
+                gap: 10px;
             }
-            .launch-icon {
-                font-size: 24px;
-                margin-right: 10px;
+            .section-label {
+                font-weight: bold;
+                margin-top: 15px;
+                margin-bottom: 5px;
+                display: block;
+                color: var(--vscode-foreground);
             }
-            .form-section {
-                margin-bottom: 20px;
+            .task-list {
+                max-height: 200px;
+                overflow-y: auto;
+                border: 1px solid var(--vscode-input-border);
+                background: var(--vscode-input-background);
+                border-radius: 4px;
+                padding: 5px;
             }
-            .toggle-advanced {
-                color: var(--vscode-textLink-foreground);
+            .task-item {
+                display: flex;
+                align-items: center;
+                padding: 6px;
+                border-bottom: 1px solid var(--vscode-tree-tableOddRowsBackground); 
+            }
+            .task-item:last-child {
+                border-bottom: none;
+            }
+            .task-item label {
+                margin-left: 8px;
                 cursor: pointer;
-                font-size: 0.9em;
-                display: flex;
-                align-items: center;
-                margin-top: 10px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
                 user-select: none;
             }
-            .toggle-advanced:hover {
-                text-decoration: underline;
+            .mcp-list {
+                display: grid;
+                grid-template-columns: 1fr; 
+                gap: 5px;
+                margin-top: 5px;
             }
-            .advanced-panel {
-                margin-top: 15px;
-                padding: 15px;
-                background: var(--vscode-textBlockQuote-background);
-                border-left: 3px solid var(--vscode-textBlockQuote-border);
-                animation: slideDown 0.3s ease-out;
-            }
-            @keyframes slideDown {
-                from { opacity: 0; transform: translateY(-10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            .checkbox-wrapper {
+            .mcp-item {
                 display: flex;
                 align-items: center;
+                background: var(--vscode-textBlockQuote-background);
+                padding: 8px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .launch-btn {
+                width: 100%;
+                padding: 12px;
+                background-color: var(--vscode-button-background);
+                color: var(--vscode-button-foreground);
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 1.1em;
+                margin-top: 20px;
+                font-weight: bold;
+                display: flex;
+                align-items: center;
+                justifyContent: center;
                 gap: 8px;
-                cursor: pointer;
             }
-            .task-chip {
-                display: inline-block;
-                padding: 2px 8px;
-                margin: 2px 4px 2px 0;
-                background: var(--vscode-badge-background);
-                color: var(--vscode-badge-foreground);
-                border-radius: 12px;
-                font-size: 0.85em;
-                cursor: pointer;
-                border: 1px solid transparent;
+            .launch-btn:hover {
+                background-color: var(--vscode-button-hoverBackground);
             }
-            .task-chip:hover {
-                border-color: var(--vscode-focusBorder);
-                opacity: 0.9;
+            .launch-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
             }
-            .quick-actions {
-                margin-bottom: 15px;
+            .agent-type-btn {
+                transition: all 0.2s;
             }
-            .quick-actions h4 {
-                margin: 0 0 5px 0;
-                font-size: 0.85em;
-                color: var(--vscode-descriptionForeground);
-                text-transform: uppercase;
+            .agent-type-btn:hover {
+                background: var(--vscode-list-hoverBackground) !important;
             }
         `}} />
 
@@ -174,269 +265,165 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
         <div className="launcher-grid">
             {/* Left Column: Configuration */}
             <div className="launch-card">
-                <div className="launch-header">
-                    <span className="launch-icon">⚙️</span>
-                    <h3 style={{ margin: 0 }}>Configuration</h3>
-                </div>
+                <h3>⚙️ Configuration</h3>
 
                 <div className="form-group" style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Agent Runtime</label>
+                    <label className="section-label">Agent Environment</label>
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <div 
-                            onClick={() => setAgentType('vscode')}
+                            className="agent-type-btn"
+                            onClick={() => { setAgentType('vscode'); setModel('default'); }}
                             style={{
                                 flex: 1,
-                                padding: '10px',
-                                border: `1px solid ${agentType === 'vscode' ? 'var(--vscode-focusBorder)' : 'var(--vscode-input-border)'}`,
-                                backgroundColor: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionBackground)' : 'var(--vscode-input-background)',
-                                color: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-input-foreground)',
-                                borderRadius: '4px',
+                                padding: '12px',
+                                border: `2px solid ${agentType === 'vscode' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
+                                backgroundColor: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
+                                color: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
+                                borderRadius: '6px',
                                 cursor: 'pointer',
-                                textAlign: 'center',
-                                transition: 'all 0.2s'
+                                textAlign: 'center'
                             }}
                         >
                             <strong>VS Code</strong>
-                            <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Internal</div>
+                            <div style={{ fontSize: '0.85em', opacity: 0.8 }}>Internal Extension</div>
                         </div>
                         <div 
-                            onClick={() => setAgentType('cli')}
+                            className="agent-type-btn"
+                            onClick={() => { setAgentType('cli'); setModel('gpt-5.1-codex'); }}
                             style={{
                                 flex: 1,
-                                padding: '10px',
-                                border: `1px solid ${agentType === 'cli' ? 'var(--vscode-focusBorder)' : 'var(--vscode-input-border)'}`,
-                                backgroundColor: agentType === 'cli' ? 'var(--vscode-list-activeSelectionBackground)' : 'var(--vscode-input-background)',
-                                color: agentType === 'cli' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-input-foreground)',
-                                borderRadius: '4px',
+                                padding: '12px',
+                                border: `2px solid ${agentType === 'cli' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
+                                backgroundColor: agentType === 'cli' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
+                                color: agentType === 'cli' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
+                                borderRadius: '6px',
                                 cursor: 'pointer',
-                                textAlign: 'center',
-                                transition: 'all 0.2s'
+                                textAlign: 'center'
                             }}
                         >
-                            <strong>CLI / Codex</strong>
-                            <div style={{ fontSize: '0.8em', opacity: 0.8 }}>External Process</div>
+                            <strong>Codex / CLI</strong>
+                            <div style={{ fontSize: '0.85em', opacity: 0.8 }}>External Process</div>
                         </div>
                     </div>
                 </div>
 
-                {agentType === 'vscode' && (
-                <div className="form-group slide-in">
-                    <div className="quick-actions">
-                        {recentTasks.length > 0 && (
-                            <div style={{ marginBottom: '10px' }}>
-                                <h4>History</h4>
-                                <div>
-                                    {recentTasks.map((t, i) => (
-                                        <span key={`recent-${i}`} className="task-chip" onClick={() => selectTask(t)} title={t}>
-                                            {t.length > 40 ? t.substring(0, 40) + '...' : t}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
+                <div className="form-group">
+                    <label className="section-label">Model</label>
+                    <select 
+                        value={model} 
+                        onChange={(e) => setModel(e.target.value)}
+                        disabled={agentType === 'vscode'}
+                        style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: 'var(--vscode-dropdown-background)',
+                            color: 'var(--vscode-dropdown-foreground)',
+                            border: '1px solid var(--vscode-dropdown-border)',
+                            opacity: agentType === 'vscode' ? 0.7 : 1
+                        }}
+                    >
+                        {agentType === 'vscode' ? (
+                            <option value="default">Default Copilot Model (VS Code)</option>
+                        ) : (
+                            <>
+                                <option value="gpt-5.1-codex">GPT-5.1 Codex (Preview)</option>
+                                <option value="gpt-5-mini">GPT-5 Mini</option>
+                                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+                            </>
                         )}
-                        
-                        <div>
-                            <h4>Templates</h4>
-                            <div>
-                                {COMMON_TASKS.map((t, i) => (
-                                    <span key={`common-${i}`} className="task-chip" onClick={() => selectTask(t)} title={t}>
-                                        {t.length > 50 ? t.substring(0, 50) + '...' : t}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Task Description</label>
-                    <textarea
-                    value={task}
-                    onChange={(e) => setTask(e.target.value)}
-                    placeholder="Describe specific task requirements, context, and expected outcome..."
-                    rows={6}
-                    style={{ 
-                        width: '100%', 
-                        padding: '10px', 
-                        borderRadius: '4px',
-                        border: '1px solid var(--vscode-input-border)',
-                        backgroundColor: 'var(--vscode-input-background)',
-                        color: 'var(--vscode-input-foreground)',
-                        fontFamily: 'var(--vscode-editor-font-family)',
-                        resize: 'vertical'
-                    }}
-                    />
+                    </select>
                 </div>
-                )}
 
                 {agentType === 'cli' && (
-                <div className="form-group slide-in">
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>CLI Command</label>
-                    <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '10px', top: '9px', opacity: 0.7 }}>$</span>
-                        <input
-                        type="text"
-                        value={cliCommand}
-                        onChange={(e) => setCliCommand(e.target.value)}
-                        placeholder="npm run agent:start"
-                        style={{ 
-                            width: '100%', 
-                            padding: '8px 8px 8px 25px', 
-                            borderRadius: '4px',
-                            border: '1px solid var(--vscode-input-border)',
-                            backgroundColor: 'var(--vscode-input-background)',
-                            color: 'var(--vscode-input-foreground)',
-                            fontFamily: 'monospace'
-                        }}
-                        />
-                    </div>
-                </div>
-                )}
-
-                <div className="toggle-advanced" onClick={() => setShowAdvanced(!showAdvanced)}>
-                    <span style={{ transform: showAdvanced ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', marginRight: '5px' }}>▶</span>
-                    {showAdvanced ? 'Hide Advanced Settings' : 'Show Advanced Settings'}
-                </div>
-
-                {showAdvanced && (
-                    <div className="advanced-panel">
-                        <div className="form-group" style={{ marginBottom: '15px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9em' }}>Model</label>
-                            <select 
-                                value={model}
-                                onChange={(e) => setModel(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    padding: '5px',
-                                    borderRadius: '3px',
-                                    backgroundColor: 'var(--vscode-dropdown-background)',
-                                    color: 'var(--vscode-dropdown-foreground)',
-                                    border: '1px solid var(--vscode-dropdown-border)'
-                                }}
-                            >
-                                <option value="gpt-4">GPT-4 (Recommended)</option>
-                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fast)</option>
-                                <option value="claude-3-opus">Claude 3 Opus</option>
-                            </select>
+                    <div className="form-group">
+                        <label className="section-label">Included MCP Servers (stdio)</label>
+                        <div className="mcp-list">
+                            {Object.entries(configuredMCPs).map(([id, config]) => (
+                                <div key={id} className="mcp-item" onClick={() => toggleMCP(id)}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedMCPs.includes(id)}
+                                        onChange={() => {}} // Handle click on div
+                                        style={{cursor:'pointer'}}
+                                    />
+                                    <div style={{marginLeft:'10px'}}>
+                                        <div style={{fontWeight:'bold'}}>{id}</div>
+                                        <div style={{fontSize:'0.8em', opacity:0.8}}>{config.description}</div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                        
-                        <div className="form-group" style={{ marginBottom: '15px' }}>
-                             <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9em' }}>Max Steps</label>
-                             <input 
-                                type="number" 
-                                value={maxSteps}
-                                onChange={(e) => setMaxSteps(parseInt(e.target.value))}
-                                min="1" max="50"
-                                style={{
-                                    width: '100%',
-                                    padding: '5px',
-                                    borderRadius: '3px',
-                                    backgroundColor: 'var(--vscode-input-background)',
-                                    color: 'var(--vscode-input-foreground)',
-                                    border: '1px solid var(--vscode-input-border)'
-                                }}
-                             />
-                        </div>
-
-                        <label className="checkbox-wrapper">
-                            <input 
-                                type="checkbox" 
-                                checked={autoApprove}
-                                onChange={(e) => setAutoApprove(e.target.checked)}
-                            />
-                            <span>Auto-approve tool execution</span>
-                        </label>
                     </div>
                 )}
             </div>
 
-            {/* Right Column: Preview & Action */}
-            <div className="launch-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="launch-header">
-                    <span className="launch-icon">🎯</span>
-                    <h3 style={{ margin: 0 }}>Execution Plan</h3>
+            {/* Right Column: Task Selection */}
+            <div className="launch-card">
+                <h3>🎯 Task Selection</h3>
+
+                <div className="form-group">
+                    <label className="section-label">Pending Internal Tasks</label>
+                    <div className="task-list">
+                        {state.delegation.pendingTasks.length === 0 && (
+                            <div style={{padding:'10px', color:'var(--vscode-descriptionForeground)', fontStyle:'italic'}}>No pending internal tasks</div>
+                        )}
+                        {state.delegation.pendingTasks.map(t => (
+                            <div key={t.id} className="task-item" onClick={() => toggleInternalTask(t.id)}>
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedInternalTasks.includes(t.id)}
+                                    onChange={() => {}}
+                                />
+                                <label title={t.title}>{t.title}</label>
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
-                <div style={{ flex: 1 }}>
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '0.9em', color: 'var(--vscode-descriptionForeground)', marginBottom: '5px' }}>Target Environment</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ 
-                                display: 'inline-block', 
-                                width: '10px', 
-                                height: '10px', 
-                                borderRadius: '50%', 
-                                backgroundColor: 'var(--vscode-testing-iconPassed)' 
-                            }}></span>
-                            <strong>{agentType === 'vscode' ? 'VS Code Extension Host' : 'Integrated Terminal'}</strong>
-                        </div>
+                <div className="form-group">
+                    <label className="section-label">External Requests</label>
+                    <div className="task-list">
+                        {state.delegation.externalRequests.length === 0 && (
+                            <div style={{padding:'10px', color:'var(--vscode-descriptionForeground)', fontStyle:'italic'}}>No external requests</div>
+                        )}
+                        {state.delegation.externalRequests.map(t => (
+                            <div key={t.id} className="task-item" onClick={() => toggleExternalRequest(t.id)}>
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedExternalRequests.includes(t.id)}
+                                    onChange={() => {}}
+                                />
+                                <label title={t.title}>{t.title} <span style={{opacity:0.6}}>(from {t.fromProject})</span></label>
+                            </div>
+                        ))}
                     </div>
+                </div>
 
-                    <div style={{ marginBottom: '20px' }}>
-                         <div style={{ fontSize: '0.9em', color: 'var(--vscode-descriptionForeground)', marginBottom: '5px' }}>Capabilities</div>
-                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                            {['File System', 'Search', 'Terminal', 'Memory Bank'].map(cap => (
-                                <span key={cap} style={{ 
-                                    fontSize: '0.85em', 
-                                    padding: '2px 8px', 
-                                    borderRadius: '10px', 
-                                    backgroundColor: 'var(--vscode-badge-background)', 
-                                    color: 'var(--vscode-badge-foreground)' 
-                                }}>
-                                    {cap}
-                                </span>
-                            ))}
-                         </div>
-                    </div>
-
-                    <div style={{ padding: '15px', backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: '4px', marginBottom: '20px' }}>
-                        <strong>Ready to Launch</strong>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', opacity: 0.8 }}>
-                            The agent will satisfy all constraints and context defined in the configuration.
-                        </p>
-                    </div>
+                <div className="form-group">
+                    <label className="section-label">Additional Instructions</label>
+                    <textarea
+                        value={task}
+                        onChange={(e) => setTask(e.target.value)}
+                        placeholder="Add custom instructions or context..."
+                        rows={3}
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            background: 'var(--vscode-input-background)',
+                            color: 'var(--vscode-input-foreground)',
+                            border: '1px solid var(--vscode-input-border)',
+                            resize: 'vertical'
+                        }}
+                    />
                 </div>
 
                 <button 
-                onClick={handleLaunch}
-                disabled={isLaunching || (agentType === 'vscode' && !task)}
-                style={{
-                    width: '100%',
-                    padding: '12px',
-                    backgroundColor: 'var(--vscode-button-background)',
-                    color: 'var(--vscode-button-foreground)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: (isLaunching || (agentType === 'vscode' && !task)) ? 'not-allowed' : 'pointer',
-                    opacity: (isLaunching || (agentType === 'vscode' && !task)) ? 0.6 : 1,
-                    fontSize: '1.1em',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}
+                    className="launch-btn"
+                    onClick={handleLaunch}
+                    disabled={isLaunching || (!task && selectedInternalTasks.length === 0 && selectedExternalRequests.length === 0)}
                 >
-                    {isLaunching ? (
-                        <>
-                            <span className="spinner" style={{ 
-                                width: '16px', 
-                                height: '16px', 
-                                border: '2px solid rgba(255,255,255,0.3)', 
-                                borderTop: '2px solid white', 
-                                borderRadius: '50%',
-                                animation: 'spin 1s linear infinite'
-                            }}></span>
-                            Initializing...
-                        </>
-                    ) : (
-                        <>
-                            <span>🚀</span> Launch Agent
-                        </>
-                    )}
+                    {isLaunching ? '🚀 Launching...' : `🚀 Launch ${agentType === 'vscode' ? 'VS Code Agent' : 'Codex Agent'}`}
                 </button>
-                <style dangerouslySetInnerHTML={{__html: `
-                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                `}} />
             </div>
         </div>
       </div>

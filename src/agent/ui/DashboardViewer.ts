@@ -653,13 +653,56 @@ export class DashboardViewer {
     const projectId = this.currentProjectId || 'memory_bank_vscode_extension'; // Fallback for dev
 
     const requests = projectId ? this.parseExternalRequests(projectId) : [];
+    const internalTasks = projectId ? this.parseInternalTasks(projectId) : [];
     
     this.sendToWebview({
       type: 'UPDATE_DELEGATION_REQUESTS',
       data: {
-        requests: requests
+        requests: requests, // Keep backwards compatibility if needed
+        pendingTasks: internalTasks
       }
     });
+  }
+
+  private parseInternalTasks(projectId: string): any[] {
+      try {
+        const service = getMemoryBankService();
+        // Use SqliteService if available as it is the SSOT
+        const sqlite = service.getSqliteService();
+        if (sqlite) {
+             const tasks = sqlite.getPendingTasks(projectId);
+             return tasks.map(t => ({
+                 id: t.id,
+                 title: t.title,
+                 status: t.status,
+                 description: t.description || ''
+             }));
+        }
+        
+        // Fallback to markdown parsing (Legacy)
+        const mbPath = service.getMemoryBankPath();
+        if (!mbPath) return [];
+
+        const boardPath = path.join(mbPath, 'projects', projectId, 'docs', 'agentBoard.md');
+        if (!fs.existsSync(boardPath)) return [];
+
+        const content = fs.readFileSync(boardPath, 'utf-8');
+        const tasks = this.parseTable(content, 'Pending Tasks');
+        
+        return tasks.map(row => {
+            // | ID | Title | From | Status | Created At |
+            const [id, title, from, status, createdAt] = row;
+            return {
+                id: id || 'Unknown',
+                title: title || 'Unknown',
+                status: status ? status.trim() : 'PENDING',
+                description: '' // Markdown table doesn't have description usually
+            };
+        });
+      } catch (e) {
+          console.error('[DashboardViewer] Error parsing internal tasks:', e);
+          return [];
+      }
   }
 
   private parseExternalRequests(projectId: string): ExternalRequest[] {

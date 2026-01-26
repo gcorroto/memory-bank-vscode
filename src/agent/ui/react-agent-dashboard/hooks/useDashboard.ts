@@ -66,6 +66,9 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
     case 'SET_THEME':
       return { ...state, theme: action.payload };
 
+    case 'SET_LAUNCHER_DATA':
+      return { ...state, launcherData: action.payload };
+
     case 'UPDATE_MCPS_CONNECTIONS':
       return {
         ...state,
@@ -200,11 +203,12 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
 
     case 'UPDATE_DELEGATION_REQUESTS':
       return {
-        ...state,
-        delegation: {
-            ...state.delegation,
-            externalRequests: action.payload,
-        }
+          ...state,
+          delegation: {
+              ...state.delegation,
+              externalRequests: action.payload,
+              pendingTasks: action.pendingTasks || []
+          }
       };
 
     case 'RESET_STATE':
@@ -294,8 +298,8 @@ export const useDashboard = () => {
     dispatch({ type: 'RESET_STATE' });
   }, []);
 
-  const updateDelegationRequests = useCallback((requests: any[]) => {
-    dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests });
+  const updateDelegationRequests = useCallback((requests: any[], pendingTasks: any[] = []) => {
+    dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests, pendingTasks });
   }, []);
 
   return {
@@ -320,6 +324,9 @@ export const useDashboard = () => {
     setTheme,
     resetState,
     updateDelegationRequests,
+    setLauncherData: useCallback((data: { task: string }) => {
+        dispatch({ type: 'SET_LAUNCHER_DATA', payload: data });
+    }, []),
   };
 };
 
