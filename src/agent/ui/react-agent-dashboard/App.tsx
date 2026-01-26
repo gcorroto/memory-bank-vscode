@@ -109,8 +109,20 @@ export const App: React.FC = () => {
           dashboard.setActiveTab(message.payload.tab as TabType);
           // If we have data for the launcher tab (task pre-fill)
           if (message.payload.tab === 'launcher' && message.payload.data) {
-             dashboard.setLauncherData(message.payload.data);
+             dashboard.setLauncherData({
+                 task: message.payload.data.task,
+                 // Preserve existing configuredMCPs if any, though usually this message comes first or separate
+                 configuredMCPs: dashboard.state.launcherData?.configuredMCPs
+             });
           }
+        }
+        break;
+      case 'AGENT_CONFIG_DATA':
+        if (message.data && message.data.mcpServers) {
+            dashboard.setLauncherData({
+                task: dashboard.state.launcherData?.task || '',
+                configuredMCPs: message.data.mcpServers
+            });
         }
         break;
     }

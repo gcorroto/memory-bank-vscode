@@ -270,7 +270,7 @@ export type DashboardAction =
   | { type: 'UPDATE_TEST_COVERAGE'; payload: number }
   | { type: 'SET_CURRENT_TEST'; payload: string }
   | { type: 'UPDATE_DELEGATION_REQUESTS'; payload: ExternalRequest[]; pendingTasks: any[] }
-  | { type: 'SET_LAUNCHER_DATA'; payload: { task: string } }
+  | { type: 'SET_LAUNCHER_DATA'; payload: { task: string; configuredMCPs?: Record<string, any> } }
   | { type: 'RESET_STATE' }
   | { type: 'RESET' };
 
@@ -313,7 +313,10 @@ export interface DashboardState {
   planner: PlannerState;
   testing: TestingState;
   delegation: DelegationState;
-  launcherData?: { task: string };
+  launcherData?: { 
+    task: string;
+    configuredMCPs?: Record<string, any>; // command, args, etc from settings
+  };
   activeTab: TabType;
   theme: 'light' | 'dark' | 'high-contrast';
   isLoading: boolean;

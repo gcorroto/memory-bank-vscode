@@ -324,7 +324,7 @@ export const useDashboard = () => {
     setTheme,
     resetState,
     updateDelegationRequests,
-    setLauncherData: useCallback((data: { task: string }) => {
+    setLauncherData: useCallback((data: { task: string; configuredMCPs?: Record<string, any> }) => {
         dispatch({ type: 'SET_LAUNCHER_DATA', payload: data });
     }, []),
   };

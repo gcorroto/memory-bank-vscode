@@ -240,6 +240,15 @@ export class DashboardViewer {
         this.updateAgentConfig(message.data);
         break;
 
+      case 'REQUEST_AGENT_CONFIG':
+        const config = vscode.workspace.getConfiguration('memorybank');
+        const mcpServers = config.get('mcpServers') || {};
+        this.sendToWebview({
+            type: 'AGENT_CONFIG_DATA',
+            data: { mcpServers }
+        });
+        break;
+
       case 'LAUNCH_AGENT':
         const { agentType, task, cliCommand, config } = message.payload;
         
@@ -316,7 +325,7 @@ export class DashboardViewer {
           { role: 'assistant', content: 'Analyzing errors...', timestamp: Date.now() - 119000 },
           { role: 'tool', content: 'Found 5 errors', timestamp: Date.now() - 118000 }
         ] : []),
-        totalTokens: this.contextManager?.getTokenCount() || (hasMockData ? 1234 : 0),
+        totalTokens: this.contextManager?.getSummary?.().tokenCount || (hasMockData ? 1234 : 0),
         sessionId: this.contextManager?.getSessionId() || (hasMockData ? 'session-demo-001' : 'N/A'),
         startTime: Date.now() - (hasMockData ? 300000 : 0),
       },
@@ -390,7 +399,7 @@ export class DashboardViewer {
       type: 'UPDATE_HISTORICO',
       data: {
         messages: this.contextManager?.getHistory() || [],
-        totalTokens: this.contextManager?.getTokenCount() || 0,
+        totalTokens: this.contextManager?.getSummary?.().tokenCount || 0,
       },
     });
   }
@@ -646,14 +655,14 @@ export class DashboardViewer {
   /**
    * Send Delegation state
    */
-  private sendDelegationState(): void {
+  private async sendDelegationState(): Promise<void> {
     if (!this.currentProjectId && this.agent && this.agent.context && this.agent.context.workspaceState) {
          // Try to recover projectId from context/state if possible, or default to current workspace
     }
     const projectId = this.currentProjectId || 'memory_bank_vscode_extension'; // Fallback for dev
 
-    const requests = projectId ? this.parseExternalRequests(projectId) : [];
-    const internalTasks = projectId ? this.parseInternalTasks(projectId) : [];
+    const requests = projectId ? await this.parseExternalRequests(projectId) : [];
+    const internalTasks = projectId ? await this.parseInternalTasks(projectId) : [];
     
     this.sendToWebview({
       type: 'UPDATE_DELEGATION_REQUESTS',
@@ -664,12 +673,13 @@ export class DashboardViewer {
     });
   }
 
-  private parseInternalTasks(projectId: string): any[] {
+  private async parseInternalTasks(projectId: string): Promise<any[]> {
       try {
         const service = getMemoryBankService();
         // Use SqliteService if available as it is the SSOT
         const sqlite = service.getSqliteService();
         if (sqlite) {
+             await sqlite.ensureInitialized();
              const tasks = sqlite.getPendingTasks(projectId);
              return tasks.map(t => ({
                  id: t.id,
@@ -705,9 +715,25 @@ export class DashboardViewer {
       }
   }
 
-  private parseExternalRequests(projectId: string): ExternalRequest[] {
+  private async parseExternalRequests(projectId: string): Promise<ExternalRequest[]> {
       try {
         const service = getMemoryBankService();
+
+        // Use SqliteService if available 
+        const sqlite = service.getSqliteService();
+        if (sqlite) {
+             await sqlite.ensureInitialized();
+             const reqs = sqlite.getExternalRequests(projectId);
+             return reqs.map(r => ({
+                id: r.id,
+                title: r.title,
+                fromProject: r.from || 'Unknown',
+                context: r.description || '',
+                status: r.status,
+                receivedAt: r.created_at
+             }));
+        }
+
         const mbPath = service.getMemoryBankPath();
         if (!mbPath) return [];
 
