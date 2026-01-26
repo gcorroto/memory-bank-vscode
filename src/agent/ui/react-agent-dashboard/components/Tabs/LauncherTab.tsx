@@ -15,7 +15,9 @@ interface Props {
 const LauncherTab: React.FC<Props> = ({ state }) => {
   const { postMessage } = useVSCodeAPI();
   const [task, setTask] = useState('');
-  const [agentType, setAgentType] = useState('vscode');
+  // Renamed to 'executionMode' and 'agentImplementation' for clarity
+  const [executionMode, setExecutionMode] = useState<'ide' | 'cli'>('ide');
+  const [agentType, setAgentType] = useState('vscode'); // Keeps internal ID
   const [cliCommand, setCliCommand] = useState('codex');
   const [isLaunching, setIsLaunching] = useState(false);
   
@@ -67,7 +69,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
     if (state.launcherData?.configuredMCPs) {
         setConfiguredMCPs(state.launcherData.configuredMCPs);
     } else {
-        // Default MCPs setup (fallback)
+        // Fallback or "Safe Mode" if no config received
         const standardMCPs = {
             "filesystem": { 
                 description: "Access local files",
@@ -75,16 +77,14 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                 args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
             },
             "memory-bank": { 
-                description: "RAG & Knowledge Graph",
+                description: "RAG & Knowledge Graph (Needs Config)",
                 command: "npx",
                 args: ["@grec0/memory-bank-mcp"],
                 env: {
-                    "OPENAI_API_KEY": "api-key-here",
+                    // Empty by default on fallback path
+                    "OPENAI_API_KEY": "",
                     "MEMORYBANK_REASONING_MODEL": "gpt-5-mini",
-                    "MEMORYBANK_REASONING_EFFORT": "medium",
-                    "MEMORYBANK_AUTO_UPDATE_DOCS": false,
-                    "MEMORYBANK_MAX_TOKENS": 7500,
-                    "MEMORYBANK_CHUNK_OVERLAP_TOKENS": 200
+                    // ...
 			    }
             }
         };
@@ -417,41 +417,126 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
 
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                     <label className="section-label">Agent Environment</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <div 
-                            className="agent-type-btn"
-                            onClick={() => { setAgentType('vscode'); setModel('default'); }}
-                            style={{
-                                flex: 1,
-                                padding: '12px',
-                                border: `2px solid ${agentType === 'vscode' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
-                                backgroundColor: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
-                                color: agentType === 'vscode' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                textAlign: 'center'
-                            }}
-                        >
-                            <strong>VS Code</strong>
-                            <div style={{ fontSize: '0.85em', opacity: 0.8 }}>Internal Extension</div>
+                    
+                    {/* Level 1: Category Selection */}
+                    <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)', textTransform: 'uppercase' }}>
+                            Category
+                        </label>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <div 
+                                className="agent-type-btn"
+                                onClick={() => { 
+                                    setExecutionMode('ide'); 
+                                    setAgentType('vscode'); 
+                                    setModel('default'); 
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    border: `2px solid ${executionMode === 'ide' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
+                                    backgroundColor: executionMode === 'ide' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
+                                    color: executionMode === 'ide' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                    opacity: executionMode === 'ide' ? 1 : 0.7
+                                }}
+                            >
+                                <i className="codicon codicon-layout-sidebar-left" style={{ display: 'block', fontSize: '20px', marginBottom: '4px' }}></i>
+                                <strong>IDE Integrated</strong>
+                            </div>
+                            <div 
+                                className="agent-type-btn"
+                                onClick={() => { 
+                                    setExecutionMode('cli'); 
+                                    setAgentType('codex'); 
+                                    setModel('gpt-5.1-codex'); 
+                                    setCliCommand('codex'); 
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    border: `2px solid ${executionMode === 'cli' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
+                                    backgroundColor: executionMode === 'cli' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
+                                    color: executionMode === 'cli' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                    opacity: executionMode === 'cli' ? 1 : 0.7
+                                }}
+                            >
+                                <i className="codicon codicon-terminal" style={{ display: 'block', fontSize: '20px', marginBottom: '4px' }}></i>
+                                <strong>CLI Automation</strong>
+                            </div>
                         </div>
-                        <div 
-                            className="agent-type-btn"
-                            onClick={() => { setAgentType('cli'); setModel('gpt-5.1-codex'); setCliCommand('codex'); }}
-                            style={{
-                                flex: 1,
-                                padding: '12px',
-                                border: `2px solid ${agentType === 'cli' ? 'var(--vscode-focusBorder)' : 'var(--vscode-widget-border)'}`,
-                                backgroundColor: agentType === 'cli' ? 'var(--vscode-list-activeSelectionBackground)' : 'transparent',
-                                color: agentType === 'cli' ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                textAlign: 'center'
-                            }}
-                        >
-                            <strong>Codex (OpenAI)</strong>
-                            <div style={{ fontSize: '0.85em', opacity: 0.8 }}>External Process</div>
-                        </div>
+                    </div>
+
+                    {/* Level 2: Implementation Selection (Contextual) */}
+                    <div className="implementation-selector" style={{ 
+                        marginTop: '10px',
+                        padding: '10px',
+                        background: 'var(--vscode-input-background)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--vscode-input-border)'
+                    }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)', textTransform: 'uppercase' }}>
+                            Implementation
+                        </label>
+                        
+                        {executionMode === 'ide' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <div 
+                                    className="agent-impl-btn"
+                                    onClick={() => setAgentType('vscode')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '8px',
+                                        borderRadius: '4px',
+                                        border: `1px solid ${agentType === 'vscode' ? 'var(--vscode-focusBorder)' : 'transparent'}`,
+                                        background: agentType === 'vscode' ? 'var(--vscode-list-hoverBackground)' : 'transparent',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <i className="codicon codicon-vscode" style={{ fontSize: '18px' }}></i>
+                                    <div>
+                                        <div style={{ fontWeight: 'bold' }}>VS Code Agent</div>
+                                        <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Standard Extension API</div>
+                                    </div>
+                                    {agentType === 'vscode' && <i className="codicon codicon-check" style={{ marginLeft: 'auto' }}></i>}
+                                </div>
+                                {/* Future: Windsurf or others here */}
+                            </div>
+                        )}
+
+                        {executionMode === 'cli' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <div 
+                                    className="agent-impl-btn"
+                                    onClick={() => setAgentType('codex')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '8px',
+                                        borderRadius: '4px',
+                                        border: `1px solid ${agentType === 'codex' ? 'var(--vscode-focusBorder)' : 'transparent'}`,
+                                        background: agentType === 'codex' ? 'var(--vscode-list-hoverBackground)' : 'transparent',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <i className="codicon codicon-robot" style={{ fontSize: '18px' }}></i>
+                                    <div>
+                                        <div style={{ fontWeight: 'bold' }}>Codex CLI</div>
+                                        <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Autonomous loops</div>
+                                    </div>
+                                    {agentType === 'codex' && <i className="codicon codicon-check" style={{ marginLeft: 'auto' }}></i>}
+                                </div>
+                                {/* Future: Other CLI agents here */}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -532,7 +617,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                                         </button>
                                     </div>
                                     
-                                    {/* Configuration Details Panel */}
+                                    {/* Configuration Details Panel (Editable) */}
                                     {expandedMCPs.includes(id) && (
                                         <div style={{
                                             padding: '10px',
@@ -543,42 +628,124 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                                             fontSize: '0.85em',
                                             fontFamily: 'monospace'
                                         }}>
-                                            {config.command ? (
-                                                <>
-                                                    <div style={{fontWeight:'bold', color:'var(--vscode-textPreformat-foreground)', marginBottom:'5px'}}>STDIO Config:</div>
-                                                    <div style={{marginBottom:'5px'}}>
-                                                        <span style={{color:'var(--vscode-symbolIcon-functionForeground)'}}>command:</span> <span style={{color:'var(--vscode-textPreformat-foreground)'}}>{config.command}</span>
+                                             <div style={{marginBottom:'10px'}}>
+                                                <label className="section-label" style={{fontSize:'0.9em', marginTop:0}}>Command</label>
+                                                <input 
+                                                    type="text"
+                                                    value={config.command || ''}
+                                                    onChange={(e) => {
+                                                        const newConfig = { ...config, command: e.target.value };
+                                                        setConfiguredMCPs({ ...configuredMCPs, [id]: newConfig });
+                                                    }}
+                                                    placeholder="npx, python, etc."
+                                                    style={{width:'100%', padding:'5px', background:'var(--vscode-input-background)', color:'var(--vscode-input-foreground)', border:'1px solid var(--vscode-input-border)'}}
+                                                />
+                                            </div>
+                                            
+                                            <div style={{marginBottom:'10px'}}>
+                                                <label className="section-label" style={{fontSize:'0.9em'}}>Args (JSON Array)</label>
+                                                <input 
+                                                    type="text"
+                                                    value={JSON.stringify(config.args || [])}
+                                                    onChange={(e) => {
+                                                        try {
+                                                            const newArgs = JSON.parse(e.target.value);
+                                                            const newConfig = { ...config, args: newArgs };
+                                                            setConfiguredMCPs({ ...configuredMCPs, [id]: newConfig });
+                                                        } catch(err) {
+                                                            // Allow typing invalid json but dont update state until valid?
+                                                            // Alternatively, keep it as string in a separate state, but that's complex.
+                                                            // Simple way: Update only if valid, or use text field.
+                                                            // For now let's just let them type but maybe add validation border
+                                                        }
+                                                    }}
+                                                    placeholder='["-y", "@package", "."]'
+                                                    style={{width:'100%', padding:'5px', background:'var(--vscode-input-background)', color:'var(--vscode-input-foreground)', border:'1px solid var(--vscode-input-border)'}}
+                                                />
+                                                <div style={{fontSize:'0.8em', opacity:0.6, marginTop:'2px'}}>Format: ["arg1", "arg2"]</div>
+                                            </div>
+
+                                            <div style={{marginBottom:'10px'}}>
+                                                <label className="section-label" style={{fontSize:'0.9em'}}>Environment Variables</label>
+                                                {Object.entries(config.env || {}).map(([key, val]) => (
+                                                    <div key={key} style={{display:'flex', gap:'5px', marginBottom:'5px'}}>
+                                                        <input 
+                                                            readOnly 
+                                                            value={key} 
+                                                            style={{flex:1, padding:'4px', background:'var(--vscode-input-background)', opacity:0.8, border:'1px solid var(--vscode-input-border)'}}
+                                                        />
+                                                        <input 
+                                                            type="text"
+                                                            value={String(val)}
+                                                            onChange={(e) => {
+                                                                const newEnv = { ...(config.env || {}), [key]: e.target.value };
+                                                                const newConfig = { ...config, env: newEnv };
+                                                                setConfiguredMCPs({ ...configuredMCPs, [id]: newConfig });
+                                                            }}
+                                                            style={{flex:2, padding:'4px', background:'var(--vscode-input-background)', color:'var(--vscode-input-foreground)', border:'1px solid var(--vscode-input-border)'}}
+                                                        />
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const newEnv = { ...(config.env || {}) };
+                                                                delete newEnv[key];
+                                                                const newConfig = { ...config, env: newEnv };
+                                                                setConfiguredMCPs({ ...configuredMCPs, [id]: newConfig });
+                                                            }}
+                                                            style={{background:'var(--vscode-button-secondaryBackground)', color:'var(--vscode-button-secondaryForeground)', border:'none', cursor:'pointer', padding:'0 8px'}}
+                                                        >✕</button>
                                                     </div>
-                                                    {config.args && (
-                                                        <div style={{marginBottom:'5px'}}>
-                                                            <span style={{color:'var(--vscode-symbolIcon-variableForeground)'}}>args:</span> <span style={{color:'var(--vscode-textPreformat-foreground)'}}>{JSON.stringify(config.args)}</span>
-                                                        </div>
-                                                    )}
-                                                    {config.env && (
-                                                        <div>
-                                                            <span style={{color:'var(--vscode-symbolIcon-constantForeground)'}}>env:</span>
-                                                            <div style={{paddingLeft:'15px', color:'var(--vscode-textPreformat-foreground)'}}>
-                                                                {Object.entries(config.env).map(([k, v]) => (
-                                                                    <div key={k}>{k}={String(v)}</div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            ) : config.url ? (
-                                                <>
-                                                    <div style={{fontWeight:'bold', color:'var(--vscode-textPreformat-foreground)', marginBottom:'5px'}}>SSE/HTTP Config:</div>
-                                                    <div>
-                                                        <span style={{color:'var(--vscode-symbolIcon-eventForeground)'}}>url:</span> <span style={{color:'var(--vscode-textLink-foreground)'}}>{config.url}</span>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div style={{fontStyle:'italic', opacity:0.7}}>No detailed configuration available</div>
-                                            )}
+                                                ))}
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const newVal = prompt("Enter ENV Key (e.g. API_KEY):");
+                                                        const val = newVal?.trim();
+                                                        if (val) {
+                                                            const newEnv = { ...(config.env || {}), [val]: "" };
+                                                            const newConfig = { ...config, env: newEnv };
+                                                            setConfiguredMCPs({ ...configuredMCPs, [id]: newConfig });
+                                                        }
+                                                    }}
+                                                    style={{fontSize:'0.85em', background:'transparent', border:'1px solid var(--vscode-button-border)', color:'var(--vscode-button-foreground)', cursor:'pointer', padding:'2px 8px'}}
+                                                >
+                                                    + Add Env Var
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
                             ))}
+                        </div>
+                        
+                        <div style={{marginTop:'10px', textAlign:'right'}}>
+                            <button
+                                onClick={() => {
+                                    const id = `custom-mcp-${Object.keys(configuredMCPs).length + 1}`;
+                                    setConfiguredMCPs({
+                                        ...configuredMCPs,
+                                        [id]: {
+                                            description: "Custom MCP Server",
+                                            command: "",
+                                            args: [],
+                                            env: {}
+                                        }
+                                    });
+                                    setSelectedMCPs([...selectedMCPs, id]);
+                                    setExpandedMCPs([...expandedMCPs, id]);
+                                }}
+                                style={{
+                                    background: 'var(--vscode-button-secondaryBackground)',
+                                    color: 'var(--vscode-button-secondaryForeground)',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9em'
+                                }}
+                            >
+                                + Add Custom MCP
+                            </button>
                         </div>
                         
                         <div style={{marginTop: '15px'}}>

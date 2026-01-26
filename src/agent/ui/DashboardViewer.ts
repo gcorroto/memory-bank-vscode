@@ -240,7 +240,7 @@ export class DashboardViewer {
         this.updateAgentConfig(message.data);
         break;
 
-      case 'REQUEST_AGENT_CONFIG':
+      case 'REQUEST_AGENT_CONFIG': {
         const config = vscode.workspace.getConfiguration('memorybank');
         const mcpServers = config.get('mcpServers') || {};
         this.sendToWebview({
@@ -248,16 +248,17 @@ export class DashboardViewer {
             data: { mcpServers }
         });
         break;
+      }
 
       case 'LAUNCH_AGENT':
-        const { agentType, task, cliCommand, config } = message.payload;
+        const { agentType, task, cliCommand, config: launchConfig } = message.payload;
         
         if (agentType === 'vscode') {
           if (this.agent) {
              // We use the same pattern as 'Launch Agent for Task' command
              // Pass configuration options in the context
              this.agent.handleUserInput(`Task: ${task}`, { 
-                 ...config,
+                 ...launchConfig,
                  source: 'dashboard'
              });
              vscode.window.showInformationMessage(`Agent launched for task: ${task}`);
@@ -727,10 +728,10 @@ export class DashboardViewer {
              return reqs.map(r => ({
                 id: r.id,
                 title: r.title,
-                fromProject: r.from || 'Unknown',
-                context: r.description || '',
+                fromProject: r.fromProject || 'Unknown',
+                context: r.context || '',
                 status: r.status,
-                receivedAt: r.created_at
+                receivedAt: r.receivedAt
              }));
         }
 
