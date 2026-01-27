@@ -99,8 +99,8 @@ export const App: React.FC = () => {
       case 'UPDATE_DELEGATION_REQUESTS':
         if (message.data.requests || message.data.pendingTasks) {
           dashboard.updateDelegationRequests(
-              message.data.requests || [], 
-              message.data.pendingTasks || []
+              message.data.requests || dashboard.state.delegation.externalRequests, 
+              message.data.pendingTasks || dashboard.state.delegation.pendingTasks
           );
         }
         break;

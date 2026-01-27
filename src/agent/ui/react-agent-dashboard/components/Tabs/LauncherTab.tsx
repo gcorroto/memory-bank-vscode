@@ -61,45 +61,48 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
 
   // Effect to handle pre-launch data
   React.useEffect(() => {
-    if (state.launcherData && state.launcherData.task) {
-        setTask(state.launcherData.task);
+    if (state.launcherData) {
+        if (state.launcherData.task) {
+            setTask(state.launcherData.task);
+        }
+        
+        // Check for configured MCPs from extension
+        if (state.launcherData.configuredMCPs) {
+            setConfiguredMCPs(state.launcherData.configuredMCPs);
+        }
     }
-    
-    // Check for configured MCPs from extension
-    if (state.launcherData?.configuredMCPs) {
-        setConfiguredMCPs(state.launcherData.configuredMCPs);
-    } else {
-        // Fallback or "Safe Mode" if no config received
-        const standardMCPs = {
-            "filesystem": { 
-                description: "Access local files",
-                command: "npx", 
-                args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
-            },
-            "memory-bank": { 
-                description: "RAG & Knowledge Graph (Needs Config)",
-                command: "npx",
-                args: ["@grec0/memory-bank-mcp"],
-                env: {
-                    // Empty by default on fallback path
-                    "OPENAI_API_KEY": "",
-                    "MEMORYBANK_REASONING_MODEL": "gpt-5-mini",
-                    // ...
-			    }
+  }, [state.launcherData]);
+
+  // Initial setup and data request
+  React.useEffect(() => {
+    // Fallback or "Safe Mode" if no config received yet
+    const standardMCPs = {
+        "filesystem": { 
+            description: "Access local files",
+            command: "npx", 
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+        },
+        "memory-bank": { 
+            description: "RAG & Knowledge Graph (Needs Config)",
+            command: "npx",
+            args: ["@grec0/memory-bank-mcp"],
+            env: {
+                // Empty by default on fallback path
+                "OPENAI_API_KEY": "",
+                "MEMORYBANK_REASONING_MODEL": "gpt-5-mini",
+                // ...
             }
-        };
-        setConfiguredMCPs(standardMCPs);
-    }
+        }
+    };
+    setConfiguredMCPs(prev => Object.keys(prev).length === 0 ? standardMCPs : prev);
     
     // Request config AND delegation state on mount
     postMessage({ type: 'REQUEST_AGENT_CONFIG', command: 'REQUEST_AGENT_CONFIG' });
     postMessage({ type: 'REQUEST_DELEGATION_STATE', command: 'REQUEST_DELEGATION_STATE' });
     
     // Preselect memory-bank
-    if (selectedMCPs.length === 0) {
-        setSelectedMCPs(['memory-bank']);
-    }
-  }, [state.launcherData]);
+    setSelectedMCPs(prev => prev.length === 0 ? ['memory-bank'] : prev);
+  }, []);
 
   // Build the CLI command dynamically
   React.useEffect(() => {
