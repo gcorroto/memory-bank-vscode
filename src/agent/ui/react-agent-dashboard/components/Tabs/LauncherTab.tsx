@@ -12,12 +12,16 @@ interface Props {
   dispatch: any;
 }
 
-const LauncherTab: React.FC<Props> = ({ state }) => {
+const LauncherTab: React.FC<Props> = ({ state, dispatch }) => {
   const { postMessage } = useVSCodeAPI();
-  const [task, setTask] = useState('');
+  
+  // Initialize state from global `launcherState` if available, or defaults
+  const persisted = state.launcherState || {};
+
+  const [task, setTask] = useState(persisted.task || '');
   // Renamed to 'executionMode' and 'agentImplementation' for clarity
-  const [executionMode, setExecutionMode] = useState<'ide' | 'cli'>('ide');
-  const [agentType, setAgentType] = useState('vscode'); // Keeps internal ID
+  const [executionMode, setExecutionMode] = useState<'ide' | 'cli'>(persisted.executionMode || 'ide');
+  const [agentType, setAgentType] = useState(persisted.agentType || 'vscode'); // Keeps internal ID
   const [cliCommand, setCliCommand] = useState('codex');
   const [isLaunching, setIsLaunching] = useState(false);
   
@@ -35,18 +39,18 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
   const [addDirs, setAddDirs] = useState(''); // Text input for paths
 
   // Track expanded MCP details
-  const [expandedMCPs, setExpandedMCPs] = useState<string[]>([]);
+  const [expandedMCPs, setExpandedMCPs] = useState<string[]>(persisted.expandedMCPs || []);
   
   // Multi-task selection
-  const [selectedInternalTasks, setSelectedInternalTasks] = useState<string[]>([]);
-  const [selectedExternalRequests, setSelectedExternalRequests] = useState<string[]>([]);
+  const [selectedInternalTasks, setSelectedInternalTasks] = useState<string[]>(persisted.selectedInternalTasks || []);
+  const [selectedExternalRequests, setSelectedExternalRequests] = useState<string[]>(persisted.selectedExternalRequests || []);
   
   // MCP selection
-  const [selectedMCPs, setSelectedMCPs] = useState<string[]>([]);
+  const [selectedMCPs, setSelectedMCPs] = useState<string[]>(persisted.selectedMCPs || []);
   const [configuredMCPs, setConfiguredMCPs] = useState<Record<string, any>>({});
 
   // Advanced settings
-  const [model, setModel] = useState('gpt-5.1-codex'); // Default for Codex
+  const [model, setModel] = useState(persisted.model || 'gpt-5.1-codex'); // Default for Codex
   const [autoApprove, setAutoApprove] = useState(false); // Default false for checks
   const [maxSteps, setMaxSteps] = useState(10);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -58,6 +62,26 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
         return [];
     }
   });
+
+  // Persist state changes to global store
+  React.useEffect(() => {
+      const timer = setTimeout(() => {
+          dispatch({ 
+            type: 'UPDATE_LAUNCHER_STATE', 
+            payload: {
+                task,
+                executionMode,
+                agentType,
+                selectedInternalTasks,
+                selectedExternalRequests,
+                selectedMCPs,
+                expandedMCPs,
+                model
+            } 
+          });
+      }, 500); // Debounce updates
+      return () => clearTimeout(timer);
+  }, [task, executionMode, agentType, selectedInternalTasks, selectedExternalRequests, selectedMCPs, expandedMCPs, model]);
 
   // Effect to handle pre-launch data
   React.useEffect(() => {
@@ -100,35 +124,10 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
     postMessage({ type: 'REQUEST_AGENT_CONFIG', command: 'REQUEST_AGENT_CONFIG' });
     postMessage({ type: 'REQUEST_DELEGATION_STATE', command: 'REQUEST_DELEGATION_STATE' });
     
-    // Preselect memory-bank
-    setSelectedMCPs(prev => prev.length === 0 ? ['memory-bank'] : prev);
-  }, []);
-
-  // Build the CLI command dynamically
-  React.useEffect(() => {
-      if (executionMode === 'cli') {
-          const buildCommand = () => {
-              let cmd = 'codex';
-              
-              // Base args
-              if (model !== 'default') cmd += ` --model ${model}`;
-              if (approvalMode !== 'on-request') cmd += ` --ask-for-approval ${approvalMode}`;
-              if (sandboxMode !== 'workspace-write') cmd += ` --sandbox ${sandboxMode}`;
-              if (workDir && workDir !== '${workspaceFolder}') cmd += ` --cd "${workDir}"`;
-              
-              // New flags
-              if (fullAuto) cmd += ` --full-auto`;
-              if (oss) cmd += ` --oss`;
-              if (noAltScreen) cmd += ` --no-alt-screen`;
-              if (skipGitCheck) cmd += ` --skip-git-repo-check`;
-              if (bypassSafety) cmd += ` --dangerously-bypass-approvals-and-sandbox`;
-              
-              if (addDirs.trim()) {
-                  const dirs = addDirs.split(',').map(d => d.trim()).filter(d => d.length > 0);
-                  dirs.forEach(d => {
-                      cmd += ` --add-dir "${d}"`;
-                  });
-              }
+    // Preselect memory-bank if no persistence
+    if (!state.launcherState || !state.launcherState.selectedMCPs) {
+        setSelectedMCPs(prev => prev.length === 0 ? ['memory-bank'] : prev);
+    }
               
               // Full auto shortcut check (optional, but keep explicit flags for clarity)
               // if (approvalMode === 'on-request' && sandboxMode === 'workspace-write') ... 
@@ -407,7 +406,7 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
 
       <div className="section">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            Agent Launchpad
+            Agent Launchpad {state.projectId && <span style={{fontSize:'0.6em', opacity:0.6, fontWeight:'normal', border:'1px solid var(--vscode-descriptionForeground)', padding:'2px 6px', borderRadius:'4px'}}>{state.projectId}</span>}
         </h2>
         <p style={{ marginBottom: '25px', color: 'var(--vscode-descriptionForeground)' }}>
             Configure and launch AI agents to automate your development tasks.

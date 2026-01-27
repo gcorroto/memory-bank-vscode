@@ -291,6 +291,7 @@ export interface VSCodeAPI {
 
 export interface ExternalRequest {
   id: string;
+  projectId?: string;
   title: string;
   fromProject: string;
   context: string;
@@ -298,9 +299,18 @@ export interface ExternalRequest {
   receivedAt: string;
 }
 
+export interface PendingTask {
+  id: string;
+  projectId?: string;
+  title: string;
+  description?: string;
+  status: string;
+  createdAt: string;
+}
+
 export interface DelegationState {
   externalRequests: ExternalRequest[];
-  pendingTasks: any[]; 
+  pendingTasks: PendingTask[]; 
 }
 
 export type TabType = 'mcps' | 'historico' | 'execution' | 'validator' | 'planner' | 'testing' | 'delegation' | 'launcher';
@@ -315,9 +325,53 @@ export interface DashboardState {
   delegation: DelegationState;
   launcherData?: { 
     task: string;
-    configuredMCPs?: Record<string, any>; // command, args, etc from settings
+    configuredMCPs?: Record<string, any>; 
   };
+  launcherState?: {
+    task?: string;
+    executionMode: 'ide' | 'cli';
+    agentType: string;
+    selectedInternalTasks: string[];
+    selectedExternalRequests: string[];
+    selectedMCPs: string[];
+    expandedMCPs: string[];
+    model: string;
+  };
+  projectId?: string; // Global project ID
   activeTab: TabType;
   theme: 'light' | 'dark' | 'high-contrast';
   isLoading: boolean;
 }
+
+export type DashboardAction =
+  | { type: 'UPDATE_DASHBOARD'; payload: Partial<DashboardState> }
+  | { type: 'SET_ACTIVE_TAB'; payload: TabType }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_THEME'; payload: 'light' | 'dark' | 'high-contrast' }
+  | { type: 'UPDATE_MCPS'; payload: MCPsState }
+  | { type: 'UPDATE_MCPS_CONNECTIONS'; payload: MCPConnection[] }
+  | { type: 'UPDATE_MCPS_TOOLS'; payload: MCPTool[] }
+  | { type: 'UPDATE_MCPS_LATENCY'; payload: Record<string, number> }
+  | { type: 'UPDATE_HISTORICO'; payload: HistoricoState }
+  | { type: 'ADD_HISTORICO_MESSAGE'; payload: Message }
+  | { type: 'UPDATE_HISTORICO_TOKENS'; payload: number }
+  | { type: 'UPDATE_EXECUTION'; payload: ExecutionState }
+  | { type: 'ADD_EXECUTION_TOOL'; payload: ExecutingTool }
+  | { type: 'COMPLETE_EXECUTION_TOOL'; payload: ExecutingTool }
+  | { type: 'FAIL_EXECUTION_TOOL'; payload: ExecutingTool }
+  | { type: 'UPDATE_VALIDATOR'; payload: ValidatorState }
+  | { type: 'ADD_VALIDATOR_CHECK'; payload: Validation }
+  | { type: 'UPDATE_PLANNER'; payload: PlannerState }
+  | { type: 'UPDATE_PLANNER_STEPS'; payload: PlanStep[] }
+  | { type: 'ADD_REPLANNING_HISTORY'; payload: {timestamp: number; reason: string; previousSteps: number; newSteps: number; changes?: string[]} }
+  | { type: 'SET_PLANNER_PHASE'; payload: string }
+  | { type: 'UPDATE_TESTING'; payload: TestingState }
+  | { type: 'ADD_TEST_RESULT'; payload: TestResult }
+  | { type: 'UPDATE_TEST_COVERAGE'; payload: number }
+  | { type: 'SET_CURRENT_TEST'; payload: string }
+  | { type: 'UPDATE_DELEGATION_REQUESTS'; payload: ExternalRequest[]; pendingTasks: any[] }
+  | { type: 'SET_LAUNCHER_DATA'; payload: { task: string; configuredMCPs?: Record<string, any> } }
+  | { type: 'UPDATE_LAUNCHER_STATE'; payload: any }
+  | { type: 'SET_PROJECT_ID'; payload: string }
+  | { type: 'RESET_STATE' }
+  | { type: 'RESET' };

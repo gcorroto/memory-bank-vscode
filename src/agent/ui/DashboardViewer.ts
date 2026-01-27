@@ -175,6 +175,12 @@ export class DashboardViewer {
     switch (message.type) {
       case 'REQUEST_INITIAL_STATE':
         this.sendInitialState();
+        if (this.currentProjectId) {
+            this.sendToWebview({
+                type: 'SET_PROJECT_ID', // Requires adding this action to frontend reducer
+                payload: this.currentProjectId
+            });
+        }
         break;
 
       case 'REQUEST_MCPs_STATE':

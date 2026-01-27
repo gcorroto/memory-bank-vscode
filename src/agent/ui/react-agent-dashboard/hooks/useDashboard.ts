@@ -69,6 +69,21 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
     case 'SET_LAUNCHER_DATA':
       return { ...state, launcherData: action.payload };
 
+    case 'UPDATE_LAUNCHER_STATE':
+      return {
+          ...state,
+          launcherState: {
+              ...state.launcherState,
+              ...action.payload,
+              // Ensure critical fields are preserved if not provided
+              executionMode: action.payload.executionMode || state.launcherState?.executionMode || 'ide',
+              agentType: action.payload.agentType || state.launcherState?.agentType || 'vscode'
+          }
+      };
+
+    case 'SET_PROJECT_ID':
+        return { ...state, projectId: action.payload };
+
     case 'UPDATE_MCPS_CONNECTIONS':
       return {
         ...state,
@@ -302,8 +317,21 @@ export const useDashboard = () => {
     dispatch({ type: 'UPDATE_DELEGATION_REQUESTS', payload: requests, pendingTasks });
   }, []);
 
+  const setLauncherData = useCallback((data: { task: string; configuredMCPs?: Record<string, any> }) => {
+    dispatch({ type: 'SET_LAUNCHER_DATA', payload: data });
+  }, []);
+
+  const updateLauncherState = useCallback((data: any) => {
+    dispatch({ type: 'UPDATE_LAUNCHER_STATE', payload: data });
+  }, []);
+
+  const setProjectId = useCallback((id: string) => {
+      dispatch({ type: 'SET_PROJECT_ID', payload: id });
+  }, []);
+
   return {
     state,
+    dispatch,
     updateMCPsConnections,
     updateMCPsTools,
     updateMCPsLatency,
@@ -324,9 +352,9 @@ export const useDashboard = () => {
     setTheme,
     resetState,
     updateDelegationRequests,
-    setLauncherData: useCallback((data: { task: string; configuredMCPs?: Record<string, any> }) => {
-        dispatch({ type: 'SET_LAUNCHER_DATA', payload: data });
-    }, []),
+    setLauncherData,
+    updateLauncherState,
+    setProjectId
   };
 };
 

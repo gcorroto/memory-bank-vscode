@@ -125,6 +125,11 @@ export const App: React.FC = () => {
             });
         }
         break;
+      case 'SET_PROJECT_ID':
+        if (message.payload) {
+            dashboard.setProjectId(message.payload);
+        }
+        break;
     }
   });
 
