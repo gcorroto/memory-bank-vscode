@@ -900,17 +900,22 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                 <div className="form-group">
                     <label className="section-label">Pending Internal Tasks</label>
                     <div className="task-list">
-                        {state.delegation.pendingTasks.length === 0 && (
+                        {state.delegation.pendingTasks.filter(t => t.status === 'PENDING').length === 0 && (
                             <div style={{padding:'10px', color:'var(--vscode-descriptionForeground)', fontStyle:'italic'}}>No pending internal tasks</div>
                         )}
-                        {state.delegation.pendingTasks.map(t => (
+                        {state.delegation.pendingTasks
+                            .filter(t => t.status === 'PENDING')
+                            .map(t => (
                             <div key={t.id} className="task-item" onClick={() => toggleInternalTask(t.id)}>
                                 <input 
                                     type="checkbox" 
                                     checked={selectedInternalTasks.includes(t.id)}
                                     onChange={() => {}}
                                 />
-                                <label title={t.title}>{t.title}</label>
+                                <label title={t.title}>
+                                    {t.title}
+                                    {t.projectId && <span style={{fontSize:'0.8em', opacity:0.6, marginLeft:'5px', border:'1px solid var(--vscode-descriptionForeground)', borderRadius:'3px', padding:'0 4px'}}>{t.projectId}</span>}
+                                </label>
                             </div>
                         ))}
                     </div>
@@ -919,17 +924,23 @@ const LauncherTab: React.FC<Props> = ({ state }) => {
                 <div className="form-group">
                     <label className="section-label">External Requests</label>
                     <div className="task-list">
-                        {state.delegation.externalRequests.length === 0 && (
+                        {state.delegation.externalRequests.filter(t => t.status === 'PENDING').length === 0 && (
                             <div style={{padding:'10px', color:'var(--vscode-descriptionForeground)', fontStyle:'italic'}}>No external requests</div>
                         )}
-                        {state.delegation.externalRequests.map(t => (
+                        {state.delegation.externalRequests
+                            .filter(t => t.status === 'PENDING')
+                            .map(t => (
                             <div key={t.id} className="task-item" onClick={() => toggleExternalRequest(t.id)}>
                                 <input 
                                     type="checkbox" 
                                     checked={selectedExternalRequests.includes(t.id)}
                                     onChange={() => {}}
                                 />
-                                <label title={t.title}>{t.title} <span style={{opacity:0.6}}>(from {t.fromProject})</span></label>
+                                <label title={t.title}>
+                                    {t.title} 
+                                    <span style={{opacity:0.6, marginLeft:'5px'}}>(from {t.fromProject})</span>
+                                    {t.projectId && <span style={{fontSize:'0.8em', opacity:0.6, marginLeft:'5px', border:'1px solid var(--vscode-descriptionForeground)', borderRadius:'3px', padding:'0 4px'}}>to {t.projectId}</span>}
+                                </label>
                             </div>
                         ))}
                     </div>
